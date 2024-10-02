@@ -50,7 +50,7 @@ func NewTestEvalContext(input io.Reader) (*EvalContext, *store.Store) {
 }
 
 func (e *EvalContext) initState(ctx context.Context, state *sync.Map, w io.Writer) *lua.LState {
-	L := lua.NewState()
+	L := lua.NewState(lua.Options{SkipOpenLibs: true})
 	L.SetContext(ctx)
 	for _, pair := range []struct {
 		n string
