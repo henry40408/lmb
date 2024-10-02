@@ -2,7 +2,9 @@ package io_mod
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -25,6 +27,10 @@ func (m *ioModule) Loader(L *lua.LState) int {
 
 	L.SetField(mod, "read", L.NewFunction(m.read))
 	L.SetField(mod, "write", L.NewFunction(m.write))
+
+	stderr := L.NewTable()
+	L.SetField(stderr, "write", L.NewFunction(m.writeStderr))
+	L.SetField(mod, "stderr", stderr)
 
 	L.Push(mod)
 	return 1
@@ -79,6 +85,9 @@ func (m *ioModule) readAll(L *lua.LState) int {
 	if err != nil {
 		return m.handleError(L, err)
 	}
+	if len(content) == 0 {
+		return 0
+	}
 	L.Push(lua.LString(content))
 	return 1
 }
@@ -87,6 +96,9 @@ func (m *ioModule) readNumber(L *lua.LState) int {
 	line, err := m.reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return m.handleError(L, err)
+	}
+	if line == "" && err == io.EOF {
+		return 0
 	}
 	n, err := strconv.ParseFloat(strings.TrimSpace(line), 64)
 	if err != nil {
@@ -100,6 +112,9 @@ func (m *ioModule) readLine(L *lua.LState, keepEOL bool) int {
 	line, err := m.reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return m.handleError(L, err)
+	}
+	if line == "" && err == io.EOF {
+		return 0
 	}
 	if !keepEOL {
 		line = strings.TrimRight(line, "\n")
@@ -118,21 +133,13 @@ func (m *ioModule) handleError(L *lua.LState, err error) int {
 }
 
 func (m *ioModule) write(L *lua.LState) int {
-	arg := L.Get(1)
-	switch v := arg.(type) {
-	case lua.LString:
-		_, err := io.WriteString(m.writer, string(v))
-		if err != nil {
-			L.RaiseError(err.Error())
-		}
-		return 0
-	case lua.LNumber:
-		_, err := m.writer.Write([]byte(strconv.FormatFloat(float64(v), 'f', -1, 64)))
-		if err != nil {
-			L.RaiseError(err.Error())
-		}
-		return 0
-	}
-	L.ArgError(1, "expect string or number")
+	arg := L.ToString(1)
+	fmt.Fprintf(m.writer, "%s", arg)
+	return 0
+}
+
+func (m *ioModule) writeStderr(L *lua.LState) int {
+	arg := L.ToString(2)
+	fmt.Fprintf(os.Stderr, "%s", arg)
 	return 0
 }
