@@ -19,10 +19,10 @@ func TestState(t *testing.T) {
 
 	store, err := store.NewStore(":memory:")
 	assert.NoError(t, err)
-	L.PreloadModule("lmb", NewLmbModule(&state, store).Loader)
+	L.PreloadModule("@lmb", NewLmbModule(&state, store).Loader)
 
 	err = L.DoString(`
-  local m = require('lmb')
+  local m = require('@lmb')
   m.state['b'] = m.state['a'] + 1
   return true
   `)

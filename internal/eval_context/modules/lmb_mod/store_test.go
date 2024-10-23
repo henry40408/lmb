@@ -19,7 +19,7 @@ func TestStore(t *testing.T) {
 	defer L.Close()
 
 	err := L.DoString(`
-  local m = require('lmb')
+  local m = require('@lmb')
   m.store['a'] = 47
   assert(m.store['a'] == 47)
   assert(not m.store['b'])
@@ -37,7 +37,7 @@ func TestStoreUpdate(t *testing.T) {
 	defer L.Close()
 
 	err := L.DoString(`
-  local m = require('lmb')
+  local m = require('@lmb')
   m.store['alice'] = 50
   m.store['bob'] = 50
   m.store:update(function(store)
@@ -63,7 +63,7 @@ func TestStoreUpdate(t *testing.T) {
 	assert.Equal(t, int64(50), bob)
 
 	err = L.DoString(`
-  local m = require('lmb')
+  local m = require('@lmb')
   m.store['alice'] = 100
   m.store['bob'] = 0
   m.store:update(function(store)
@@ -95,7 +95,7 @@ func TestStoreUpdateConcurrency(t *testing.T) {
 	defer store.Close()
 
 	reader := strings.NewReader(`
-  local m = require('lmb')
+  local m = require('@lmb')
   m.store:update(function(store)
     store['counter'] = (store['counter'] or 0) + 1
   end)
@@ -119,7 +119,7 @@ func TestStoreUpdateConcurrency(t *testing.T) {
 			L := testutil.NewLuaTestState()
 			defer L.Close()
 
-			L.PreloadModule("lmb", NewLmbModule(&state, store).Loader)
+			L.PreloadModule("@lmb", NewLmbModule(&state, store).Loader)
 
 			L.Push(L.NewFunctionFromProto(proto))
 			err := L.PCall(0, lua.MultRet, nil)
@@ -143,7 +143,7 @@ func TestStoreUpdateReturn(t *testing.T) {
 	defer L.Close()
 
 	err := L.DoString(`
-  local m = require('lmb')
+  local m = require('@lmb')
   return m.store:update(function (tx)
     tx['counter'] = 1
     return 1949
@@ -169,7 +169,7 @@ func setupEvalContext() (*lua.LState, *sync.Map, *store.Store) {
 	if err != nil {
 		panic(err)
 	}
-	L.PreloadModule("lmb", NewLmbModule(&state, store).Loader)
+	L.PreloadModule("@lmb", NewLmbModule(&state, store).Loader)
 
 	return L, &state, store
 }

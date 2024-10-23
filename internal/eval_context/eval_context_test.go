@@ -46,7 +46,7 @@ func BenchmarkEvalConcurrency(b *testing.B) {
 	var state sync.Map
 	e, _ := NewTestEvalContext(strings.NewReader(""))
 	compiled, _ := e.Compile(strings.NewReader(`
-  local m = require('lmb')
+  local m = require('@lmb')
   m.store:update(function(store)
     store['counter'] = (store['counter'] or 0) + 1
   end)

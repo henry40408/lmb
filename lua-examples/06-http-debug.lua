@@ -1,6 +1,6 @@
 local json = require("json")
 
-local m = require("lmb")
+local m = require("@lmb")
 
 print("request")
 print(string.format("%s %s", m.state.request["method"], m.state.request["path"]))

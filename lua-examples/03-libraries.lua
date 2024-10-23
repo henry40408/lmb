@@ -4,7 +4,7 @@ local function test_crypto()
 end
 
 local function test_http()
-	local lmb = require("lmb")
+	local lmb = require("@lmb")
 	local base_url = lmb.state["url"] or "https://ip.me"
 
 	local http = require("http")

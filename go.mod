@@ -13,6 +13,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/tengattack/gluacrypto v0.0.0-20240324200146-54b58c95c255
 	github.com/yuin/gluare v0.0.0-20170607022532-d7c94f1a80ed
+	github.com/yuin/goldmark v1.7.4
 	github.com/yuin/gopher-lua v1.1.1
 )
 

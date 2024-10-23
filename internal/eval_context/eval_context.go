@@ -50,7 +50,7 @@ func NewTestEvalContext(input io.Reader) (*EvalContext, *store.Store) {
 }
 
 func (e *EvalContext) initState(ctx context.Context, state *sync.Map, w io.Writer) *lua.LState {
-	L := lua.NewState()
+	L := lua.NewState(lua.Options{SkipOpenLibs: true})
 	L.SetContext(ctx)
 	for _, pair := range []struct {
 		n string
@@ -58,6 +58,9 @@ func (e *EvalContext) initState(ctx context.Context, state *sync.Map, w io.Write
 	}{
 		{lua.LoadLibName, lua.OpenPackage},
 		{lua.BaseLibName, lua.OpenBase},
+		{lua.MathLibName, lua.OpenMath},
+		{lua.StringLibName, lua.OpenString},
+		{lua.TabLibName, lua.OpenTable},
 	} {
 		if err := L.CallByParam(lua.P{
 			Fn:      L.NewFunction(pair.f),
@@ -80,7 +83,7 @@ func (e *EvalContext) initState(ctx context.Context, state *sync.Map, w io.Write
 	L.PreloadModule("url", urlMod.Loader)
 
 	L.PreloadModule("io", io_mod.NewIoMod(e.input, w).Loader)
-	L.PreloadModule("lmb", lmb_mod.NewLmbModule(state, e.store).Loader)
+	L.PreloadModule("@lmb", lmb_mod.NewLmbModule(state, e.store).Loader)
 	return L
 }
 
