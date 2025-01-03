@@ -11,7 +11,7 @@ rust-version = "1.81.0"
 aes = "0.8.4"
 anyhow = "1.0.75"
 ariadne = "0.5.0"
-axum = "0.7.2"
+axum = "0.8.1"
 base16ct = { version = "0.2.0", features = ["alloc"] }
 base64 = "0.22.1"
 bat = { version = "0.24.0", default-features = false, features = [
