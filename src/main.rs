@@ -231,7 +231,7 @@ fn read_script(input: &mut Input) -> anyhow::Result<LuaSource> {
 
 fn prepare_store(options: &StoreOptions) -> anyhow::Result<Store> {
     let store = if let Some(store_path) = &options.store_path {
-        let store = Store::new(&store_path)?;
+        let store = Store::new(store_path)?;
         if options.run_migrations {
             store.migrate(None)?;
         }

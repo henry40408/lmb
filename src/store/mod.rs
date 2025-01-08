@@ -297,7 +297,7 @@ impl Store {
 
         let _s = trace_span!("store_update", ?names).entered();
 
-        let default_vs = default_values.unwrap_or_else(|| Vec::new());
+        let default_vs = default_values.unwrap_or_default();
         let filled_default_values: Vec<&Value> = default_vs
             .iter()
             .chain(std::iter::repeat(&Value::Null))
@@ -327,8 +327,8 @@ impl Store {
         f(&mut values)?;
 
         for (name, value) in std::iter::zip(&names, &values) {
-            let size = Self::get_size(&value);
-            let type_hint = Self::type_hint(&value);
+            let size = Self::get_size(value);
+            let type_hint = Self::type_hint(value);
 
             let value = rmp_serde::to_vec(&value)?;
             let mut cached_stmt = tx.prepare_cached(SQL_UPSERT_STORE)?;

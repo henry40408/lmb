@@ -54,7 +54,7 @@ where
     where
         W: Write,
     {
-        let json = json.unwrap_or_else(|| false);
+        let json = json.unwrap_or(false);
         if json {
             let res = serde_json::to_string(&self.payload)?;
             Ok(write!(f, "{}", res)?)
@@ -146,7 +146,7 @@ where
                 .call()?;
         }
 
-        let timeout = self.timeout.unwrap_or_else(|| DEFAULT_TIMEOUT);
+        let timeout = self.timeout.unwrap_or(DEFAULT_TIMEOUT);
         let max_memory = Arc::new(AtomicUsize::new(0));
 
         let start = Instant::now();
@@ -186,7 +186,7 @@ where
 
     /// Get the name
     pub fn name(&self) -> &str {
-        self.source.name.as_deref().unwrap_or_else(|| "")
+        self.source.name.as_deref().unwrap_or("")
     }
 
     /// Get the script

@@ -7,8 +7,8 @@ use crate::Input;
 // This function intentionally uses Lua values instead of JSON values to pass bytes as partial,
 // invalid strings, allowing Lua to handle the bytes.
 // For a demonstration, see "count-bytes.lua".
-pub(crate) fn lua_lmb_read<'lua, R>(
-    vm: &'lua Lua,
+pub(crate) fn lua_lmb_read<R>(
+    vm: &Lua,
     input: &Input<R>,
     f: Option<LuaValue>,
 ) -> LuaResult<LuaValue>
@@ -77,8 +77,8 @@ where
     Err(LuaError::runtime(format!("unexpected format {f}")))
 }
 
-pub(crate) fn lua_lmb_read_unicode<'lua, R>(
-    vm: &'lua Lua,
+pub(crate) fn lua_lmb_read_unicode<R>(
+    vm: &Lua,
     input: &Input<R>,
     f: LuaValue,
 ) -> LuaResult<LuaValue>

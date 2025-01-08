@@ -35,7 +35,7 @@ impl LuaUserData for LuaModCrypto {
         });
         methods.add_method("base64_decode", |_, _, data: String| {
             let decoded = BASE64_STANDARD.decode(data.as_bytes()).into_lua_err()?;
-            Ok(String::from_utf8(decoded).into_lua_err()?)
+            String::from_utf8(decoded).into_lua_err()
         });
         methods.add_method("crc32", |_, _, data: String| {
             Ok(format!("{:x}", crc32fast::hash(data.as_bytes())))
