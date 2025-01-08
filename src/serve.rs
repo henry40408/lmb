@@ -20,7 +20,7 @@ use tracing::{error, info, warn, Level};
 #[derive(Builder, Clone)]
 struct AppState {
     #[builder(start_fn)]
-    lua_source: LuaSource,
+    source: LuaSource,
     json: bool,
     store: Store,
     timeout: Option<Duration>,
@@ -31,7 +31,7 @@ pub struct ServeOptions {
     #[builder(start_fn, into)]
     bind: SocketAddr,
     #[builder(start_fn)]
-    lua_source: LuaSource,
+    source: LuaSource,
     json: bool,
     store_options: StoreOptions,
     timeout: Option<Duration>,
@@ -47,7 +47,7 @@ fn do_handle_request<S>(
 where
     S: AsRef<str>,
 {
-    let e = match Evaluation::builder(state.lua_source.clone(), Cursor::new(body))
+    let e = match Evaluation::builder(state.source.clone(), Cursor::new(body))
         .maybe_timeout(state.timeout)
         .store(state.store.clone())
         .build()
@@ -180,7 +180,7 @@ pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
         warn!("no store path is specified, an in-memory store will be used and values will be lost when process ends");
         store
     };
-    let app_state = AppState::builder(opts.lua_source.clone())
+    let app_state = AppState::builder(opts.source.clone())
         .json(opts.json)
         .store(store)
         .maybe_timeout(opts.timeout)

@@ -120,24 +120,24 @@ mod tests {
     #[test]
     fn syntax() {
         let script = "ret true";
-        let lua_source = LuaSource::builder(script).build();
+        let source = LuaSource::builder(script).build();
         assert!(matches!(
-            lua_source.check().unwrap_err().get(0),
+            source.check().unwrap_err().get(0),
             Some(full_moon::Error::AstError { .. })
         ));
 
         let script = "return true";
-        let lua_source = LuaSource::builder(script).build();
-        assert!(lua_source.check().is_ok());
+        let source = LuaSource::builder(script).build();
+        assert!(source.check().is_ok());
     }
 
     #[test]
     fn syntax_error() {
         let script = "ret true";
-        let lua_source = LuaSource::builder(script).build();
-        let errors = lua_source.check().unwrap_err();
+        let source = LuaSource::builder(script).build();
+        let errors = source.check().unwrap_err();
         let mut buf = Vec::new();
-        lua_source
+        source
             .write_lua_errors(&mut buf, errors)
             .no_color(true)
             .call()

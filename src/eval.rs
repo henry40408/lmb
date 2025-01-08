@@ -74,7 +74,7 @@ where
     for<'lua> R: 'lua + Read,
 {
     /// Source.
-    lua_source: LuaSource,
+    source: LuaSource,
     /// Input.
     input: Input<R>,
     /// Store.
@@ -95,7 +95,7 @@ where
     /// Build evaluation.
     #[builder]
     pub fn new(
-        #[builder(start_fn, into)] lua_source: LuaSource,
+        #[builder(start_fn, into)] source: LuaSource,
         #[builder(start_fn)] input: R,
         store: Option<Store>,
         timeout: Option<Duration>,
@@ -103,7 +103,7 @@ where
         let compiled = {
             let _s = trace_span!("compile_script").entered();
             let compiler = Compiler::new();
-            compiler.compile(&lua_source.script)?
+            compiler.compile(&source.script)?
         };
         let vm = Lua::new();
         vm.sandbox(true)?;
@@ -113,7 +113,7 @@ where
             .call()?;
         Ok(Arc::new(Evaluation {
             input,
-            lua_source,
+            source,
             store,
             timeout,
             compiled,
@@ -163,7 +163,7 @@ where
             }
         });
 
-        let script_name = &self.lua_source.name;
+        let script_name = &self.source.name;
         let chunk = self.vm.load(&self.compiled);
         let chunk = match script_name {
             Some(name) => chunk.set_name(name),
@@ -186,12 +186,12 @@ where
 
     /// Get the name
     pub fn name(&self) -> &str {
-        self.lua_source.name.as_deref().unwrap_or_else(|| "")
+        self.source.name.as_deref().unwrap_or_else(|| "")
     }
 
     /// Get the script
     pub fn script(&self) -> &str {
-        self.lua_source.script.as_ref()
+        self.source.script.as_ref()
     }
 
     /// Schedule the script.
@@ -265,7 +265,7 @@ where
             config.theme.clone_from(theme);
         }
         let assets = HighlightingAssets::from_binary();
-        let reader = Box::new(self.lua_source.script.as_bytes());
+        let reader = Box::new(self.source.script.as_bytes());
         let inputs = vec![BatInput::from_reader(reader)];
         let controller = Controller::new(&config, &assets);
         Ok(controller.run(inputs, Some(&mut f))?)

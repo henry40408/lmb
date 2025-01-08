@@ -210,10 +210,10 @@ enum StoreCommands {
     Version,
 }
 
-fn do_check_syntax(no_color: bool, lua_source: &LuaSource) -> anyhow::Result<()> {
-    if let Err(err) = lua_source.check() {
+fn do_check_syntax(no_color: bool, source: &LuaSource) -> anyhow::Result<()> {
+    if let Err(err) = source.check() {
         let mut buf = Vec::new();
-        lua_source
+        source
             .write_lua_errors(&mut buf, err)
             .no_color(no_color)
             .call()?;
@@ -280,17 +280,17 @@ async fn try_main() -> anyhow::Result<()> {
         .build();
     match cli.command {
         Commands::Check { files } => files.into_par_iter().try_for_each(|mut file| {
-            let lua_source = read_script(&mut file)?;
-            do_check_syntax(cli.no_color, &lua_source)
+            let source = read_script(&mut file)?;
+            do_check_syntax(cli.no_color, &source)
         }),
         Commands::Evaluate { files, timeout } => {
             let store = prepare_store(&store_options)?;
             files.into_par_iter().try_for_each(|mut file| {
-                let lua_source = read_script(&mut file)?;
+                let source = read_script(&mut file)?;
                 if cli.check_syntax {
-                    do_check_syntax(cli.no_color, &lua_source)?;
+                    do_check_syntax(cli.no_color, &source)?;
                 }
-                let e = Evaluation::builder(lua_source, io::stdin())
+                let e = Evaluation::builder(source, io::stdin())
                     .store(store.clone())
                     .timeout(Duration::from_secs(timeout))
                     .build()?;
@@ -313,7 +313,7 @@ async fn try_main() -> anyhow::Result<()> {
             let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
-            let script = found.lua_source.script.trim();
+            let script = found.source.script.trim();
             let mut buf = String::new();
             let e = Evaluation::builder(script, io::stdin()).build()?;
             e.write_script(&mut buf, &print_options)?;
@@ -324,10 +324,10 @@ async fn try_main() -> anyhow::Result<()> {
             let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
-            let script = found.lua_source.script.trim();
+            let script = found.source.script.trim();
             let store = prepare_store(&store_options)?;
-            let lua_source = LuaSource::builder(script).name(name).build();
-            let e = Evaluation::builder(lua_source, io::stdin())
+            let source = LuaSource::builder(script).name(name).build();
+            let e = Evaluation::builder(source, io::stdin())
                 .store(store)
                 .build()?;
             let mut buf = String::new();
@@ -364,7 +364,7 @@ async fn try_main() -> anyhow::Result<()> {
             };
             let bind = bind.parse::<SocketAddr>()?;
             let timeout = timeout.map(Duration::from_secs);
-            let options = ServeOptions::builder(bind, found.lua_source.clone())
+            let options = ServeOptions::builder(bind, found.source.clone())
                 .json(cli.json)
                 .store_options(store_options)
                 .maybe_timeout(timeout)
@@ -406,13 +406,13 @@ async fn try_main() -> anyhow::Result<()> {
             let store = prepare_store(&store_options)?;
             let schedule = Schedule::from_str(&cron)?;
             files.into_par_iter().try_for_each(|mut file| {
-                let lua_source = read_script(&mut file)?;
+                let source = read_script(&mut file)?;
                 let options = ScheduleOptions::builder()
                     .bail(bail)
                     .initial_run(initial_run)
                     .schedule(schedule.clone())
                     .build();
-                let e = Evaluation::builder(lua_source, io::stdin())
+                let e = Evaluation::builder(source, io::stdin())
                     .store(store.clone())
                     .build()?;
                 e.schedule(&options);
@@ -424,13 +424,13 @@ async fn try_main() -> anyhow::Result<()> {
             mut file,
             timeout,
         } => {
-            let lua_source = read_script(&mut file)?;
+            let source = read_script(&mut file)?;
             if cli.check_syntax {
-                do_check_syntax(cli.no_color, &lua_source)?;
+                do_check_syntax(cli.no_color, &source)?;
             }
             let timeout = timeout.map(Duration::from_secs);
             let bind = bind.parse::<SocketAddr>()?;
-            let options = ServeOptions::builder(bind, lua_source)
+            let options = ServeOptions::builder(bind, source)
                 .json(cli.json)
                 .store_options(store_options)
                 .maybe_timeout(timeout)
