@@ -5,15 +5,14 @@ use full_moon::{tokenizer::TokenType, visitors::Visitor};
 use include_dir::{include_dir, Dir};
 use toml::{Table, Value};
 
+use crate::LuaSource;
+
 /// Lua example.
-#[derive(Builder, Debug, Default)]
+#[derive(Builder, Debug)]
 pub struct Example {
-    /// Name.
-    #[builder(into)]
-    pub name: String,
-    /// Script.
-    #[builder(into)]
-    pub script: String,
+    /// Source code.
+    #[builder(start_fn)]
+    pub lua_source: LuaSource,
     /// Description.
     #[builder(default)]
     pub description: String,
@@ -46,6 +45,13 @@ impl Visitor for Example {
     }
 }
 
+impl Example {
+    /// Return name or empty string.
+    pub fn name(&self) -> &str {
+        self.lua_source.name.as_deref().unwrap_or_default()
+    }
+}
+
 static EXAMPLES_DIR: Dir<'_> = include_dir!("lua-examples");
 
 /// Embedded Lua examples.
@@ -61,14 +67,15 @@ pub static EXAMPLES: LazyLock<Vec<Example>> = LazyLock::new(|| {
         let Some(script) = f.as_file().and_then(|handle| handle.contents_utf8()) else {
             continue;
         };
-        let mut example = Example::builder().name(name).script(script).build();
+        let lua_source = LuaSource::builder(script).name(name.to_string()).build();
+        let mut example = Example::builder(lua_source).build();
         let Ok(ast) = full_moon::parse(script) else {
             continue;
         };
         example.visit_ast(&ast);
         examples.push(example);
     }
-    examples.sort_by(|a, b| a.name.cmp(&b.name));
+    examples.sort_by(|a, b| a.lua_source.name.cmp(&b.lua_source.name));
     examples
 });
 
@@ -79,7 +86,7 @@ mod tests {
     #[test]
     fn description_of_examples() {
         for e in EXAMPLES.iter() {
-            let name = &e.name;
+            let name = e.name();
             assert!(!e.description.is_empty(), "{name} has no description");
         }
     }

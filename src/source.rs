@@ -1,19 +1,33 @@
+use bon::bon;
+use std::{io::Error as IoError, io::Write};
+
 use ariadne::{CharSet, ColorGenerator, Config, Label, Report, ReportKind, Source};
 use bon::Builder;
-use std::io::{Error as IoError, Write};
 
-/// Container for the script used for syntax checking.
-#[derive(Builder, Debug)]
-pub struct LuaCheck {
-    /// Name.
-    #[builder(start_fn, into)]
-    pub name: String,
+/// Container holding name and script of Lua script.
+#[derive(Builder, Clone, Debug)]
+pub struct LuaSource {
     /// Script.
     #[builder(start_fn, into)]
     pub script: String,
+    /// Name.
+    pub name: Option<String>,
 }
 
-impl LuaCheck {
+impl From<String> for LuaSource {
+    fn from(value: String) -> Self {
+        LuaSource::builder(value).build()
+    }
+}
+
+impl From<&str> for LuaSource {
+    fn from(value: &str) -> Self {
+        LuaSource::builder(value).build()
+    }
+}
+
+#[bon]
+impl LuaSource {
     /// Check the syntax of the script.
     ///
     /// # Errors
@@ -21,9 +35,9 @@ impl LuaCheck {
     /// This function will return an error if the script contains syntax errors.
     ///
     /// ```rust
-    /// use lmb::LuaCheck;
+    /// use lmb::LuaSource;
     ///
-    /// let check = LuaCheck::builder("", "ret true").build();
+    /// let check = LuaSource::builder("ret true").build();
     /// assert!(check.check().is_err());
     /// ```
     pub fn check(&self) -> Result<full_moon::ast::Ast, Vec<full_moon::Error>> {
@@ -34,11 +48,13 @@ impl LuaCheck {
     ///
     /// # Errors
     ///
-    /// This function will return an [`std::io::Error`] if there is an issue writing the error to the provided writer.
-    pub fn write_error<W>(
+    /// This function will return an [`std::io::Error`]
+    /// if there is an issue writing the error to the provided writer.
+    #[builder]
+    pub fn write_lua_errors<W>(
         &self,
-        mut f: W,
-        errors: Vec<full_moon::Error>,
+        #[builder(start_fn)] mut f: W,
+        #[builder(start_fn)] errors: Vec<full_moon::Error>,
         no_color: bool,
     ) -> Result<(), IoError>
     where
@@ -46,7 +62,7 @@ impl LuaCheck {
     {
         let mut colors = ColorGenerator::new();
         let color = colors.next();
-        let name = &self.name;
+        let name = &self.name.as_deref().unwrap_or_default();
 
         let span = errors
             .iter()
@@ -99,28 +115,32 @@ impl LuaCheck {
 
 #[cfg(test)]
 mod tests {
-    use crate::LuaCheck;
+    use crate::LuaSource;
 
     #[test]
     fn syntax() {
         let script = "ret true";
-        let check = LuaCheck::builder("", script).build();
+        let lua_source = LuaSource::builder(script).build();
         assert!(matches!(
-            check.check().unwrap_err().get(0),
+            lua_source.check().unwrap_err().get(0),
             Some(full_moon::Error::AstError { .. })
         ));
 
         let script = "return true";
-        let check = LuaCheck::builder("", script).build();
-        assert!(check.check().is_ok());
+        let lua_source = LuaSource::builder(script).build();
+        assert!(lua_source.check().is_ok());
     }
 
     #[test]
     fn syntax_error() {
         let script = "ret true";
-        let check = LuaCheck::builder("", script).build();
-        let errors = check.check().unwrap_err();
+        let lua_source = LuaSource::builder(script).build();
+        let errors = lua_source.check().unwrap_err();
         let mut buf = Vec::new();
-        check.write_error(&mut buf, errors, true).unwrap();
+        lua_source
+            .write_lua_errors(&mut buf, errors)
+            .no_color(true)
+            .call()
+            .unwrap();
     }
 }

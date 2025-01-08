@@ -22,7 +22,9 @@ use std::{
 };
 use tracing::{debug, error, trace_span, warn};
 
-use crate::{bind_vm, Input, PrintOptions, Result, ScheduleOptions, State, Store, DEFAULT_TIMEOUT};
+use crate::{
+    bind_vm, Input, LuaSource, PrintOptions, Result, ScheduleOptions, State, Store, DEFAULT_TIMEOUT,
+};
 
 /// Solution obtained by the function.
 #[derive(Builder, Debug)]
@@ -71,12 +73,10 @@ pub struct Evaluation<R>
 where
     for<'lua> R: 'lua + Read,
 {
+    /// Source.
+    lua_source: LuaSource,
     /// Input.
     input: Input<R>,
-    /// Name of script.
-    name: Option<String>,
-    /// Script.
-    script: String,
     /// Store.
     store: Option<Store>,
     /// Timeout.
@@ -95,16 +95,15 @@ where
     /// Build evaluation.
     #[builder]
     pub fn new(
-        #[builder(into, start_fn)] script: String,
+        #[builder(start_fn, into)] lua_source: LuaSource,
         #[builder(start_fn)] input: R,
-        name: Option<String>,
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
         let compiled = {
             let _s = trace_span!("compile_script").entered();
             let compiler = Compiler::new();
-            compiler.compile(&script)?
+            compiler.compile(&lua_source.script)?
         };
         let vm = Lua::new();
         vm.sandbox(true)?;
@@ -114,8 +113,7 @@ where
             .call()?;
         Ok(Arc::new(Evaluation {
             input,
-            name,
-            script,
+            lua_source,
             store,
             timeout,
             compiled,
@@ -165,9 +163,9 @@ where
             }
         });
 
-        let script_name = &self.name;
+        let script_name = &self.lua_source.name;
         let chunk = self.vm.load(&self.compiled);
-        let chunk = match &self.name {
+        let chunk = match script_name {
             Some(name) => chunk.set_name(name),
             None => chunk,
         };
@@ -188,12 +186,12 @@ where
 
     /// Get the name
     pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or_else(|| "")
+        self.lua_source.name.as_deref().unwrap_or_else(|| "")
     }
 
     /// Get the script
     pub fn script(&self) -> &str {
-        self.script.as_ref()
+        self.lua_source.script.as_ref()
     }
 
     /// Schedule the script.
@@ -267,7 +265,7 @@ where
             config.theme.clone_from(theme);
         }
         let assets = HighlightingAssets::from_binary();
-        let reader = Box::new(self.script.as_bytes());
+        let reader = Box::new(self.lua_source.script.as_bytes());
         let inputs = vec![BatInput::from_reader(reader)];
         let controller = Controller::new(&config, &assets);
         Ok(controller.run(inputs, Some(&mut f))?)
@@ -304,7 +302,7 @@ mod tests {
     fn evaluate_examples(filename: &str, input: &'static str, expected: Value) {
         let script = fs::read_to_string(format!("./lua-examples/{filename}")).unwrap();
         let store = Store::default();
-        let e = Evaluation::builder(&script, input.as_bytes())
+        let e = Evaluation::builder(script, input.as_bytes())
             .store(store)
             .build()
             .unwrap();
@@ -316,7 +314,8 @@ mod tests {
     fn evaluate_infinite_loop() {
         let timer = Instant::now();
         let timeout = Duration::from_millis(100);
-        let e = Evaluation::builder(r#"while true do end"#, empty())
+        let script = r#"while true do end"#;
+        let e = Evaluation::builder(script, empty())
             .timeout(timeout)
             .build()
             .unwrap();
@@ -374,9 +373,8 @@ mod tests {
 
     #[test]
     fn with_state() {
-        let e = Evaluation::builder(r#"return require("@lmb").request"#, empty())
-            .build()
-            .unwrap();
+        let script = r#"return require("@lmb").request"#;
+        let e = Evaluation::builder(script, empty()).build().unwrap();
         let state = Arc::new(State::new());
         state.insert(StateKey::Request, 1.into());
         {

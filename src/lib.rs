@@ -14,22 +14,22 @@ use std::{
     time::Duration,
 };
 
-pub use check::*;
 pub use error::*;
 pub use eval::*;
 pub use example::*;
 pub use guide::*;
 pub use lua_binding::*;
 pub use schedule::*;
+pub use source::*;
 pub use store::*;
 
-mod check;
 mod error;
 mod eval;
 mod example;
 mod guide;
 mod lua_binding;
 mod schedule;
+mod source;
 mod store;
 
 /// Default timeout for evaluation in seconds.
@@ -151,7 +151,7 @@ mod tests {
         for block in blocks {
             let block = block.replace("https://httpbin.org", &server.url());
             let store = Store::default();
-            let e = Evaluation::builder(&block, empty())
+            let e = Evaluation::builder(&*block, empty())
                 .store(store)
                 .build()
                 .unwrap();

@@ -9,7 +9,7 @@ use axum::{
 };
 use bon::Builder;
 use http::{HeaderName, HeaderValue};
-use lmb::{Evaluation, State, StateKey, Store};
+use lmb::{Evaluation, LuaSource, State, StateKey, Store};
 use serde_json::{Map, Value};
 use std::{
     collections::HashMap, io::Cursor, net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration,
@@ -19,11 +19,9 @@ use tracing::{error, info, warn, Level};
 
 #[derive(Builder, Clone)]
 struct AppState {
+    #[builder(start_fn)]
+    lua_source: LuaSource,
     json: bool,
-    #[builder(into)]
-    name: String,
-    #[builder(into)]
-    script: String,
     store: Store,
     timeout: Option<Duration>,
 }
@@ -32,10 +30,8 @@ struct AppState {
 pub struct ServeOptions {
     #[builder(start_fn, into)]
     bind: SocketAddr,
-    #[builder(start_fn, into)]
-    name: String,
-    #[builder(start_fn, into)]
-    script: String,
+    #[builder(start_fn)]
+    lua_source: LuaSource,
     json: bool,
     store_options: StoreOptions,
     timeout: Option<Duration>,
@@ -51,8 +47,7 @@ fn do_handle_request<S>(
 where
     S: AsRef<str>,
 {
-    let e = match Evaluation::builder(state.script, Cursor::new(body))
-        .name(state.name)
+    let e = match Evaluation::builder(state.lua_source.clone(), Cursor::new(body))
         .maybe_timeout(state.timeout)
         .store(state.store.clone())
         .build()
@@ -185,10 +180,8 @@ pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
         warn!("no store path is specified, an in-memory store will be used and values will be lost when process ends");
         store
     };
-    let app_state = AppState::builder()
+    let app_state = AppState::builder(opts.lua_source.clone())
         .json(opts.json)
-        .name(&opts.name)
-        .script(&opts.script)
         .store(store)
         .maybe_timeout(opts.timeout)
         .build();
@@ -232,7 +225,7 @@ mod tests {
         return { request = m.request, body = io.read('*a') }
         "#;
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -269,7 +262,7 @@ mod tests {
         return "I'm a teapot."
         "#;
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -289,7 +282,7 @@ mod tests {
         let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
         let script = "ret 'hello'";
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -311,7 +304,7 @@ mod tests {
         return "hello"
         "#;
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -327,7 +320,7 @@ mod tests {
         let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
         let script = "return 'hello'";
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -343,7 +336,7 @@ mod tests {
         let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
         let script = r#"return 1"#;
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -359,7 +352,7 @@ mod tests {
         let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
         let script = "return 'hello'";
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
@@ -375,7 +368,7 @@ mod tests {
         let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
         let script = "return 1";
         let store_options = StoreOptions::builder().build();
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), "", script)
+        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
             .store_options(store_options)
             .build();
