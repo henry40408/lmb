@@ -187,7 +187,7 @@ pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
         .build();
     let app = Router::new()
         .route("/", any(index_route))
-        .route("/*path", any(match_all_route))
+        .route("/{*path}", any(match_all_route))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
