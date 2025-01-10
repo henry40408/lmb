@@ -210,14 +210,12 @@ enum StoreCommands {
     Version,
 }
 
-fn do_check_syntax(no_color: bool, source: &LuaSource) -> anyhow::Result<()> {
+fn do_check_syntax(source: &LuaSource) -> anyhow::Result<()> {
     if let Err(err) = source.check() {
-        let mut buf = Vec::new();
-        source
-            .write_lua_errors(&mut buf, err)
-            .no_color(no_color)
-            .call()?;
-        bail!(String::from_utf8_lossy(&buf).trim().to_string());
+        let mut buf = String::new();
+        let err: Vec<&Error> = err.iter().collect();
+        source.write_errors(&mut buf, err).call()?;
+        bail!(buf.trim().to_string());
     }
     Ok(())
 }
@@ -281,14 +279,14 @@ async fn try_main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Check { files } => files.into_par_iter().try_for_each(|mut file| {
             let source = read_script(&mut file)?;
-            do_check_syntax(cli.no_color, &source)
+            do_check_syntax(&source)
         }),
         Commands::Evaluate { files, timeout } => {
             let store = prepare_store(&store_options)?;
             files.into_par_iter().try_for_each(|mut file| {
                 let source = read_script(&mut file)?;
                 if cli.check_syntax {
-                    do_check_syntax(cli.no_color, &source)?;
+                    do_check_syntax(&source)?;
                 }
                 let e = Evaluation::builder(source, io::stdin())
                     .store(store.clone())
@@ -302,7 +300,7 @@ async fn try_main() -> anyhow::Result<()> {
                         Ok(())
                     }
                     Err(err) => {
-                        err.write_lua_error(&mut buf, &e, cli.no_color)?;
+                        e.write_errors(&mut buf, vec![&err])?;
                         eprint!("{buf}");
                         Err(err.into())
                     }
@@ -338,7 +336,7 @@ async fn try_main() -> anyhow::Result<()> {
                     Ok(())
                 }
                 Err(err) => {
-                    err.write_lua_error(&mut buf, &e, cli.no_color)?;
+                    e.write_errors(&mut buf, vec![&err])?;
                     eprint!("{buf}");
                     Err(err.into())
                 }
@@ -426,7 +424,7 @@ async fn try_main() -> anyhow::Result<()> {
         } => {
             let source = read_script(&mut file)?;
             if cli.check_syntax {
-                do_check_syntax(cli.no_color, &source)?;
+                do_check_syntax(&source)?;
             }
             let timeout = timeout.map(Duration::from_secs);
             let bind = bind.parse::<SocketAddr>()?;

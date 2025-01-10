@@ -37,6 +37,7 @@ http = "1.1.0"
 include_dir = { version = "0.7.3", features = ["glob"] }
 lazy-regex = "3.1.0"
 md-5 = "0.10.6"
+miette = { version = "7.4.0", features = ["fancy"] }
 mlua = { version = "0.10.1", features = ["luau", "send", "serialize"] }
 parking_lot = "0.12.1"
 pulldown-cmark = "0.12.2"
@@ -48,6 +49,7 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 sha1 = "0.10.6"
 sha2 = "0.10.8"
+string-offsets = "0.1.0"
 termimad = "0.31.1"
 thiserror = "2.0.3"
 tokio = { version = "1.32.0", default-features = false, features = [

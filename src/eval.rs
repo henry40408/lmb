@@ -23,7 +23,8 @@ use std::{
 use tracing::{debug, error, trace_span, warn};
 
 use crate::{
-    bind_vm, Input, LuaSource, PrintOptions, Result, ScheduleOptions, State, Store, DEFAULT_TIMEOUT,
+    bind_vm, Error, Input, LuaSource, PrintOptions, Result, ScheduleOptions, State, Store,
+    DEFAULT_TIMEOUT,
 };
 
 /// Solution obtained by the function.
@@ -184,16 +185,6 @@ where
         Ok(solution)
     }
 
-    /// Get the name
-    pub fn name(&self) -> &str {
-        self.source.name.as_deref().unwrap_or("")
-    }
-
-    /// Get the script
-    pub fn script(&self) -> &str {
-        self.source.script.as_ref()
-    }
-
     /// Schedule the script.
     pub fn schedule(self: &Arc<Self>, options: &ScheduleOptions) {
         let bail = options.bail;
@@ -223,6 +214,14 @@ where
     /// Replace the input
     pub fn set_input(self: &Arc<Self>, input: R) {
         *self.input.lock() = BufReader::new(input);
+    }
+
+    /// Render the errors. Delegate to [`crate::LuaSource::write_errors`].
+    pub fn write_errors<W>(&self, f: W, errors: Vec<&Error>) -> Result<()>
+    where
+        W: Write,
+    {
+        Ok(self.source.write_errors(f, errors).call()?)
     }
 
     /// Render the script.

@@ -1,8 +1,13 @@
-use bon::bon;
-use std::{io::Error as IoError, io::Write};
+use bon::{bon, Builder};
+use lazy_regex::{lazy_regex, Lazy, Regex};
+use miette::{miette, LabeledSpan};
+use mlua::prelude::*;
+use std::fmt::Write;
+use string_offsets::StringOffsets;
 
-use ariadne::{CharSet, ColorGenerator, Config, Label, Report, ReportKind, Source};
-use bon::Builder;
+use crate::Error;
+
+static LUA_ERROR_REGEX: Lazy<Regex> = lazy_regex!(r"\[[^\]]+\]:(\d+):(.+)");
 
 /// Container holding name and script of Lua script.
 #[derive(Builder, Clone, Debug)]
@@ -40,91 +45,105 @@ impl LuaSource {
     /// let check = LuaSource::builder("ret true").build();
     /// assert!(check.check().is_err());
     /// ```
-    pub fn check(&self) -> Result<full_moon::ast::Ast, Vec<full_moon::Error>> {
-        full_moon::parse(self.script.as_ref())
+    pub fn check(&self) -> Result<full_moon::ast::Ast, Vec<Error>> {
+        full_moon::parse(self.script.as_ref()).map_err(|errs| {
+            errs.into_iter()
+                .map(|e| Error::LuaSyntax(Box::new(e)))
+                .collect::<Vec<Error>>()
+        })
     }
 
-    /// Render an error from [`full_moon`] to a writer.
+    /// Render [`crate::error::Error`] to a writer.
     ///
     /// # Errors
     ///
-    /// This function will return an [`std::io::Error`]
+    /// This function will return an [`std::fmt::Error`]
     /// if there is an issue writing the error to the provided writer.
     #[builder]
-    pub fn write_lua_errors<W>(
+    pub fn write_errors<W>(
         &self,
         #[builder(start_fn)] mut f: W,
-        #[builder(start_fn)] errors: Vec<full_moon::Error>,
-        no_color: bool,
-    ) -> Result<(), IoError>
+        #[builder(start_fn)] errors: Vec<&Error>,
+    ) -> Result<(), std::fmt::Error>
     where
         W: Write,
     {
-        let mut colors = ColorGenerator::new();
-        let color = colors.next();
-        let name = &self.name.as_deref().unwrap_or_default();
-
-        let span = errors
-            .iter()
-            .min_by_key(|e| match e {
-                full_moon::Error::AstError(e) => e.token().start_position().bytes(),
-                full_moon::Error::TokenizerError(e) => e.position().bytes(),
-            })
-            .map(|e| match e {
-                full_moon::Error::AstError(e) => {
-                    let token = e.token();
-                    token.start_position().bytes()..token.end_position().bytes()
-                }
-                full_moon::Error::TokenizerError(e) => e.position().bytes()..e.position().bytes(),
-            });
-        let mut report = Report::build(ReportKind::Error, (name, span.unwrap_or_else(|| 0..0)))
-            .with_config(
-                Config::default()
-                    .with_char_set(CharSet::Ascii)
-                    .with_compact(true)
-                    .with_color(!no_color),
-            );
-        for error in errors {
+        for error in &errors {
             let (message, start, end) = match error {
-                full_moon::Error::AstError(e) => (
-                    e.error_message().to_string(),
-                    e.token().start_position().bytes(),
-                    e.token().end_position().bytes(),
-                ),
-                full_moon::Error::TokenizerError(e) => (
-                    e.error().to_string(),
-                    e.position().bytes(),
-                    e.position().bytes() + 1,
-                ),
+                Error::Lua(
+                    LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. },
+                ) => {
+                    let first_line = message.lines().next().unwrap_or_default();
+                    let captures = LUA_ERROR_REGEX.captures(first_line);
+                    let line_number = captures
+                        .as_ref()
+                        .and_then(|c| c.get(1))
+                        .map(|m| m.as_str())
+                        .and_then(|l| l.parse::<usize>().ok());
+                    let message = captures.as_ref().and_then(|c| c.get(2)).map(|m| m.as_str());
+                    let offsets = StringOffsets::new(&self.script);
+                    match (line_number, message) {
+                        (Some(line_number), Some(message)) => {
+                            let span = offsets.line_to_chars(line_number - 1);
+                            (message.to_string(), span.start, span.end)
+                        }
+                        (Some(line_number), None) => {
+                            let span = offsets.line_to_chars(line_number - 1);
+                            (first_line.to_string(), span.start, span.end)
+                        }
+                        (None, Some(message)) => (message.to_string(), 0usize, 1usize),
+                        (None, None) => (first_line.to_string(), 0usize, 1usize),
+                    }
+                }
+                Error::LuaSyntax(e) => match **e {
+                    full_moon::Error::AstError(ref e) => (
+                        e.error_message().to_string(),
+                        e.token().start_position().bytes(),
+                        e.token().end_position().bytes(),
+                    ),
+                    full_moon::Error::TokenizerError(ref e) => (
+                        e.error().to_string(),
+                        e.position().bytes(),
+                        e.position().bytes() + 1,
+                    ),
+                },
+                _ => continue,
             };
-            let span = start..end;
-            report = report
-                .with_label(
-                    Label::new((name, span))
-                        .with_color(color)
-                        .with_message(&message),
-                )
-                .with_message(&message);
+            let report = miette!(
+                labels = vec![LabeledSpan::at(start..end, message)],
+                "{message}"
+            )
+            .with_source_code(self.script.clone());
+            write!(f, "{:?}", report)?;
         }
-        report
-            .finish()
-            .write((name, Source::from(&self.script)), &mut f)?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::LuaSource;
+    use std::io::empty;
+
+    use crate::{Error, Evaluation, LuaSource};
+
+    #[test]
+    fn runtime_error() {
+        let script = "return nil+1";
+        let source: LuaSource = script.into();
+        let e = Evaluation::builder(source.clone(), empty())
+            .build()
+            .unwrap();
+        let err = e.evaluate().call().unwrap_err();
+        let mut buf = String::new();
+        source.write_errors(&mut buf, vec![&err]).call().unwrap();
+        assert!(buf.contains("attempt to perform arithmetic (add) on nil and number"));
+    }
 
     #[test]
     fn syntax() {
         let script = "ret true";
         let source = LuaSource::builder(script).build();
-        assert!(matches!(
-            source.check().unwrap_err().get(0),
-            Some(full_moon::Error::AstError { .. })
-        ));
+        assert!(source.check().is_err());
 
         let script = "return true";
         let source = LuaSource::builder(script).build();
@@ -136,11 +155,8 @@ mod tests {
         let script = "ret true";
         let source = LuaSource::builder(script).build();
         let errors = source.check().unwrap_err();
-        let mut buf = Vec::new();
-        source
-            .write_lua_errors(&mut buf, errors)
-            .no_color(true)
-            .call()
-            .unwrap();
+        let errors: Vec<&Error> = errors.iter().collect();
+        let mut buf = String::new();
+        source.write_errors(&mut buf, errors).call().unwrap();
     }
 }
