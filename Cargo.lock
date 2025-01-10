@@ -129,16 +129,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
 
 [[package]]
-name = "ariadne"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31beedec3ce83ae6da3a79592b3d8d7afd146a5b15bb9bb940279aced60faa89"
-dependencies = [
- "unicode-width 0.1.14",
- "yansi",
-]
-
-[[package]]
 name = "assert-json-diff"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1780,7 +1770,6 @@ version = "0.0.0-dev"
 dependencies = [
  "aes",
  "anyhow",
- "ariadne",
  "assert_fs",
  "axum",
  "axum-test",
