@@ -4,7 +4,7 @@ use clio::*;
 use comfy_table::{presets, Table};
 use cron::Schedule;
 use lmb::{
-    Error, Evaluation, LuaCheck, PrintOptions, ScheduleOptions, Store, StoreOptions,
+    Error, Evaluation, LuaSource, PrintOptions, ScheduleOptions, Store, StoreOptions,
     DEFAULT_TIMEOUT, EXAMPLES, GUIDES,
 };
 use mlua::prelude::*;
@@ -210,29 +210,26 @@ enum StoreCommands {
     Version,
 }
 
-fn do_check_syntax<S>(no_color: bool, name: S, script: S) -> anyhow::Result<()>
-where
-    S: Into<String>,
-{
-    let check = LuaCheck::builder(name, script).build();
-    if let Err(err) = check.check() {
-        let mut buf = Vec::new();
-        check.write_error(&mut buf, err, no_color)?;
-        bail!(String::from_utf8_lossy(&buf).trim().to_string());
+fn do_check_syntax(source: &LuaSource) -> anyhow::Result<()> {
+    if let Err(err) = source.check() {
+        let mut buf = String::new();
+        let err: Vec<&Error> = err.iter().collect();
+        source.write_errors(&mut buf, err).call()?;
+        bail!(buf.trim().to_string());
     }
     Ok(())
 }
 
-fn read_script(input: &mut Input) -> anyhow::Result<(String, String)> {
+fn read_script(input: &mut Input) -> anyhow::Result<LuaSource> {
     let name = input.path().to_string_lossy().to_string();
     let mut script = String::new();
     input.read_to_string(&mut script)?;
-    Ok((name, script))
+    Ok(LuaSource::builder(script).name(name).build())
 }
 
 fn prepare_store(options: &StoreOptions) -> anyhow::Result<Store> {
     let store = if let Some(store_path) = &options.store_path {
-        let store = Store::new(&store_path)?;
+        let store = Store::new(store_path)?;
         if options.run_migrations {
             store.migrate(None)?;
         }
@@ -281,18 +278,17 @@ async fn try_main() -> anyhow::Result<()> {
         .build();
     match cli.command {
         Commands::Check { files } => files.into_par_iter().try_for_each(|mut file| {
-            let (name, script) = read_script(&mut file)?;
-            do_check_syntax(cli.no_color, &name, &script)
+            let source = read_script(&mut file)?;
+            do_check_syntax(&source)
         }),
         Commands::Evaluate { files, timeout } => {
             let store = prepare_store(&store_options)?;
             files.into_par_iter().try_for_each(|mut file| {
-                let (name, script) = read_script(&mut file)?;
+                let source = read_script(&mut file)?;
                 if cli.check_syntax {
-                    do_check_syntax(cli.no_color, &name, &script)?;
+                    do_check_syntax(&source)?;
                 }
-                let e = Evaluation::builder(&script, io::stdin())
-                    .name(name)
+                let e = Evaluation::builder(source, io::stdin())
                     .store(store.clone())
                     .timeout(Duration::from_secs(timeout))
                     .build()?;
@@ -304,7 +300,7 @@ async fn try_main() -> anyhow::Result<()> {
                         Ok(())
                     }
                     Err(err) => {
-                        err.write_lua_error(&mut buf, &e, cli.no_color)?;
+                        e.write_errors(&mut buf, vec![&err])?;
                         eprint!("{buf}");
                         Err(err.into())
                     }
@@ -312,10 +308,10 @@ async fn try_main() -> anyhow::Result<()> {
             })
         }
         Commands::Example(ExampleCommands::Cat { name }) => {
-            let Some(found) = EXAMPLES.iter().find(|e| e.name == name) else {
+            let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
-            let script = found.script.trim();
+            let script = found.source.script.trim();
             let mut buf = String::new();
             let e = Evaluation::builder(script, io::stdin()).build()?;
             e.write_script(&mut buf, &print_options)?;
@@ -323,13 +319,13 @@ async fn try_main() -> anyhow::Result<()> {
             Ok(())
         }
         Commands::Example(ExampleCommands::Evaluate { name }) => {
-            let Some(found) = EXAMPLES.iter().find(|e| e.name == name) else {
+            let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
-            let script = found.script.trim();
+            let script = found.source.script.trim();
             let store = prepare_store(&store_options)?;
-            let e = Evaluation::builder(script, io::stdin())
-                .name(name)
+            let source = LuaSource::builder(script).name(name).build();
+            let e = Evaluation::builder(source, io::stdin())
                 .store(store)
                 .build()?;
             let mut buf = String::new();
@@ -340,7 +336,7 @@ async fn try_main() -> anyhow::Result<()> {
                     Ok(())
                 }
                 Err(err) => {
-                    err.write_lua_error(&mut buf, &e, cli.no_color)?;
+                    e.write_errors(&mut buf, vec![&err])?;
                     eprint!("{buf}");
                     Err(err.into())
                 }
@@ -351,7 +347,7 @@ async fn try_main() -> anyhow::Result<()> {
             table.load_preset(presets::NOTHING);
             table.set_header(["name", "description"]);
             for e in EXAMPLES.iter() {
-                table.add_row([&e.name, &e.description]);
+                table.add_row([e.name(), &e.description]);
             }
             println!("{table}");
             Ok(())
@@ -361,15 +357,12 @@ async fn try_main() -> anyhow::Result<()> {
             name,
             timeout,
         }) => {
-            let Some(found) = EXAMPLES.iter().find(|e| e.name == name) else {
+            let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
-            if cli.check_syntax {
-                do_check_syntax(cli.no_color, name.as_str(), &found.script)?;
-            }
             let bind = bind.parse::<SocketAddr>()?;
             let timeout = timeout.map(Duration::from_secs);
-            let options = ServeOptions::builder(bind, &found.name, &found.script)
+            let options = ServeOptions::builder(bind, found.source.clone())
                 .json(cli.json)
                 .store_options(store_options)
                 .maybe_timeout(timeout)
@@ -411,14 +404,13 @@ async fn try_main() -> anyhow::Result<()> {
             let store = prepare_store(&store_options)?;
             let schedule = Schedule::from_str(&cron)?;
             files.into_par_iter().try_for_each(|mut file| {
-                let (name, script) = read_script(&mut file)?;
+                let source = read_script(&mut file)?;
                 let options = ScheduleOptions::builder()
                     .bail(bail)
                     .initial_run(initial_run)
                     .schedule(schedule.clone())
                     .build();
-                let e = Evaluation::builder(script, io::stdin())
-                    .name(name)
+                let e = Evaluation::builder(source, io::stdin())
                     .store(store.clone())
                     .build()?;
                 e.schedule(&options);
@@ -430,13 +422,13 @@ async fn try_main() -> anyhow::Result<()> {
             mut file,
             timeout,
         } => {
-            let (name, script) = read_script(&mut file)?;
+            let source = read_script(&mut file)?;
             if cli.check_syntax {
-                do_check_syntax(cli.no_color, &name, &script)?;
+                do_check_syntax(&source)?;
             }
             let timeout = timeout.map(Duration::from_secs);
             let bind = bind.parse::<SocketAddr>()?;
-            let options = ServeOptions::builder(bind, name, script)
+            let options = ServeOptions::builder(bind, source)
                 .json(cli.json)
                 .store_options(store_options)
                 .maybe_timeout(timeout)

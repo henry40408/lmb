@@ -13,11 +13,19 @@ fn check_stdin_syntax_error() {
         .assert()
         .failure()
         .stderr_eq(str![[r#"
-Error: unexpected token, this needs to be a statement
-   ,-[-:1:5]
- 1 |ret true
-   |      `-- unexpected expression when looking for a statement
-   |      `-- unexpected token, this needs to be a statement
+× unexpected expression when looking for a statement
+   ╭────
+ 1 │ ret true
+   ·     ──┬─
+   ·       ╰── unexpected expression when looking for a statement
+   ╰────
+
+  × unexpected token, this needs to be a statement
+   ╭────
+ 1 │ ret true
+   ·     ──┬─
+   ·       ╰── unexpected token, this needs to be a statement
+   ╰────
 
 "#]]);
 }
@@ -30,11 +38,19 @@ fn check_stdin_tokenizer_error() {
         .assert()
         .failure()
         .stderr_eq(str![[r#"
-Error: unexpected token, this needs to be a statement
-   ,-[-:1:8]
- 1 |return !true
-   |       `----- unexpected character !
-   |          `-- unexpected token, this needs to be a statement
+× unexpected character !
+   ╭────
+ 1 │ return !true
+   ·        ┬
+   ·        ╰── unexpected character !
+   ╰────
+
+  × unexpected token, this needs to be a statement
+   ╭────
+ 1 │ return !true
+   ·         ──┬─
+   ·           ╰── unexpected token, this needs to be a statement
+   ╰────
 
 "#]]);
 }
@@ -92,10 +108,15 @@ fn eval_stdin_runtime_error() {
         .assert()
         .failure()
         .stderr_eq(str![[r#"
-Error: attempt to perform arithmetic (add) on nil and number
-   ,-[-:2:1]
- 2 |print(nil+1)
-   |      `------- attempt to perform arithmetic (add) on nil and number
+
+  ×  attempt to perform arithmetic (add) on nil and number
+   ╭─[2:1]
+ 1 │ print(1)
+ 2 │ print(nil+1)
+   · ──────┬──────
+   ·       ╰──  attempt to perform arithmetic (add) on nil and number
+ 3 │ print(2)
+   ╰────
 
 "#]]);
 }
