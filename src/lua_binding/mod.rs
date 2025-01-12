@@ -56,7 +56,7 @@ where
     let write_fn = vm.create_function(|_, vs: LuaMultiValue| {
         let mut locked = stdout().lock();
         for v in vs.into_vec() {
-            write!(locked, "{}", v.to_string()?)?;
+            write!(locked, "{}", v.to_string()?.into_boxed_str())?;
         }
         Ok(())
     })?;
@@ -88,7 +88,7 @@ impl LuaUserData for LuaStderr {
             let mut locked = stderr().lock();
             let vs = vs.into_vec();
             for (idx, v) in vs.iter().enumerate() {
-                write!(locked, "{}", v.to_string()?)?;
+                write!(locked, "{}", v.to_string()?.into_boxed_str())?;
                 if idx != vs.len() - 1 {
                     write!(locked, "\t")?;
                 }
@@ -292,7 +292,7 @@ mod tests {
             .build()
             .unwrap();
         let res = e.evaluate().call().unwrap();
-        assert_eq!(json!(expected.to_string()), res.payload);
+        assert_eq!(json!(expected), res.payload);
     }
 
     #[test]

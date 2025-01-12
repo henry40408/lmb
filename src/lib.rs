@@ -80,7 +80,7 @@ pub struct PrintOptions {
     /// Disable colors [`https://no-colors.org`].
     no_color: bool,
     /// Theme.
-    theme: Option<String>,
+    theme: Option<Box<str>>,
 }
 
 #[cfg(test)]
@@ -100,15 +100,15 @@ mod tests {
             let mut text = String::new();
 
             for event in parser {
-                match event {
-                    Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref lang))) => {
-                        if lang.to_string() == "lua" {
+                match &event {
+                    Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(lang))) => {
+                        if &**lang == "lua" {
                             is_code = true;
                         }
                     }
                     Event::Text(t) => {
                         if is_code {
-                            text.push_str(&t);
+                            text.push_str(t);
                         }
                     }
                     Event::End(TagEnd::CodeBlock) => {

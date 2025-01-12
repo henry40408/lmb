@@ -15,7 +15,7 @@ pub struct Example {
     pub source: LuaSource,
     /// Description.
     #[builder(default)]
-    pub description: String,
+    pub description: Box<str>,
     #[builder(default)]
     done: bool,
 }
@@ -34,13 +34,13 @@ impl Visitor for Example {
             .map(|s| s.trim_start_matches('-'))
             .collect::<Vec<_>>()
             .join("\n");
-        let Ok(parsed) = comment.trim_end_matches('-').to_string().parse::<Table>() else {
+        let Ok(parsed) = comment.trim_end_matches('-').to_owned().parse::<Table>() else {
             return;
         };
         let Value::String(description) = &parsed["description"] else {
             return;
         };
-        self.description = description.to_string();
+        self.description = description.to_owned().into_boxed_str();
         self.done = true;
     }
 }
@@ -67,7 +67,7 @@ pub static EXAMPLES: LazyLock<Vec<Example>> = LazyLock::new(|| {
         let Some(script) = f.as_file().and_then(|handle| handle.contents_utf8()) else {
             continue;
         };
-        let source = LuaSource::builder(script).name(name.to_string()).build();
+        let source = LuaSource::builder(script).name(name.into()).build();
         let mut example = Example::builder(source).build();
         let Ok(ast) = full_moon::parse(script) else {
             continue;

@@ -136,7 +136,7 @@ impl Store {
         let _s = trace_span!("store_get", name).entered();
         let res = cached_stmt.query_row((name,), |row| {
             let value: Vec<u8> = row.get_unwrap("value");
-            let type_hint: String = row.get_unwrap("type_hint");
+            let type_hint: Box<str> = row.get_unwrap("type_hint");
             Ok((value, type_hint))
         });
         let value: Vec<u8> = match res {
@@ -174,8 +174,8 @@ impl Store {
         let mut rows = cached_stmt.query([])?;
         let mut res = vec![];
         while let Some(row) = rows.next()? {
-            let name: String = row.get_unwrap("name");
-            let type_hint: String = row.get_unwrap("type_hint");
+            let name: Box<str> = row.get_unwrap("name");
+            let type_hint: Box<str> = row.get_unwrap("type_hint");
             let size: usize = row.get_unwrap("size");
             let created_at: DateTime<Utc> = row.get_unwrap("created_at");
             let updated_at: DateTime<Utc> = row.get_unwrap("updated_at");
@@ -375,11 +375,11 @@ impl Store {
 #[derive(Builder, Debug)]
 pub struct StoreValueMetadata {
     /// Name.
-    pub name: String,
+    pub name: Box<str>,
     /// Size in bytes.
     pub size: usize,
     /// Type hint e.g. String.
-    pub type_hint: String,
+    pub type_hint: Box<str>,
     /// Creation timestamp.
     pub created_at: DateTime<Utc>,
     /// Update timestamp.

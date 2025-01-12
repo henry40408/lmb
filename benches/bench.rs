@@ -7,7 +7,7 @@ use std::io::{empty, BufReader, Cursor, Read as _};
 
 static SCRIPT: &str = "return true";
 
-/// evaluation
+// evaluation
 
 fn lmb_evaluate(bencher: &mut Bencher) {
     let e = Evaluation::builder(SCRIPT, empty()).build().unwrap();
@@ -32,7 +32,7 @@ fn mlua_sandbox_eval(bencher: &mut Bencher) {
     bencher.iter(|| vm.load(SCRIPT).eval::<bool>());
 }
 
-/// store
+// store
 
 fn lmb_no_store(bencher: &mut Bencher) {
     let e = Evaluation::builder(SCRIPT, empty()).build().unwrap();
@@ -63,7 +63,7 @@ fn lmb_update(bencher: &mut Bencher) {
     bencher.iter(|| e.evaluate().call().unwrap());
 }
 
-/// read
+// read
 
 fn lmb_read_all(bencher: &mut Bencher) {
     let input = "1";

@@ -9,12 +9,12 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 pub struct Guide {
     /// Content.
     #[builder(into)]
-    pub content: String,
+    pub content: Box<str>,
     /// Name.
     #[builder(into)]
-    pub name: String,
+    pub name: Box<str>,
     /// Title.
-    pub title: String,
+    pub title: Box<str>,
 }
 
 static GUIDE_DIR: Dir<'_> = include_dir!("guides");
@@ -56,7 +56,7 @@ pub static GUIDES: LazyLock<Vec<Guide>> = LazyLock::new(|| {
             Guide::builder()
                 .content(content)
                 .name(name)
-                .title(title)
+                .title(title.into_boxed_str())
                 .build(),
         );
     }
@@ -73,7 +73,7 @@ mod tests {
         assert!(!GUIDES.is_empty());
 
         let guide = GUIDES.first().unwrap();
-        assert_eq!("lua", guide.name);
-        assert_eq!("Lua Guide with Lmb", guide.title);
+        assert_eq!("lua", &*guide.name);
+        assert_eq!("Lua Guide with Lmb", &*guide.title);
     }
 }
