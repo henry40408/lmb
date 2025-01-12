@@ -112,17 +112,17 @@ fn build_response(
     let (status_code, headers) = state
         .view(&StateKey::Response, |_k, res| {
             let status_code = res
-                .get("status_code")
+                .pointer("/status_code")
                 .and_then(|s| s.as_u64())
                 .unwrap_or(200u64);
             let mut m = HashMap::new();
             if let Some(h) = res.get("headers").and_then(|h| h.as_object()) {
                 for (name, value) in h.iter() {
                     m.insert(
-                        name.to_string(),
+                        name.to_owned().into_boxed_str(),
                         match value {
-                            Value::String(s) => s.to_string(),
-                            _ => value.to_string(),
+                            Value::String(s) => s.to_owned().into_boxed_str(),
+                            _ => value.to_string().into_boxed_str(),
                         },
                     );
                 }
@@ -140,7 +140,7 @@ fn build_response(
         serde_json::to_string(&value)?
     } else {
         match value {
-            Value::String(s) => s.to_string(),
+            Value::String(s) => s.to_owned(),
             _ => value.to_string(),
         }
     };

@@ -7,7 +7,7 @@ use std::{
 use http::{Method, StatusCode};
 use mlua::prelude::*;
 use parking_lot::Mutex;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tracing::{trace, trace_span, warn};
 use ureq::Request;
 use url::Url;
@@ -20,9 +20,9 @@ pub struct LuaModHTTP {}
 
 /// HTTP response
 pub struct LuaModHTTPResponse {
-    charset: String,
-    content_type: String,
-    headers: HashMap<String, Vec<String>>,
+    charset: Box<str>,
+    content_type: Box<str>,
+    headers: HashMap<Box<str>, Vec<Box<str>>>,
     reader: Input<Box<dyn Read + Send + Sync + 'static>>,
     status_code: StatusCode,
 }
@@ -38,7 +38,7 @@ impl LuaUserData for LuaModHTTPResponse {
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("json", |vm, this, ()| {
-            if "application/json" != this.content_type {
+            if "application/json" != &*this.content_type {
                 warn!("content type is not application/json, convert with caution");
             }
             let mut reader = this.reader.lock();
@@ -55,64 +55,64 @@ impl LuaUserData for LuaModHTTPResponse {
     }
 }
 
-fn set_headers(req: Request, headers: &Value) -> Request {
-    let Value::Object(h) = headers else {
+fn set_headers(req: Request, headers: Option<&Map<String, Value>>) -> Request {
+    let Some(headers) = headers else {
         return req;
     };
     let mut new_req = req;
-    for (k, v) in h.iter() {
+    for (k, v) in headers.iter() {
         let v = match v {
-            Value::String(v) => v.as_str().to_string(),
-            _ => v.to_string(),
+            Value::String(v) => v.as_str().to_owned().into_boxed_str(),
+            _ => v.to_string().into_boxed_str(),
         };
-        new_req = new_req.set(k.as_str(), &v);
+        new_req = new_req.set(k, &v);
     }
     new_req
 }
 
 fn lua_lmb_fetch(
-    vm: &Lua,
+    _vm: &Lua,
     _: &LuaModHTTP,
     (uri, options): (String, Option<LuaTable>),
 ) -> LuaResult<LuaModHTTPResponse> {
-    let options = options.as_ref();
+    let options = serde_json::to_value(options).into_lua_err()?;
     let url: Url = uri.parse().into_lua_err()?;
-    let method: String = options
-        .and_then(|t| t.get("method").ok().map(|s: String| s))
-        .unwrap_or_else(|| "GET".to_string());
-    let method: Method = method.parse().unwrap_or(Method::GET);
-    let headers: Value = options
-        .and_then(|t| t.get("headers").ok())
-        .and_then(|m| vm.from_value(m).ok())
-        .unwrap_or(Value::Null);
+    let method: Method = options
+        .pointer("/method")
+        .and_then(|v| v.as_str())
+        .unwrap_or("GET")
+        .parse()
+        .unwrap_or(Method::GET);
+    let headers = options.pointer("/headers").and_then(|v| v.as_object());
     let _s = trace_span!("send_http_request", %method, %url, ?headers).entered();
     let res = if method.is_safe() {
         let req = ureq::request_url(method.as_str(), &url);
-        let req = set_headers(req, &headers);
+        let req = set_headers(req, headers);
         req.call()
     } else {
-        let body: String = options
-            .map(|t| t.get("body").unwrap_or_default())
+        let body = options
+            .pointer("/body")
+            .and_then(|v| v.as_str())
             .unwrap_or_default();
         let req = ureq::request_url(method.as_str(), &url);
-        let req = set_headers(req, &headers);
+        let req = set_headers(req, headers);
         req.send(Cursor::new(body))
     };
     let res = match res {
         Ok(res) | Err(ureq::Error::Status(_, res)) => res,
         Err(e) => return Err(e.into_lua_err()),
     };
-    let charset = res.charset().to_string();
-    let content_type = res.content_type().to_string();
+    let charset = res.charset().to_owned().into_boxed_str();
+    let content_type = res.content_type().to_owned().into_boxed_str();
     let headers = {
         let mut headers = HashMap::new();
         for name in res.headers_names() {
             let values = res
                 .all(&name)
                 .into_iter()
-                .map(String::from)
+                .map(|s| s.to_owned().into_boxed_str())
                 .collect::<Vec<_>>();
-            headers.insert(name, values);
+            headers.insert(name.into_boxed_str(), values);
         }
         headers
     };

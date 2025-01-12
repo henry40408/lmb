@@ -64,7 +64,7 @@ struct Cli {
 
     /// Theme. Checkout `list-themes` for available themes
     #[arg(long, env = "LMB_THEME")]
-    theme: Option<String>,
+    theme: Option<Box<str>>,
 
     #[command(subcommand)]
     command: Commands,
@@ -103,7 +103,7 @@ enum Commands {
         bail: usize,
         /// Cron
         #[arg(long)]
-        cron: String,
+        cron: Box<str>,
         /// Run the script at startup even if the next execution is not due
         #[arg(long)]
         initial_run: bool,
@@ -115,7 +115,7 @@ enum Commands {
     Serve {
         /// Bind the server to a specific host and port
         #[arg(long, default_value = "127.0.0.1:3000")]
-        bind: String,
+        bind: Box<str>,
         /// Script path. Specify "-" or omit to load the script from standard input
         #[arg(long, value_parser, default_value = "-")]
         file: Input,
@@ -134,23 +134,23 @@ enum ExampleCommands {
     Cat {
         /// Example name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
     },
     /// Evaluate the example
     #[command(alias = "eval")]
     Evaluate {
         /// Example name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
     },
     /// Handle HTTP requests with the example
     Serve {
         /// Bind the server to a specific host and port
         #[arg(long, default_value = "127.0.0.1:3000")]
-        bind: String,
+        bind: Box<str>,
         /// Example name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
         /// Timeout in seconds
         #[arg(long)]
         timeout: Option<u64>,
@@ -166,7 +166,7 @@ enum GuideCommands {
     Cat {
         /// Name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
     },
     /// List available guides
     List,
@@ -178,13 +178,13 @@ enum StoreCommands {
     Delete {
         /// Name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
     },
     /// Get a value
     Get {
         /// Name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
     },
     /// List values
     List,
@@ -198,7 +198,7 @@ enum StoreCommands {
     Put {
         /// Name
         #[arg(long)]
-        name: String,
+        name: Box<str>,
         /// Consider value as plain string instead of JSON value
         #[arg(long)]
         plain: bool,
@@ -215,13 +215,13 @@ fn do_check_syntax(source: &LuaSource) -> anyhow::Result<()> {
         let mut buf = String::new();
         let err: Vec<&Error> = err.iter().collect();
         source.write_errors(&mut buf, err).call()?;
-        bail!(buf.trim().to_string());
+        bail!(buf.trim().to_owned().into_boxed_str());
     }
     Ok(())
 }
 
 fn read_script(input: &mut Input) -> anyhow::Result<LuaSource> {
-    let name = input.path().to_string_lossy().to_string();
+    let name = input.path().to_string_lossy().into_owned().into_boxed_str();
     let mut script = String::new();
     input.read_to_string(&mut script)?;
     Ok(LuaSource::builder(script).name(name).build())
@@ -308,6 +308,7 @@ async fn try_main() -> anyhow::Result<()> {
             })
         }
         Commands::Example(ExampleCommands::Cat { name }) => {
+            let name = &*name;
             let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
@@ -319,12 +320,13 @@ async fn try_main() -> anyhow::Result<()> {
             Ok(())
         }
         Commands::Example(ExampleCommands::Evaluate { name }) => {
+            let name = &*name;
             let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
             let script = found.source.script.trim();
             let store = prepare_store(&store_options)?;
-            let source = LuaSource::builder(script).name(name).build();
+            let source = LuaSource::builder(script).name(name.into()).build();
             let e = Evaluation::builder(source, io::stdin())
                 .store(store)
                 .build()?;
@@ -357,6 +359,7 @@ async fn try_main() -> anyhow::Result<()> {
             name,
             timeout,
         }) => {
+            let name = &*name;
             let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
@@ -465,9 +468,9 @@ async fn try_main() -> anyhow::Result<()> {
                         table.add_row([
                             &m.name,
                             &m.type_hint,
-                            &m.size.to_string(),
-                            &m.created_at.to_rfc3339(),
-                            &m.updated_at.to_rfc3339(),
+                            &m.size.to_string().into_boxed_str(),
+                            &m.created_at.to_rfc3339().into_boxed_str(),
+                            &m.updated_at.to_rfc3339().into_boxed_str(),
                         ]);
                     }
                     println!("{table}");

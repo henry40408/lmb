@@ -14,9 +14,9 @@ static LUA_ERROR_REGEX: Lazy<Regex> = lazy_regex!(r"\[[^\]]+\]:(\d+):(.+)");
 pub struct LuaSource {
     /// Script.
     #[builder(start_fn, into)]
-    pub script: String,
+    pub script: Box<str>,
     /// Name.
-    pub name: Option<String>,
+    pub name: Option<Box<str>>,
 }
 
 impl From<String> for LuaSource {
@@ -27,6 +27,12 @@ impl From<String> for LuaSource {
 
 impl From<&str> for LuaSource {
     fn from(value: &str) -> Self {
+        LuaSource::builder(value).build()
+    }
+}
+
+impl From<Box<str>> for LuaSource {
+    fn from(value: Box<str>) -> Self {
         LuaSource::builder(value).build()
     }
 }
@@ -75,34 +81,31 @@ impl LuaSource {
                 ) => {
                     let first_line = message.lines().next().unwrap_or_default();
                     let captures = LUA_ERROR_REGEX.captures(first_line);
-                    let line_number = captures
+                    let Some(line_number) = captures
                         .as_ref()
                         .and_then(|c| c.get(1))
                         .map(|m| m.as_str())
-                        .and_then(|l| l.parse::<usize>().ok());
-                    let message = captures.as_ref().and_then(|c| c.get(2)).map(|m| m.as_str());
+                        .and_then(|l| l.parse::<usize>().ok())
+                    else {
+                        continue;
+                    };
+                    let Some(message) =
+                        captures.as_ref().and_then(|c| c.get(2)).map(|m| m.as_str())
+                    else {
+                        continue;
+                    };
                     let offsets = StringOffsets::new(&self.script);
-                    match (line_number, message) {
-                        (Some(line_number), Some(message)) => {
-                            let span = offsets.line_to_chars(line_number - 1);
-                            (message.to_string(), span.start, span.end)
-                        }
-                        (Some(line_number), None) => {
-                            let span = offsets.line_to_chars(line_number - 1);
-                            (first_line.to_string(), span.start, span.end)
-                        }
-                        (None, Some(message)) => (message.to_string(), 0usize, 1usize),
-                        (None, None) => (first_line.to_string(), 0usize, 1usize),
-                    }
+                    let span = offsets.line_to_chars(line_number - 1);
+                    (message.to_owned().into_boxed_str(), span.start, span.end)
                 }
                 Error::LuaSyntax(e) => match **e {
                     full_moon::Error::AstError(ref e) => (
-                        e.error_message().to_string(),
+                        e.error_message().to_owned().into_boxed_str(),
                         e.token().start_position().bytes(),
                         e.token().end_position().bytes(),
                     ),
                     full_moon::Error::TokenizerError(ref e) => (
-                        e.error().to_string(),
+                        e.error().to_string().into_boxed_str(),
                         e.position().bytes(),
                         e.position().bytes() + 1,
                     ),
@@ -113,7 +116,7 @@ impl LuaSource {
                 labels = vec![LabeledSpan::at(start..end, message)],
                 "{message}"
             )
-            .with_source_code(self.script.clone());
+            .with_source_code(self.script.to_string());
             write!(f, "{:?}", report)?;
         }
         Ok(())

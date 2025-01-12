@@ -51,11 +51,14 @@ where
 {
     /// Render the solution.
     #[builder]
-    pub fn write<W>(&self, #[builder(start_fn)] mut f: W, json: Option<bool>) -> Result<()>
+    pub fn write<W>(
+        &self,
+        #[builder(start_fn)] mut f: W,
+        #[builder(default)] json: bool,
+    ) -> Result<()>
     where
         W: Write,
     {
-        let json = json.unwrap_or(false);
         if json {
             let res = serde_json::to_string(&self.payload)?;
             Ok(write!(f, "{}", res)?)
@@ -104,7 +107,7 @@ where
         let compiled = {
             let _s = trace_span!("compile_script").entered();
             let compiler = Compiler::new();
-            compiler.compile(&source.script)?
+            compiler.compile(&*source.script)?
         };
         let vm = Lua::new();
         vm.sandbox(true)?;
@@ -167,7 +170,7 @@ where
         let script_name = &self.source.name;
         let chunk = self.vm.load(&self.compiled);
         let chunk = match script_name {
-            Some(name) => chunk.set_name(name),
+            Some(name) => chunk.set_name(name.to_string()),
             None => chunk,
         };
 
@@ -261,7 +264,7 @@ where
             ..Default::default()
         };
         if let Some(theme) = &options.theme {
-            config.theme.clone_from(theme);
+            config.theme = theme.to_string();
         }
         let assets = HighlightingAssets::from_binary();
         let reader = Box::new(self.source.script.as_bytes());
