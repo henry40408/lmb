@@ -96,11 +96,29 @@ impl<R> Evaluation<R>
 where
     for<'lua> R: 'lua + Read + Send,
 {
-    /// Build evaluation.
+    /// Build evaluation with a reader.
     #[builder]
     pub fn new(
         #[builder(start_fn, into)] source: LuaSource,
         #[builder(start_fn)] input: R,
+        #[builder(into)] next: Option<LuaSource>,
+        store: Option<Store>,
+        timeout: Option<Duration>,
+    ) -> Result<Arc<Evaluation<R>>> {
+        let input = Arc::new(Mutex::new(BufReader::new(input)));
+        Self::new_with_input(source, input)
+            .maybe_next(next)
+            .maybe_store(store)
+            .maybe_timeout(timeout)
+            .call()
+    }
+
+    /// Build evaluation with a wrapped reader.
+    #[builder]
+    pub fn new_with_input(
+        #[builder(start_fn, into)] source: LuaSource,
+        #[builder(start_fn)] input: Input<R>,
+        #[builder(into)] next: Option<LuaSource>,
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
@@ -111,8 +129,8 @@ where
         };
         let vm = Lua::new();
         vm.sandbox(true)?;
-        let input = Arc::new(Mutex::new(BufReader::new(input)));
         bind_vm(&vm, input.clone())
+            .maybe_next(next)
             .maybe_store(store.clone())
             .call()?;
         Ok(Arc::new(Evaluation {
@@ -286,6 +304,24 @@ mod tests {
     use test_case::test_case;
 
     use crate::{Evaluation, State, StateKey, Store};
+
+    #[test]
+    fn call_next() {
+        let input = "1";
+        let next_source = r#"
+        return io.read('*n')
+        "#;
+        let source = r#"
+        local m = require('@lmb')
+        return m:next() + 1
+        "#;
+        let e = Evaluation::builder(source, input.as_bytes())
+            .next(next_source)
+            .build()
+            .unwrap();
+        let res = e.evaluate().call().unwrap();
+        assert_eq!(json!(2), res.payload);
+    }
 
     #[test_case("./lua-examples/error.lua")]
     fn error_in_script(path: &str) {

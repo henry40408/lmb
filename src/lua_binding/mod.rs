@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{Input, Result, State, StateKey, Store};
+use crate::{Evaluation, Input, LuaSource, Result, State, StateKey, Store};
 
 use crypto::*;
 use http::*;
@@ -25,9 +25,10 @@ const K_LOADED: &str = "_LOADED";
 #[derive(Builder, Debug)]
 pub struct LuaBinding<R>
 where
-    R: Read,
+    R: Read + Send,
 {
     input: Input<R>,
+    next: Option<LuaSource>,
     state: Option<Arc<State>>,
     store: Option<Store>,
 }
@@ -37,6 +38,7 @@ where
 pub fn bind_vm<R>(
     #[builder(start_fn)] vm: &Lua,
     #[builder(start_fn)] input: Input<R>,
+    next: Option<LuaSource>,
     store: Option<Store>,
     state: Option<Arc<State>>,
 ) -> Result<()>
@@ -68,6 +70,7 @@ where
     let loaded = vm.named_registry_value::<LuaTable>(K_LOADED)?;
     let binding = LuaBinding::builder()
         .input(input)
+        .maybe_next(next)
         .maybe_store(store)
         .maybe_state(state)
         .build();
@@ -152,7 +155,7 @@ impl LuaUserData for LuaStoreBinding {
 
 impl<R> LuaUserData for LuaBinding<R>
 where
-    for<'lua> R: 'lua + Read,
+    for<'lua> R: 'lua + Read + Send,
 {
     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field("_VERSION", env!("APP_VERSION"));
@@ -182,6 +185,16 @@ where
     }
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("next", |vm, this, ()| {
+            let Some(source) = &this.next else {
+                return Ok(LuaNil);
+            };
+            let e = Evaluation::new_with_input(source.clone(), this.input.clone())
+                .call()
+                .into_lua_err()?;
+            let res = e.evaluate().call().into_lua_err()?;
+            vm.to_value(&res.payload)
+        });
         methods.add_method("read_unicode", |vm, this, f| {
             lua_lmb_read_unicode(vm, &this.input, f)
         });
