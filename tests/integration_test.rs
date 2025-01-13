@@ -212,6 +212,9 @@ fn example_list() {
  hello         Hello, world!                                                          
  http-echo     Echo headers and body from HTTP request.                               
  input         Echo the standard input.                                               
+ last          The LAST Lua script to handle HTTP request.                            
+ mw1           The FIRST Lua script to read request body.                             
+ mw2           The SECOND Lua script to log request.                                  
  read-unicode  Read 2 unicode characters from the standard input.                     
  return-table  The function can also return a table.                                  
                Please note that JSON mode is needed to show the whole table,          

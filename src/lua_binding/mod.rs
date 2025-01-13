@@ -28,7 +28,7 @@ where
     R: Read + Send,
 {
     input: Input<R>,
-    next: Option<LuaSource>,
+    next: Option<Box<LuaSource>>,
     state: Option<Arc<State>>,
     store: Option<Store>,
 }
@@ -38,7 +38,7 @@ where
 pub fn bind_vm<R>(
     #[builder(start_fn)] vm: &Lua,
     #[builder(start_fn)] input: Input<R>,
-    next: Option<LuaSource>,
+    next: Option<Box<LuaSource>>,
     store: Option<Store>,
     state: Option<Arc<State>>,
 ) -> Result<()>
@@ -186,13 +186,19 @@ where
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("next", |vm, this, ()| {
-            let Some(source) = &this.next else {
+            let Some(next) = &this.next else {
                 return Ok(LuaNil);
             };
-            let e = Evaluation::new_with_input(source.clone(), this.input.clone())
+            let next = next.clone();
+            let e = Evaluation::new_with_input(*next, this.input.clone())
+                .maybe_store(this.store.clone())
                 .call()
                 .into_lua_err()?;
-            let res = e.evaluate().call().into_lua_err()?;
+            let res = e
+                .evaluate()
+                .maybe_state(this.state.clone())
+                .call()
+                .into_lua_err()?;
             vm.to_value(&res.payload)
         });
         methods.add_method("read_unicode", |vm, this, f| {

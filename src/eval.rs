@@ -101,13 +101,11 @@ where
     pub fn new(
         #[builder(start_fn, into)] source: LuaSource,
         #[builder(start_fn)] input: R,
-        #[builder(into)] next: Option<LuaSource>,
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
         let input = Arc::new(Mutex::new(BufReader::new(input)));
         Self::new_with_input(source, input)
-            .maybe_next(next)
             .maybe_store(store)
             .maybe_timeout(timeout)
             .call()
@@ -118,7 +116,6 @@ where
     pub fn new_with_input(
         #[builder(start_fn, into)] source: LuaSource,
         #[builder(start_fn)] input: Input<R>,
-        #[builder(into)] next: Option<LuaSource>,
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
@@ -130,7 +127,7 @@ where
         let vm = Lua::new();
         vm.sandbox(true)?;
         bind_vm(&vm, input.clone())
-            .maybe_next(next)
+            .maybe_next(source.next.clone())
             .maybe_store(store.clone())
             .call()?;
         Ok(Arc::new(Evaluation {
@@ -163,6 +160,7 @@ where
     pub fn evaluate(self: &Arc<Self>, state: Option<Arc<State>>) -> Result<Solution<R>> {
         if state.is_some() {
             bind_vm(&self.vm, self.input.clone())
+                .maybe_next(self.source.next.clone())
                 .maybe_store(self.store.clone())
                 .maybe_state(state)
                 .call()?;
@@ -303,20 +301,22 @@ mod tests {
     };
     use test_case::test_case;
 
-    use crate::{Evaluation, State, StateKey, Store};
+    use crate::{Evaluation, LuaSource, State, StateKey, Store};
 
     #[test]
     fn call_next() {
         let input = "1";
-        let next_source = r#"
+        let next_source: LuaSource = r#"
         return io.read('*n')
-        "#;
-        let source = r#"
+        "#
+        .into();
+        let mut source: LuaSource = r#"
         local m = require('@lmb')
         return m:next() + 1
-        "#;
+        "#
+        .into();
+        source.next = Some(Box::new(next_source));
         let e = Evaluation::builder(source, input.as_bytes())
-            .next(next_source)
             .build()
             .unwrap();
         let res = e.evaluate().call().unwrap();
