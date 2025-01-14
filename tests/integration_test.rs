@@ -235,7 +235,7 @@ fn example_serve() {
             "example",
             "serve",
             "--bind",
-            "127.0.0.1:3000",
+            "127.0.0.1:0",
             "--name",
             "hello",
         ])
@@ -243,7 +243,7 @@ fn example_serve() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 [..]  WARN lmb::serve: no store path is specified, an in-memory store will be used and values will be lost when process ends
-[..]  INFO lmb::serve: serving lua script bind=127.0.0.1:3000
+[..]  INFO lmb::serve: serving lua script bind=127.0.0.1:[..]
 
 "#]]);
 }
