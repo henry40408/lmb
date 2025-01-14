@@ -1,18 +1,11 @@
-use bat::{
-    assets::HighlightingAssets,
-    controller::Controller,
-    input::Input as BatInput,
-    style::{StyleComponent, StyleComponents},
-};
 use bon::{bon, builder, Builder};
 use chrono::Utc;
-use console::Term;
 use mlua::{prelude::*, Compiler};
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
     fmt::Write,
-    io::{stdout, BufReader, IsTerminal as _, Read},
+    io::{BufReader, Read},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -23,8 +16,7 @@ use std::{
 use tracing::{debug, error, trace_span, warn};
 
 use crate::{
-    bind_vm, Error, Input, LuaSource, PrintOptions, Result, ScheduleOptions, State, Store,
-    DEFAULT_TIMEOUT,
+    bind_vm, Error, Input, LuaSource, Result, ScheduleOptions, State, Store, DEFAULT_TIMEOUT,
 };
 
 /// Solution obtained by the function.
@@ -241,52 +233,6 @@ where
         W: Write,
     {
         Ok(self.source.write_errors(f, errors).call()?)
-    }
-
-    /// Render the script.
-    ///
-    /// ```rust
-    /// # use std::io::empty;
-    /// use lmb::*;
-    ///
-    /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    /// let script = "return 1";
-    /// let e = Evaluation::builder(script, empty()).build().unwrap();
-    ///
-    /// let mut buf = String::new();
-    /// let print_options = PrintOptions::builder().no_color(true).build();
-    /// e.write_script(&mut buf, &print_options)?;
-    /// assert!(buf.contains("return 1"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn write_script<W>(&self, mut f: W, options: &PrintOptions) -> Result<bool>
-    where
-        W: Write,
-    {
-        let (style_components, colored_output) = if stdout().is_terminal() {
-            let components = &[StyleComponent::Grid, StyleComponent::LineNumbers];
-            (StyleComponents::new(components), !options.no_color)
-        } else {
-            (StyleComponents::new(&[]), false)
-        };
-        let mut config = bat::config::Config {
-            colored_output,
-            language: Some("lua"),
-            style_components,
-            true_color: true,
-            // required to print line numbers
-            term_width: Term::stdout().size().1 as usize,
-            ..Default::default()
-        };
-        if let Some(theme) = &options.theme {
-            config.theme = theme.to_string();
-        }
-        let assets = HighlightingAssets::from_binary();
-        let reader = Box::new(self.source.script.as_bytes());
-        let inputs = vec![BatInput::from_reader(reader)];
-        let controller = Controller::new(&config, &assets);
-        Ok(controller.run(inputs, Some(&mut f))?)
     }
 }
 

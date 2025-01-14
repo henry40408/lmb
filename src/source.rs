@@ -1,11 +1,21 @@
+use bat::{
+    assets::HighlightingAssets,
+    controller::Controller,
+    input::Input as BatInput,
+    style::{StyleComponent, StyleComponents},
+};
 use bon::{bon, Builder};
+use console::Term;
 use lazy_regex::{lazy_regex, Lazy, Regex};
 use miette::{miette, LabeledSpan};
 use mlua::prelude::*;
-use std::fmt::Write;
+use std::{
+    fmt::Write,
+    io::{stdout, IsTerminal as _},
+};
 use string_offsets::StringOffsets;
 
-use crate::Error;
+use crate::{Error, PrintOptions};
 
 static LUA_ERROR_REGEX: Lazy<Regex> = lazy_regex!(r"\[[^\]]+\]:(\d+):(.+)");
 
@@ -122,6 +132,50 @@ impl LuaSource {
             write!(f, "{:?}", report)?;
         }
         Ok(())
+    }
+
+    /// Render the script.
+    ///
+    /// ```rust
+    /// # use std::io::empty;
+    /// use lmb::*;
+    ///
+    /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// let source: LuaSource = "return 1".into();
+    /// let mut buf = String::new();
+    /// let print_options = PrintOptions::builder().no_color(true).build();
+    /// source.write_script(&mut buf, &print_options)?;
+    /// assert!(buf.contains("return 1"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn write_script<W>(&self, mut f: W, options: &PrintOptions) -> crate::Result<bool>
+    where
+        W: Write,
+    {
+        let (style_components, colored_output) = if stdout().is_terminal() {
+            let components = &[StyleComponent::Grid, StyleComponent::LineNumbers];
+            (StyleComponents::new(components), !options.no_color)
+        } else {
+            (StyleComponents::new(&[]), false)
+        };
+        let mut config = bat::config::Config {
+            colored_output,
+            language: Some("lua"),
+            style_components,
+            true_color: true,
+            // required to print line numbers
+            term_width: Term::stdout().size().1 as usize,
+            ..Default::default()
+        };
+        if let Some(theme) = &options.theme {
+            config.theme = theme.to_string();
+        }
+        let assets = HighlightingAssets::from_binary();
+        let reader = Box::new(self.script.as_bytes());
+        let inputs = vec![BatInput::from_reader(reader)];
+        let controller = Controller::new(&config, &assets);
+        Ok(controller.run(inputs, Some(&mut f))?)
     }
 }
 

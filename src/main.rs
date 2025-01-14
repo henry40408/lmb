@@ -318,10 +318,8 @@ async fn try_main() -> anyhow::Result<()> {
             let Some(found) = EXAMPLES.iter().find(|e| e.name() == name) else {
                 bail!("example with {name} not found");
             };
-            let script = found.source.script.trim();
             let mut buf = String::new();
-            let e = Evaluation::builder(script, io::stdin()).build()?;
-            e.write_script(&mut buf, &print_options)?;
+            found.source.write_script(&mut buf, &print_options)?;
             println!("{buf}");
             Ok(())
         }
