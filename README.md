@@ -9,9 +9,9 @@
 
 ## Features
 
-- Evaluate a Lua script.
-- Handle HTTP requests via a Lua script.
-- Schedule a Lua script with cron.
+- Evaluate Lua scripts.
+- Handle HTTP requests via Lua scripts.
+- Schedule Lua scripts with cron.
 
 ## Installation
 
@@ -39,14 +39,14 @@ Evaluate an example:
 lmb example eval --name hello
 ```
 
-Evaluate Lua script:
+Evaluate a Lua script:
 
 ```bash
 $ lmb eval --file lua-examples/hello.lua
 hello, world!
 ```
 
-Handle HTTP requests with single script:
+Handle HTTP requests with a single script:
 
 ```bash
 $ lmb serve --file lua-examples/echo.lua
