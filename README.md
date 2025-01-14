@@ -7,6 +7,16 @@
 ![GitHub](https://img.shields.io/github/license/henry40408/lmb)
 [![codecov](https://codecov.io/gh/henry40408/lmb/graph/badge.svg?token=O7WLYVEX0E)](https://codecov.io/gh/henry40408/lmb)
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- Guides
+  - [Lua](guides/lua.md)
+  - [Serve](guides/serve.md)
+- [License](#license)
+
 ## Features
 
 - Evaluate Lua scripts.
