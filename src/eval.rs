@@ -126,10 +126,6 @@ where
         };
         let vm = Lua::new();
         vm.sandbox(true)?;
-        bind_vm(&vm, input.clone())
-            .maybe_next(source.next.clone())
-            .maybe_store(store.clone())
-            .call()?;
         Ok(Arc::new(Evaluation {
             input,
             source,
@@ -158,13 +154,13 @@ where
     /// ```
     #[builder]
     pub fn evaluate(self: &Arc<Self>, state: Option<Arc<State>>) -> Result<Solution<R>> {
-        if state.is_some() {
-            bind_vm(&self.vm, self.input.clone())
-                .maybe_next(self.source.next.clone())
-                .maybe_store(self.store.clone())
-                .maybe_state(state)
-                .call()?;
-        }
+        self.vm.sandbox(false)?; // purge stats in sandbox
+        self.vm.sandbox(true)?; // re-enable sandbox
+        bind_vm(&self.vm, self.input.clone())
+            .maybe_next(self.source.next.clone())
+            .maybe_store(self.store.clone())
+            .maybe_state(state)
+            .call()?;
 
         let timeout = self.timeout.unwrap_or(DEFAULT_TIMEOUT);
         let max_memory = Arc::new(AtomicUsize::new(0));
@@ -400,6 +396,23 @@ mod tests {
 
         let res = e.evaluate().call().unwrap();
         assert_eq!(json!("1"), res.payload);
+    }
+
+    #[test]
+    fn safety() {
+        let script = r#"
+        if not var then
+            var = 1
+        else
+            var = var + 1
+        end
+        return var
+        "#;
+        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let res = e.evaluate().call().unwrap();
+        assert_eq!(json!(1), res.payload);
+        let res = e.evaluate().call().unwrap();
+        assert_eq!(json!(1), res.payload);
     }
 
     #[test]
