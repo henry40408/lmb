@@ -15,7 +15,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           components: clippy,rustfmt
-      - uses: actions/cache@v4.0.2
+      - uses: actions/cache@v4.2.0
         with:
           path: |
             ~/.cargo/bin/
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.1.1
       - uses: dtolnay/rust-toolchain@1.81.0
-      - uses: actions/cache@v4.0.2
+      - uses: actions/cache@v4.2.0
         with:
           path: |
             ~/.cargo/bin/
@@ -43,13 +43,27 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo bench
+      - run: cargo bench | tee output.txt
+      - name: Download previous benchmark data
+        uses: actions/cache@v4.2.0
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1.20.4
+        with:
+          tool: cargo
+          output-file-path: output.txt
+          external-data-json-path: ./cache/benchmark-data.json
+          fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          summary-always: true
   coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
       - uses: dtolnay/rust-toolchain@1.81.0
-      - uses: actions/cache@v4.0.2
+      - uses: actions/cache@v4.2.0
         with:
           path: |
             ~/.cargo/bin/
