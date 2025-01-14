@@ -212,6 +212,9 @@ fn example_list() {
  hello         Hello, world!                                                          
  http-echo     Echo headers and body from HTTP request.                               
  input         Echo the standard input.                                               
+ last          The LAST Lua script to handle HTTP request.                            
+ mw1           The FIRST Lua script to read request body.                             
+ mw2           The SECOND Lua script to log request.                                  
  read-unicode  Read 2 unicode characters from the standard input.                     
  return-table  The function can also return a table.                                  
                Please note that JSON mode is needed to show the whole table,          
@@ -232,7 +235,7 @@ fn example_serve() {
             "example",
             "serve",
             "--bind",
-            "127.0.0.1:3000",
+            "127.0.0.1:0",
             "--name",
             "hello",
         ])
@@ -240,7 +243,7 @@ fn example_serve() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 [..]  WARN lmb::serve: no store path is specified, an in-memory store will be used and values will be lost when process ends
-[..]  INFO lmb::serve: serving lua script bind=127.0.0.1:3000
+[..]  INFO lmb::serve: serving lua script bind=127.0.0.1:[..]
 
 "#]]);
 }

@@ -128,7 +128,7 @@ local function transfer(amount)
   return m.store:update({ 'alice', 'bob' }, function(values)
     local alice, bob = table.unpack(values)
     if alice < amount then
-      error('insufficient fund')
+      error('insufficient funds')
     end
     return table.pack(alice - amount, bob + amount)
   end, { 0, 0 })
@@ -137,9 +137,10 @@ end
 m.store.alice = 50
 m.store.bob = 50
 
-local ok, err = pcall(function() return transfer(100) end) -- insufficient fund
+-- insufficient funds
+local ok, err = pcall(function() return transfer(100) end)
 assert(not ok)
-assert(string.find(tostring(err), 'insufficient fund'))
+assert(string.find(tostring(err), 'insufficient funds'))
 
 assert(m.store.alice == 50)
 assert(m.store.bob == 50)
@@ -147,7 +148,8 @@ assert(m.store.bob == 50)
 m.store.alice = 100
 m.store.bob = 0
 
-local ok, res = pcall(function() return transfer(100) end) -- successful transfer
+-- successful transfer
+local ok, res = pcall(function() return transfer(100) end)
 assert(ok)
 local alice, bob = table.unpack(res)
 assert(alice == 0)

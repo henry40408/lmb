@@ -201,7 +201,8 @@ pub async fn serve_file<'a>(opts: &ServeOptions) -> anyhow::Result<()> {
     let bind = &opts.bind;
     let app = init_route(opts)?;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    info!(%bind, "serving lua script");
+    let local_addr: SocketAddr = listener.local_addr()?;
+    info!(bind = %local_addr, "serving lua script");
     axum::serve(listener, app).await?;
     Ok(())
 }

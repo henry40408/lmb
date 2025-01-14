@@ -7,11 +7,21 @@
 ![GitHub](https://img.shields.io/github/license/henry40408/lmb)
 [![codecov](https://codecov.io/gh/henry40408/lmb/graph/badge.svg?token=O7WLYVEX0E)](https://codecov.io/gh/henry40408/lmb)
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- Guides
+  - [Lua](guides/lua.md)
+  - [Serve](guides/serve.md)
+- [License](#license)
+
 ## Features
 
-- Evaluate a Lua script.
-- Handle HTTP requests via a Lua script.
-- Schedule a Lua script with cron.
+- Evaluate Lua scripts.
+- Handle HTTP requests via Lua scripts.
+- Schedule Lua scripts with cron.
 
 ## Installation
 
@@ -39,17 +49,17 @@ Evaluate an example:
 lmb example eval --name hello
 ```
 
-Evaluate Lua script:
+Evaluate a Lua script:
 
 ```bash
 $ lmb eval --file lua-examples/hello.lua
 hello, world!
 ```
 
-Handle HTTP requests with single script:
+Handle HTTP requests with a single script:
 
 ```bash
-$ lmb serve --file lua-examples/echo.lua
+$ lmb serve --bind 127.0.0.1:3000 --file lua-examples/echo.lua
 (another shell session) $ curl -X POST http://localhost:3000 -d $'hello'
 hello
 ```

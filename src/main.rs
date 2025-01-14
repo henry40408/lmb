@@ -74,14 +74,14 @@ struct Cli {
 enum Commands {
     /// Check syntax of script
     Check {
-        /// Script path. Specify "-" or omit to load the script from standard input
+        /// Script paths. Specify "-" or omit to load the script from standard input
         #[arg(long = "file", value_parser, default_value = "-")]
         files: Vec<Input>,
     },
     /// Evaluate a script file
     #[command(alias = "eval")]
     Evaluate {
-        /// Script path. Specify "-" or omit to load the script from standard input
+        /// Script paths. Specify "-" or omit to load the script from standard input
         #[arg(long = "file", value_parser, default_value = "-")]
         files: Vec<Input>,
         /// Timeout in seconds
@@ -107,18 +107,24 @@ enum Commands {
         /// Run the script at startup even if the next execution is not due
         #[arg(long)]
         initial_run: bool,
-        /// Script path. Specify "-" or omit to load the script from standard input
+        /// Script paths. Specify "-" or omit to load the script from standard input
         #[arg(long = "file", value_parser, default_value = "-")]
         files: Vec<Input>,
     },
     /// Handle HTTP requests with the script
+    /// If more than one script is provided, note that the scripts will NOT be evaluated concurrently.
+    /// Instead, the last script will be the main script to handle requests, and the rest will be treated as middlewares.
+    /// For example: lmb serve --file m1.lua --file m2.lua --file main.lua
+    /// 1. main.lua will handle HTTP requests
+    /// 2. main.lua may call m2.lua with `next()`
+    /// 3. m2.lua may call m1.lua with `next()`
     Serve {
         /// Bind the server to a specific host and port
-        #[arg(long, default_value = "127.0.0.1:3000")]
+        #[arg(long, default_value = "127.0.0.1:0")]
         bind: Box<str>,
-        /// Script path. Specify "-" or omit to load the script from standard input
-        #[arg(long, value_parser, default_value = "-")]
-        file: Input,
+        /// Script paths. Specify "-" or omit to load the script from standard input
+        #[arg(long = "file", value_parser, default_value = "-")]
+        files: Vec<Input>,
         /// Timeout in seconds
         #[arg(long)]
         timeout: Option<u64>,
@@ -146,7 +152,7 @@ enum ExampleCommands {
     /// Handle HTTP requests with the example
     Serve {
         /// Bind the server to a specific host and port
-        #[arg(long, default_value = "127.0.0.1:3000")]
+        #[arg(long, default_value = "127.0.0.1:0")]
         bind: Box<str>,
         /// Example name
         #[arg(long)]
@@ -422,21 +428,32 @@ async fn try_main() -> anyhow::Result<()> {
         }
         Commands::Serve {
             bind,
-            mut file,
+            mut files,
             timeout,
         } => {
-            let source = read_script(&mut file)?;
-            if cli.check_syntax {
-                do_check_syntax(&source)?;
+            files.reverse();
+
+            let mut sources = vec![];
+            for file in &mut files {
+                sources.push(read_script(file)?);
             }
+
+            let mut first_source = sources[0].clone();
+            let mut head = &mut first_source;
+            for source in &sources[1..] {
+                head.next = Some(Box::new(source.clone()));
+                head = head.next.as_mut().expect("should not be empty");
+            }
+
             let timeout = timeout.map(Duration::from_secs);
             let bind = bind.parse::<SocketAddr>()?;
-            let options = ServeOptions::builder(bind, source)
+            let options = ServeOptions::builder(bind, first_source)
                 .json(cli.json)
                 .store_options(store_options)
                 .maybe_timeout(timeout)
                 .build();
             serve::serve_file(&options).await?;
+
             Ok(())
         }
         Commands::Store(c) => {

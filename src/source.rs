@@ -17,6 +17,8 @@ pub struct LuaSource {
     pub script: Box<str>,
     /// Name.
     pub name: Option<Box<str>>,
+    /// Next source that can be called by the current source.
+    pub next: Option<Box<LuaSource>>,
 }
 
 impl From<String> for LuaSource {
