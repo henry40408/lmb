@@ -59,7 +59,7 @@ hello, world!
 Handle HTTP requests with a single script:
 
 ```bash
-$ lmb serve --file lua-examples/echo.lua
+$ lmb serve --bind 127.0.0.1:3000 --file lua-examples/echo.lua
 (another shell session) $ curl -X POST http://localhost:3000 -d $'hello'
 hello
 ```

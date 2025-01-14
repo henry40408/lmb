@@ -23,7 +23,7 @@ return m:next() -- call mw2.lua
 Run `lmb serve` with the above files:
 
 ```
-$ lmb serve --file mw1.lua --file mw2.lua --file last.lua
+$ lmb serve --bind 127.0.0.1:3000 --file mw1.lua --file mw2.lua --file last.lua
 ```
 
 On the other terminal, send a request to the server:

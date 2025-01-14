@@ -120,7 +120,7 @@ enum Commands {
     /// 3. m2.lua may call m1.lua with `next()`
     Serve {
         /// Bind the server to a specific host and port
-        #[arg(long, default_value = "127.0.0.1:3000")]
+        #[arg(long, default_value = "127.0.0.1:0")]
         bind: Box<str>,
         /// Script paths. Specify "-" or omit to load the script from standard input
         #[arg(long = "file", value_parser, default_value = "-")]
@@ -152,7 +152,7 @@ enum ExampleCommands {
     /// Handle HTTP requests with the example
     Serve {
         /// Bind the server to a specific host and port
-        #[arg(long, default_value = "127.0.0.1:3000")]
+        #[arg(long, default_value = "127.0.0.1:0")]
         bind: Box<str>,
         /// Example name
         #[arg(long)]
