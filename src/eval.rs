@@ -1,6 +1,6 @@
 use bon::{bon, builder, Builder};
 use chrono::Utc;
-use mlua::{prelude::*, Compiler};
+use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
@@ -63,7 +63,7 @@ where
     }
 }
 
-/// Container holding the compiled function and input for evaluation.
+/// Container holding the function and input for evaluation.
 #[derive(Debug)]
 pub struct Evaluation<R>
 where
@@ -77,8 +77,6 @@ where
     store: Option<Store>,
     /// Timeout.
     timeout: Option<Duration>,
-    /// Lua code compiled by [`mlua::Compiler`].
-    compiled: Vec<u8>,
     /// Lua virtual machine.
     vm: Lua,
 }
@@ -111,11 +109,6 @@ where
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
-        let compiled = {
-            let _s = trace_span!("compile_script").entered();
-            let compiler = Compiler::new();
-            compiler.compile(&*source.script)?
-        };
         let vm = Lua::new();
         vm.sandbox(true)?;
         bind_vm(&vm, input.clone())
@@ -127,7 +120,6 @@ where
             source,
             store,
             timeout,
-            compiled,
             vm,
         }))
     }
@@ -176,7 +168,7 @@ where
         });
 
         let script_name = &self.source.name;
-        let chunk = self.vm.load(&self.compiled);
+        let chunk = self.vm.load(&**self.source.compile()?);
         let chunk = match script_name {
             Some(name) => chunk.set_name(name.to_string()),
             None => chunk,
@@ -346,13 +338,6 @@ mod tests {
 
         let res = e.evaluate().call().unwrap();
         assert_eq!(json!("1"), res.payload);
-    }
-
-    #[test]
-    fn syntax_error() {
-        let script = "ret true"; // code with syntax error
-        let e = Evaluation::builder(script, empty()).build();
-        assert!(e.is_err());
     }
 
     #[test]
