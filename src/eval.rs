@@ -151,14 +151,13 @@ where
         }
 
         let timeout = self.timeout.unwrap_or(DEFAULT_TIMEOUT);
-        let max_memory = Arc::new(AtomicUsize::new(0));
 
+        let max_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         self.vm.set_interrupt({
-            let max_memory = Arc::clone(&max_memory);
+            let max_memory = max_memory.clone();
             move |vm| {
-                let used_memory = vm.used_memory();
-                max_memory.fetch_max(used_memory, Ordering::Relaxed);
+                max_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
                 if start.elapsed() > timeout {
                     vm.remove_interrupt();
                     return Err(mlua::Error::runtime("timeout"));
@@ -168,14 +167,17 @@ where
         });
 
         let script_name = &self.source.name;
-        let chunk = self.vm.load(&**self.source.compile()?);
+        let compiled = self.source.compile()?;
+        let chunk = self.vm.load(&*compiled);
         let chunk = match script_name {
             Some(name) => chunk.set_name(name.to_string()),
             None => chunk,
         };
 
-        let _s = trace_span!("evaluate").entered();
-        let result = self.vm.from_value(chunk.eval()?)?;
+        let result = {
+            let _s = trace_span!("evaluate").entered();
+            self.vm.from_value(chunk.eval()?)?
+        };
 
         let duration = start.elapsed();
         let max_memory = max_memory.load(Ordering::Acquire);

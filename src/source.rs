@@ -75,12 +75,14 @@ impl LuaSource {
     }
 
     /// Compile code lazily.
-    pub fn compile(&self) -> crate::Result<&Box<[u8]>> {
-        self.compiled.get_or_try_init(|| {
-            let compiler = Compiler::new();
-            let compiled = compiler.compile(&*self.script)?.into_boxed_slice();
-            Ok(compiled)
-        })
+    pub fn compile(&self) -> crate::Result<Box<[u8]>> {
+        self.compiled
+            .get_or_try_init(|| {
+                let compiler = Compiler::new();
+                let compiled = compiler.compile(&*self.script)?.into_boxed_slice();
+                Ok(compiled)
+            })
+            .cloned()
     }
 
     /// Render [`crate::error::Error`] to a writer.

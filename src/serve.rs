@@ -79,7 +79,6 @@ where
     let eval_state = Arc::new(State::new());
     eval_state.insert(StateKey::Request, request_map.into());
 
-    let e = Arc::new(e);
     let res = e.evaluate().state(eval_state.clone()).call();
     match res {
         Ok(res) => match build_response(state.json, eval_state, &res.payload) {
@@ -94,7 +93,7 @@ where
             }
         },
         Err(err) => {
-            error!(%err, "failed to run Lua script");
+            error!(?err, "failed to run Lua script");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 HeaderMap::new(),

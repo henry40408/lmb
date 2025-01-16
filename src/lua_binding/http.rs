@@ -41,10 +41,8 @@ impl LuaUserData for LuaModHTTPResponse {
             if "application/json" != &*this.content_type {
                 warn!("content type is not application/json, convert with caution");
             }
-            let mut reader = this.reader.lock();
-            let value: Value = serde_json::from_reader(&mut *reader).into_lua_err()?;
-            let value = vm.to_value(&value)?;
-            Ok(value)
+            let value: Value = serde_json::from_reader(&mut *this.reader.lock()).into_lua_err()?;
+            vm.to_value(&value)
         });
         methods.add_method("read", |vm, this, f: Option<LuaValue>| {
             lua_lmb_read(vm, &this.reader, f)
@@ -62,7 +60,7 @@ fn set_headers(req: Request, headers: Option<&Map<String, Value>>) -> Request {
     let mut new_req = req;
     for (k, v) in headers.iter() {
         let v = match v {
-            Value::String(v) => v.as_str().to_owned().into_boxed_str(),
+            Value::String(v) => v.to_owned().into_boxed_str(),
             _ => v.to_string().into_boxed_str(),
         };
         new_req = new_req.set(k, &v);
@@ -84,10 +82,10 @@ fn lua_lmb_fetch(
         .parse()
         .unwrap_or(Method::GET);
     let headers = options.pointer("/headers").and_then(|v| v.as_object());
-    let _s = trace_span!("send_http_request", %method, %url, ?headers).entered();
     let res = if method.is_safe() {
         let req = ureq::request_url(method.as_str(), &url);
         let req = set_headers(req, headers);
+        let _s = trace_span!("send_http_request", %method, %url, ?headers).entered();
         req.call()
     } else {
         let body = options
@@ -96,6 +94,7 @@ fn lua_lmb_fetch(
             .unwrap_or_default();
         let req = ureq::request_url(method.as_str(), &url);
         let req = set_headers(req, headers);
+        let _s = trace_span!("send_http_request", %method, %url, ?headers).entered();
         req.send(Cursor::new(body))
     };
     let res = match res {

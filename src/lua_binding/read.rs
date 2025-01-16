@@ -104,13 +104,13 @@ where
     if let Some(n) = f.as_usize() {
         let mut remaining = n;
         let mut buf = vec![];
-        let mut single = 0;
+        let mut single = [0u8; 1];
         while remaining > 0 {
-            let count = input.lock().read(std::slice::from_mut(&mut single))?;
+            let count = input.lock().read(&mut single)?;
             if count == 0 {
                 break;
             }
-            buf.extend_from_slice(std::slice::from_ref(&single));
+            buf.extend_from_slice(&single);
             if std::str::from_utf8(&buf).is_ok() {
                 remaining -= 1;
             }

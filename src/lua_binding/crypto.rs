@@ -7,15 +7,15 @@ use mlua::prelude::*;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 
-fn hash<H: Digest>(payload: String) -> String {
-    base16ct::lower::encode_string(&H::digest(payload.as_bytes()))
+fn hash<H: Digest>(payload: &str) -> Box<str> {
+    base16ct::lower::encode_string(&H::digest(payload)).into_boxed_str()
 }
 
-fn compute_hmac<T: Mac + KeyInit>(secret: &str, payload: &str) -> mlua::Result<String> {
+fn compute_hmac<T: Mac + KeyInit>(secret: &str, payload: &str) -> mlua::Result<Box<str>> {
     let mut hasher = <T as KeyInit>::new_from_slice(secret.as_bytes()).into_lua_err()?;
     hasher.update(payload.as_bytes());
     let hash = hasher.finalize().into_bytes();
-    Ok(base16ct::lower::encode_string(&hash))
+    Ok(base16ct::lower::encode_string(&hash).into_boxed_str())
 }
 
 /// Cryptography module
@@ -40,11 +40,11 @@ impl LuaUserData for LuaModCrypto {
         methods.add_method("crc32", |_, _, data: String| {
             Ok(format!("{:x}", crc32fast::hash(data.as_bytes())))
         });
-        methods.add_method("md5", |_, _, data: String| Ok(hash::<Md5>(data)));
-        methods.add_method("sha1", |_, _, data: String| Ok(hash::<Sha1>(data)));
-        methods.add_method("sha256", |_, _, data: String| Ok(hash::<Sha256>(data)));
-        methods.add_method("sha384", |_, _, data: String| Ok(hash::<Sha384>(data)));
-        methods.add_method("sha512", |_, _, data: String| Ok(hash::<Sha512>(data)));
+        methods.add_method("md5", |_, _, data: String| Ok(hash::<Md5>(&data)));
+        methods.add_method("sha1", |_, _, data: String| Ok(hash::<Sha1>(&data)));
+        methods.add_method("sha256", |_, _, data: String| Ok(hash::<Sha256>(&data)));
+        methods.add_method("sha384", |_, _, data: String| Ok(hash::<Sha384>(&data)));
+        methods.add_method("sha512", |_, _, data: String| Ok(hash::<Sha512>(&data)));
         methods.add_method(
             "hmac",
             |_, _, (alg, data, secret): (String, String, String)| match alg.as_str() {
