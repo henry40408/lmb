@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
     fmt::Write,
-    io::{BufReader, Read},
+    io::{BufReader, Read, Seek},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -214,11 +214,6 @@ where
         }
     }
 
-    /// Replace the input
-    pub fn set_input(self: &Arc<Self>, input: R) {
-        *self.input.lock() = BufReader::new(input);
-    }
-
     /// Render the errors. Delegate to [`crate::LuaSource::write_errors`].
     pub fn write_errors<W>(&self, f: W, errors: Vec<&Error>) -> Result<()>
     where
@@ -228,12 +223,22 @@ where
     }
 }
 
+impl<R> Evaluation<R>
+where
+    for<'lua> R: 'lua + Read + Send + Seek,
+{
+    /// Rewind the input.
+    pub fn rewind_input(self: &Arc<Self>) -> Result<()> {
+        Ok(self.input.lock().rewind()?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};
     use std::{
         fs,
-        io::empty,
+        io::{empty, Cursor},
         sync::Arc,
         time::{Duration, Instant},
     };
@@ -327,17 +332,18 @@ mod tests {
     }
 
     #[test]
-    fn replace_input() {
+    fn rewind_input() {
+        let input = Cursor::new("0");
         let script = "return io.read('*a')";
-        let e = Evaluation::builder(script, &b"0"[..]).build().unwrap();
+        let e = Evaluation::builder(script, input).build().unwrap();
 
         let res = e.evaluate().call().unwrap();
         assert_eq!(json!("0"), res.payload);
 
-        e.set_input(&b"1"[..]);
+        e.rewind_input().unwrap();
 
         let res = e.evaluate().call().unwrap();
-        assert_eq!(json!("1"), res.payload);
+        assert_eq!(json!("0"), res.payload);
     }
 
     #[test]

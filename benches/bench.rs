@@ -66,49 +66,41 @@ fn lmb_update(bencher: &mut Bencher) {
 // read
 
 fn lmb_read_all(bencher: &mut Bencher) {
-    let input = "1";
+    let input = Cursor::new("0");
     let script = "return io.read('*a')";
-    let e = Evaluation::builder(script, input.as_bytes())
-        .build()
-        .unwrap();
+    let e = Evaluation::builder(script, input).build().unwrap();
     bencher.iter(|| {
-        e.set_input(&b"0"[..]);
+        let _ = e.rewind_input();
         e.evaluate().call().unwrap()
     });
 }
 
 fn lmb_read_line(bencher: &mut Bencher) {
-    let input = "1";
+    let input = Cursor::new("0");
     let script = "return io.read('*l')";
-    let e = Evaluation::builder(script, input.as_bytes())
-        .build()
-        .unwrap();
+    let e = Evaluation::builder(script, input).build().unwrap();
     bencher.iter(|| {
-        e.set_input(&b"0"[..]);
+        let _ = e.rewind_input();
         e.evaluate().call().unwrap()
     });
 }
 
 fn lmb_read_number(bencher: &mut Bencher) {
-    let input = "1";
+    let input = Cursor::new("0");
     let script = "return io.read('*n')";
-    let e = Evaluation::builder(script, input.as_bytes())
-        .build()
-        .unwrap();
+    let e = Evaluation::builder(script, input).build().unwrap();
     bencher.iter(|| {
-        e.set_input(&b"0"[..]);
+        let _ = e.rewind_input();
         e.evaluate().call().unwrap()
     });
 }
 
 fn lmb_read_unicode(bencher: &mut Bencher) {
-    let input = "1";
+    let input = Cursor::new("0");
     let script = "return require('@lmb'):read_unicode(1)";
-    let e = Evaluation::builder(script, input.as_bytes())
-        .build()
-        .unwrap();
+    let e = Evaluation::builder(script, input).build().unwrap();
     bencher.iter(|| {
-        e.set_input(&b"0"[..]);
+        let _ = e.rewind_input();
         e.evaluate().call().unwrap()
     });
 }
