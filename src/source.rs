@@ -201,8 +201,7 @@ mod tests {
 
     #[test]
     fn runtime_error() {
-        let script = "return nil+1";
-        let source: LuaSource = script.into();
+        let source: LuaSource = "return nil+1".into();
         let e = Evaluation::builder(source.clone(), empty())
             .build()
             .unwrap();
