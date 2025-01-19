@@ -1,18 +1,11 @@
-use bat::{
-    assets::HighlightingAssets,
-    controller::Controller,
-    input::Input as BatInput,
-    style::{StyleComponent, StyleComponents},
-};
 use bon::{bon, builder, Builder};
 use chrono::Utc;
-use console::Term;
-use mlua::{prelude::*, Compiler};
+use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
     fmt::Write,
-    io::{stdout, BufReader, IsTerminal as _, Read},
+    io::{BufReader, Read, Seek},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -23,8 +16,7 @@ use std::{
 use tracing::{debug, error, trace_span, warn};
 
 use crate::{
-    bind_vm, Error, Input, LuaSource, PrintOptions, Result, ScheduleOptions, State, Store,
-    DEFAULT_TIMEOUT,
+    bind_vm, Error, Input, LuaSource, Result, ScheduleOptions, State, Store, DEFAULT_TIMEOUT,
 };
 
 /// Solution obtained by the function.
@@ -71,7 +63,7 @@ where
     }
 }
 
-/// Container holding the compiled function and input for evaluation.
+/// Container holding the function and input for evaluation.
 #[derive(Debug)]
 pub struct Evaluation<R>
 where
@@ -85,8 +77,6 @@ where
     store: Option<Store>,
     /// Timeout.
     timeout: Option<Duration>,
-    /// Lua code compiled by [`mlua::Compiler`].
-    compiled: Vec<u8>,
     /// Lua virtual machine.
     vm: Lua,
 }
@@ -119,11 +109,6 @@ where
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
-        let compiled = {
-            let _s = trace_span!("compile_script").entered();
-            let compiler = Compiler::new();
-            compiler.compile(&*source.script)?
-        };
         let vm = Lua::new();
         vm.sandbox(true)?;
         bind_vm(&vm, input.clone())
@@ -135,7 +120,6 @@ where
             source,
             store,
             timeout,
-            compiled,
             vm,
         }))
     }
@@ -167,14 +151,13 @@ where
         }
 
         let timeout = self.timeout.unwrap_or(DEFAULT_TIMEOUT);
-        let max_memory = Arc::new(AtomicUsize::new(0));
 
+        let max_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         self.vm.set_interrupt({
-            let max_memory = Arc::clone(&max_memory);
+            let max_memory = max_memory.clone();
             move |vm| {
-                let used_memory = vm.used_memory();
-                max_memory.fetch_max(used_memory, Ordering::Relaxed);
+                max_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
                 if start.elapsed() > timeout {
                     vm.remove_interrupt();
                     return Err(mlua::Error::runtime("timeout"));
@@ -184,14 +167,17 @@ where
         });
 
         let script_name = &self.source.name;
-        let chunk = self.vm.load(&self.compiled);
+        let compiled = self.source.compile()?;
+        let chunk = self.vm.load(&*compiled);
         let chunk = match script_name {
             Some(name) => chunk.set_name(name.to_string()),
             None => chunk,
         };
 
-        let _s = trace_span!("evaluate").entered();
-        let result = self.vm.from_value(chunk.eval()?)?;
+        let result = {
+            let _s = trace_span!("evaluate").entered();
+            self.vm.from_value(chunk.eval()?)?
+        };
 
         let duration = start.elapsed();
         let max_memory = max_memory.load(Ordering::Acquire);
@@ -230,11 +216,6 @@ where
         }
     }
 
-    /// Replace the input
-    pub fn set_input(self: &Arc<Self>, input: R) {
-        *self.input.lock() = BufReader::new(input);
-    }
-
     /// Render the errors. Delegate to [`crate::LuaSource::write_errors`].
     pub fn write_errors<W>(&self, f: W, errors: Vec<&Error>) -> Result<()>
     where
@@ -242,51 +223,15 @@ where
     {
         Ok(self.source.write_errors(f, errors).call()?)
     }
+}
 
-    /// Render the script.
-    ///
-    /// ```rust
-    /// # use std::io::empty;
-    /// use lmb::*;
-    ///
-    /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    /// let script = "return 1";
-    /// let e = Evaluation::builder(script, empty()).build().unwrap();
-    ///
-    /// let mut buf = String::new();
-    /// let print_options = PrintOptions::builder().no_color(true).build();
-    /// e.write_script(&mut buf, &print_options)?;
-    /// assert!(buf.contains("return 1"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn write_script<W>(&self, mut f: W, options: &PrintOptions) -> Result<bool>
-    where
-        W: Write,
-    {
-        let (style_components, colored_output) = if stdout().is_terminal() {
-            let components = &[StyleComponent::Grid, StyleComponent::LineNumbers];
-            (StyleComponents::new(components), !options.no_color)
-        } else {
-            (StyleComponents::new(&[]), false)
-        };
-        let mut config = bat::config::Config {
-            colored_output,
-            language: Some("lua"),
-            style_components,
-            true_color: true,
-            // required to print line numbers
-            term_width: Term::stdout().size().1 as usize,
-            ..Default::default()
-        };
-        if let Some(theme) = &options.theme {
-            config.theme = theme.to_string();
-        }
-        let assets = HighlightingAssets::from_binary();
-        let reader = Box::new(self.source.script.as_bytes());
-        let inputs = vec![BatInput::from_reader(reader)];
-        let controller = Controller::new(&config, &assets);
-        Ok(controller.run(inputs, Some(&mut f))?)
+impl<R> Evaluation<R>
+where
+    for<'lua> R: 'lua + Read + Send + Seek,
+{
+    /// Rewind the input.
+    pub fn rewind_input(self: &Arc<Self>) -> Result<()> {
+        Ok(self.input.lock().rewind()?)
     }
 }
 
@@ -295,7 +240,7 @@ mod tests {
     use serde_json::{json, Value};
     use std::{
         fs,
-        io::empty,
+        io::{empty, Cursor},
         sync::Arc,
         time::{Duration, Instant},
     };
@@ -389,24 +334,18 @@ mod tests {
     }
 
     #[test]
-    fn replace_input() {
+    fn rewind_input() {
+        let input = Cursor::new("0");
         let script = "return io.read('*a')";
-        let e = Evaluation::builder(script, &b"0"[..]).build().unwrap();
+        let e = Evaluation::builder(script, input).build().unwrap();
 
         let res = e.evaluate().call().unwrap();
         assert_eq!(json!("0"), res.payload);
 
-        e.set_input(&b"1"[..]);
+        e.rewind_input().unwrap();
 
         let res = e.evaluate().call().unwrap();
-        assert_eq!(json!("1"), res.payload);
-    }
-
-    #[test]
-    fn syntax_error() {
-        let script = "ret true"; // code with syntax error
-        let e = Evaluation::builder(script, empty()).build();
-        assert!(e.is_err());
+        assert_eq!(json!("0"), res.payload);
     }
 
     #[test]

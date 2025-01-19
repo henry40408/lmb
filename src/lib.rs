@@ -58,16 +58,16 @@ pub enum StateKey {
     /// HTTP response object
     Response,
     /// Plain string key
-    String(String),
+    String(Box<str>),
 }
 
 impl<S> From<S> for StateKey
 where
-    S: Into<String>,
+    S: AsRef<str>,
 {
     /// Converts a type that can be referenced as a string into a [`StateKey`].
     fn from(value: S) -> Self {
-        Self::String(value.into())
+        Self::String(value.as_ref().into())
     }
 }
 

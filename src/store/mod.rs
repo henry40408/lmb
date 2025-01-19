@@ -133,12 +133,14 @@ impl Store {
         let name = name.as_ref();
 
         let mut cached_stmt = conn.prepare_cached(SQL_GET_VALUE_BY_NAME)?;
-        let _s = trace_span!("store_get", name).entered();
-        let res = cached_stmt.query_row((name,), |row| {
-            let value: Vec<u8> = row.get_unwrap("value");
-            let type_hint: Box<str> = row.get_unwrap("type_hint");
-            Ok((value, type_hint))
-        });
+        let res = {
+            let _s = trace_span!("store_get", name).entered();
+            cached_stmt.query_row((name,), |row| {
+                let value: Vec<u8> = row.get_unwrap("value");
+                let type_hint: Box<str> = row.get_unwrap("type_hint");
+                Ok((value, type_hint))
+            })
+        };
         let value: Vec<u8> = match res {
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 trace!("no_value");
@@ -221,8 +223,10 @@ impl Store {
         let value = rmp_serde::to_vec(&value)?;
 
         let mut cached_stmt = conn.prepare_cached(SQL_UPSERT_STORE)?;
-        let _s = trace_span!("store_insert", name, type_hint).entered();
-        let affected = cached_stmt.execute((name, value, size, type_hint))?;
+        let affected = {
+            let _s = trace_span!("store_insert", name, type_hint).entered();
+            cached_stmt.execute((name, value, size, type_hint))?
+        };
 
         Ok(affected)
     }
@@ -294,7 +298,6 @@ impl Store {
         let tx = conn.transaction()?;
 
         let names: Vec<String> = names.iter().map(|name| name.as_ref().to_owned()).collect();
-
         let _s = trace_span!("store_update", ?names).entered();
 
         let default_vs = default_values.unwrap_or_default();
@@ -322,9 +325,10 @@ impl Store {
             values.push(value);
         }
 
-        let _s = trace_span!("call_function").entered();
-
-        f(&mut values)?;
+        {
+            let _s = trace_span!("call_function").entered();
+            f(&mut values)?;
+        }
 
         for (name, value) in std::iter::zip(&names, &values) {
             let size = Self::get_size(value);
