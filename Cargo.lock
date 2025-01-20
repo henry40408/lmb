@@ -1807,7 +1807,6 @@ dependencies = [
  "miette",
  "mlua",
  "mockito",
- "once_cell",
  "parking_lot",
  "predicates",
  "pulldown-cmark",

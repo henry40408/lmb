@@ -1,6 +1,6 @@
 use bon::{bon, builder, Builder};
 use chrono::Utc;
-use mlua::prelude::*;
+use mlua::{prelude::*, Compiler};
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
@@ -69,15 +69,11 @@ pub struct Evaluation<R>
 where
     for<'lua> R: 'lua + Read,
 {
-    /// Source.
+    compiled: Box<[u8]>,
     source: LuaSource,
-    /// Input.
     input: Input<R>,
-    /// Store.
     store: Option<Store>,
-    /// Timeout.
     timeout: Option<Duration>,
-    /// Lua virtual machine.
     vm: Lua,
 }
 
@@ -109,6 +105,11 @@ where
         store: Option<Store>,
         timeout: Option<Duration>,
     ) -> Result<Arc<Evaluation<R>>> {
+        let compiled = {
+            let _s = trace_span!("compile").entered();
+            let compiler = Compiler::new();
+            compiler.compile(&*source.script)?.into_boxed_slice()
+        };
         let vm = Lua::new();
         vm.sandbox(true)?;
         bind_vm(&vm, input.clone())
@@ -116,6 +117,7 @@ where
             .maybe_store(store.clone())
             .call()?;
         Ok(Arc::new(Evaluation {
+            compiled,
             input,
             source,
             store,
@@ -167,8 +169,7 @@ where
         });
 
         let script_name = &self.source.name;
-        let compiled = self.source.compile()?;
-        let chunk = self.vm.load(&*compiled);
+        let chunk = self.vm.load(&*self.compiled);
         let chunk = match script_name {
             Some(name) => chunk.set_name(name.to_string()),
             None => chunk,
