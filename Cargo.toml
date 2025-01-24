@@ -74,7 +74,6 @@ maplit = "1.0.2"
 predicates = "3.1.0"
 snapbox = { version = "0.6.10", features = ["cmd"] }
 test-case = "3.3.1"
-test-log = "0.2.15"
 
 [profile.release]
 codegen-units = 1

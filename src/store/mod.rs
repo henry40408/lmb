@@ -561,7 +561,7 @@ mod tests {
         assert_eq!(json!(2), store.get("a").unwrap());
     }
 
-    #[test_log::test]
+    #[test]
     fn rollback_when_error() {
         let script = r#"
         return require('@lmb').store:update({ 'a' }, function(values)
