@@ -8,8 +8,7 @@ use bon::{bon, Builder};
 use console::Term;
 use lazy_regex::{lazy_regex, Lazy, Regex};
 use miette::{miette, LabeledSpan};
-use mlua::{prelude::*, Compiler};
-use once_cell::sync::OnceCell;
+use mlua::prelude::*;
 use std::{
     fmt::Write,
     io::{stdout, IsTerminal as _},
@@ -30,8 +29,6 @@ pub struct LuaSource {
     pub name: Option<Box<str>>,
     /// Next source that can be called by the current source.
     pub next: Option<Box<LuaSource>>,
-    #[builder(default)]
-    compiled: OnceCell<Box<[u8]>>,
 }
 
 impl From<String> for LuaSource {
@@ -72,17 +69,6 @@ impl LuaSource {
                 .map(|e| Error::LuaSyntax(Box::new(e)))
                 .collect::<Vec<Error>>()
         })
-    }
-
-    /// Compile code lazily.
-    pub fn compile(&self) -> crate::Result<Box<[u8]>> {
-        self.compiled
-            .get_or_try_init(|| {
-                let compiler = Compiler::new();
-                let compiled = compiler.compile(&*self.script)?.into_boxed_slice();
-                Ok(compiled)
-            })
-            .cloned()
     }
 
     /// Render [`crate::error::Error`] to a writer.
@@ -201,8 +187,7 @@ mod tests {
 
     #[test]
     fn runtime_error() {
-        let script = "return nil+1";
-        let source: LuaSource = script.into();
+        let source: LuaSource = "return nil+1".into();
         let e = Evaluation::builder(source.clone(), empty())
             .build()
             .unwrap();
