@@ -70,8 +70,8 @@ where
     for<'lua> R: 'lua + Read,
 {
     compiled: Box<[u8]>,
-    source: LuaSource,
     input: Input<R>,
+    source: LuaSource,
     store: Option<Store>,
     timeout: Option<Duration>,
     vm: Lua,

@@ -3,6 +3,7 @@
 use bencher::{benchmark_group, benchmark_main, Bencher};
 use lmb::{Evaluation, Store};
 use mlua::prelude::*;
+use serde_json::json;
 use std::io::{empty, BufReader, Cursor, Read as _};
 
 static SCRIPT: &str = "return true";
@@ -37,6 +38,22 @@ fn mlua_sandbox_eval(bencher: &mut Bencher) {
 fn lmb_no_store(bencher: &mut Bencher) {
     let e = Evaluation::builder(SCRIPT, empty()).build().unwrap();
     bencher.iter(|| e.evaluate().call().unwrap());
+}
+
+fn store_update(bencher: &mut Bencher) {
+    let store = Store::default();
+    store.put("a", &json!(0)).unwrap();
+    bencher.iter(|| {
+        store.update(
+            &["a"],
+            |old| {
+                let old = old.get_mut(0).unwrap();
+                *old = json!(1);
+                Ok(())
+            },
+            None,
+        )
+    });
 }
 
 fn lmb_default_store(bencher: &mut Bencher) {
@@ -128,5 +145,11 @@ benchmark_group!(
     lmb_read_unicode,
     read_from_buf_reader,
 );
-benchmark_group!(store, lmb_default_store, lmb_no_store, lmb_update);
+benchmark_group!(
+    store,
+    store_update,
+    lmb_default_store,
+    lmb_no_store,
+    lmb_update
+);
 benchmark_main!(evaluation, read, store);
