@@ -5,11 +5,14 @@
 
 ## How to start admin process to manage functions and normal process to handle requests
 
-For example, to start admin process on port 3000 and handle requests on port 3001:
+* For example, to start admin process on port 3000 and handle requests on port 3001:
 
 ```sh
 ./target/release/lmb serve --admin-bind 127.0.0.1:3000 --bind 127.0.0.1:3001
 ```
+
+* Separate ports allows user to apply different firewall rules to admin process and the process handling requests.
+* `serve --admin-bind` and `serve --file` are mutually exclusive because functions are loaded from the database instead of the script files.
 
 ## Database schema
 
