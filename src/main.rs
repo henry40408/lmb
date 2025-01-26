@@ -294,10 +294,17 @@ async fn try_main() -> anyhow::Result<()> {
                 if cli.check_syntax {
                     do_check_syntax(&source)?;
                 }
-                let e = Evaluation::builder(source, io::stdin())
+                let e = match Evaluation::builder(source.clone(), io::stdin())
                     .store(store.clone())
                     .timeout(Duration::from_secs(timeout))
-                    .build()?;
+                    .build()
+                {
+                    Ok(e) => e,
+                    Err(err) => {
+                        eprint!("{err}");
+                        return Err(err.into());
+                    }
+                };
                 let mut buf = String::new();
                 match e.evaluate().call() {
                     Ok(s) => {

@@ -12,6 +12,7 @@ fn check_stdin_syntax_error() {
         .args(["--no-color", "check", "--file", "-"])
         .assert()
         .failure()
+        .stdout_eq(str![])
         .stderr_eq(str![[r#"
 × unexpected expression when looking for a statement
    ╭────
@@ -37,6 +38,7 @@ fn check_stdin_tokenizer_error() {
         .args(["--no-color", "check", "--file", "-"])
         .assert()
         .failure()
+        .stdout_eq(str![])
         .stderr_eq(str![[r#"
 × unexpected character !
    ╭────
@@ -65,7 +67,8 @@ fn eval_file() {
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 nullhello, world!
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -84,7 +87,8 @@ fn eval_json_output() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 {"bool":true,"num":1.23,"str":"hello"}
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -97,7 +101,8 @@ fn eval_stdin() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 2
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -107,6 +112,18 @@ fn eval_stdin_runtime_error() {
         .args(["--no-color", "eval", "--file", "-"])
         .assert()
         .failure()
+        .stderr_eq(str![[r#"
+
+  ×  attempt to perform arithmetic (add) on nil and number
+   ╭─[2:1]
+ 1 │ print(1)
+ 2 │ print(nil+1)
+   · ──────┬──────
+   ·       ╰──  attempt to perform arithmetic (add) on nil and number
+ 3 │ print(2)
+   ╰────
+
+"#]])
         .stderr_eq(str![[r#"
 
   ×  attempt to perform arithmetic (add) on nil and number
@@ -131,7 +148,10 @@ fn eval_stdin_syntax_error() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 
-"#]]);
+"#]])
+        .stderr_eq(str![
+            "lua error: syntax error: 1: Unexpected '!'; did you mean 'not'?"
+        ]);
 }
 
 #[test]
@@ -154,7 +174,8 @@ fn eval_store_migrate() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 true
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -170,7 +191,8 @@ fn example_cat() {
 print("hello, world!")
 
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -179,6 +201,10 @@ fn example_cat_absent() {
         .args(["--no-color", "example", "cat", "--name", "__absent__"])
         .assert()
         .failure()
+        .stderr_eq(str![[r#"
+example with __absent__ not found
+
+"#]])
         .stderr_eq(str![[r#"
 example with __absent__ not found
 
@@ -195,7 +221,8 @@ fn example_eval() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 3798601
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -224,7 +251,8 @@ fn example_list() {
                Please note that since store is epheremal the output will always be 1. 
                                                                                       
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -246,7 +274,7 @@ fn example_serve() {
 [..]  WARN lmb::serve: no store path is specified, an in-memory store will be used and values will be lost when process ends
 [..]  INFO lmb::serve: serving lua script bind=127.0.0.1:[..]
 
-"#]]);
+"#]]).stderr_eq(str![]);
 }
 
 #[test]
@@ -281,7 +309,8 @@ gruvbox-dark
 gruvbox-light
 zenburn
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -289,7 +318,8 @@ fn guide_cat() {
     Command::new(cargo_bin("lmb"))
         .args(["guide", "cat", "--name", "lua"])
         .assert()
-        .success();
+        .success()
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -301,6 +331,10 @@ fn guide_cat_absent() {
         .stderr_eq(str![[r#"
 guide with __absent__ not found
 
+"#]])
+        .stderr_eq(str![[r#"
+guide with __absent__ not found
+
 "#]]);
 }
 
@@ -309,7 +343,8 @@ fn guide_list() {
     Command::new(cargo_bin("lmb"))
         .args(["guide", "list"])
         .assert()
-        .success();
+        .success()
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -394,7 +429,8 @@ fn store_delete() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 1
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 
     Command::new(cargo_bin("lmb"))
         .args([
@@ -408,7 +444,8 @@ fn store_delete() {
         ])
         .assert()
         .success()
-        .stdout_eq(str!["1"]);
+        .stdout_eq(str!["1"])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -431,7 +468,8 @@ fn store_get() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 null
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -458,7 +496,8 @@ fn store_get_list_put() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 1
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 
     Command::new(cargo_bin("lmb"))
         .args([
@@ -475,7 +514,8 @@ fn store_get_list_put() {
  name  type    size  created at                 updated at                
  a     number  8     [..]
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 
     Command::new(cargo_bin("lmb"))
         .args([
@@ -490,7 +530,8 @@ fn store_get_list_put() {
         ])
         .assert()
         .success()
-        .stdout_eq(str!["1"]);
+        .stdout_eq(str!["1"])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -512,7 +553,8 @@ fn store_list() {
 [..]  INFO rusqlite_migration: Database migrated to version 1    
  name  type  size  created at  updated at 
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -532,7 +574,8 @@ fn store_migrate() {
         .stdout_eq(str![[r#"
 [..]  INFO rusqlite_migration: Database migrated to version 1    
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
@@ -546,5 +589,6 @@ fn store_version() {
         .stdout_eq(str![[r#"
 0 (no version set)
 
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
