@@ -8,7 +8,7 @@
 For example, to start admin process on port 3000 and handle requests on port 3001:
 
 ```sh
-./target/release/lmb --admin-bind 127.0.0.1:3000 --bind 127.0.0.1:3001
+./target/release/lmb serve --admin-bind 127.0.0.1:3000 --bind 127.0.0.1:3001
 ```
 
 ## Database schema
@@ -45,6 +45,7 @@ SELECT * FROM functions WHERE method = ? AND path = ? ORDER BY order ASC, update
 ```
 
 2. `next()` is a function to call the next function in the middleware chain.
+3. If no function is found, return `404 Not Found`.
 
 ## Admin APIs
 
