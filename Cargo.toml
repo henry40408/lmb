@@ -49,7 +49,7 @@ serde_json = "1.0.115"
 sha1 = "0.10.6"
 sha2 = "0.10.8"
 string-offsets = "0.1.0"
-termimad = "0.31.1"
+termimad = "0.31.2"
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", default-features = false, features = [
   "macros",
