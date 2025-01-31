@@ -1,6 +1,8 @@
-FROM rust:1.84.1-alpine AS builder
+FROM rust:1.84.1 AS builder
 
-RUN apk add --no-cache build-base=0.5-r3 git=2.47.2-r0
+RUN apt-get update
+RUN apt-get install -qqy build-essential git
+
 WORKDIR /usr/src/app
 COPY . .
 COPY .git .git
@@ -8,9 +10,9 @@ COPY .git .git
 ARG TARGETPLATFORM
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
     --mount=type=cache,target=/usr/src/app/target,id=${TARGETPLATFORM} \
-    sh build.sh
+    bash build.sh
 
-FROM scratch
+FROM gcr.io/distroless/cc-debian12
 
 COPY --from=builder /tmp/lmb /bin/lmb
 
