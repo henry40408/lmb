@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
     --mount=type=cache,target=/usr/src/app/target,id=${TARGETPLATFORM} \
     sh build.sh
 
-FROM alpine:3.19.1
+FROM scratch
 
 COPY --from=builder /tmp/lmb /bin/lmb
 
