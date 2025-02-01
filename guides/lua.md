@@ -178,12 +178,12 @@ $ lmb --store-path db.sqlite3 --run-migrations eval --file lua-examples/store.lu
 
 ## HTTP `@lmb/http`
 
-Lmb is able to send HTTP requests. It provides a function called `fetch`, whose signature is similar to the [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) from JavaScript. The following example sends a GET request to <https://httpbin.org/headers> with the header `I-Am: A teapot`:
+Lmb is able to send HTTP requests. It provides a function called `fetch`, whose signature is similar to the [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) from JavaScript. The following example sends a GET request to <https://httpbingo.org/headers> with the header `I-Am: A teapot`:
 
 ```lua
 local http = require('@lmb/http')
 
-local res = http:fetch('https://httpbin.org/headers', {
+local res = http:fetch('https://httpbingo.org/headers', {
   method = 'GET',
   headers = {
     ['I-Am'] = 'A teapot',
@@ -232,7 +232,7 @@ Send an HTTP request with a JSON request body:
 local http = require('@lmb/http')
 local json = require('@lmb/json')
 
-local res = http:fetch('https://httpbin.org/post', {
+local res = http:fetch('https://httpbingo.org/post', {
 	method = 'POST',
 	body = json:encode({ foo = 'bar' }),
 })

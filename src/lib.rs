@@ -149,7 +149,7 @@ mod tests {
             .create();
 
         for block in blocks {
-            let block = block.replace("https://httpbin.org", &server.url());
+            let block = block.replace("https://httpbingo.org", &server.url());
             let store = Store::default();
             let e = Evaluation::builder(&*block, empty())
                 .store(store)

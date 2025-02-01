@@ -1,19 +1,14 @@
-use std::{
-    collections::HashMap,
-    io::{BufReader, Cursor, Read},
-    sync::Arc,
-};
+use std::{collections::HashMap, io::BufReader, str::FromStr, sync::Arc};
 
+use http::{header::CONTENT_TYPE, HeaderName, HeaderValue, Request, Uri};
 use http::{Method, StatusCode};
 use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_json::{Map, Value};
 use tracing::{trace, trace_span, warn};
-use ureq::Request;
-use url::Url;
 
 use super::{lua_lmb_read, lua_lmb_read_unicode};
-use crate::Input;
+use crate::{Input, Result};
 
 /// HTTP module
 pub struct LuaModHTTP {}
@@ -23,7 +18,7 @@ pub struct LuaModHTTPResponse {
     charset: Box<str>,
     content_type: Box<str>,
     headers: HashMap<Box<str>, Vec<Box<str>>>,
-    reader: Input<Box<dyn Read + Send + Sync + 'static>>,
+    reader: Input<ureq::BodyReader<'static>>,
     status_code: StatusCode,
 }
 
@@ -53,9 +48,9 @@ impl LuaUserData for LuaModHTTPResponse {
     }
 }
 
-fn set_headers(req: Request, headers: Option<&Map<String, Value>>) -> Request {
+fn set_headers<T>(req: Request<T>, headers: Option<&Map<String, Value>>) -> Result<Request<T>> {
     let Some(headers) = headers else {
-        return req;
+        return Ok(req);
     };
     let mut new_req = req;
     for (k, v) in headers.iter() {
@@ -63,9 +58,12 @@ fn set_headers(req: Request, headers: Option<&Map<String, Value>>) -> Request {
             Value::String(v) => v.to_owned().into_boxed_str(),
             _ => v.to_string().into_boxed_str(),
         };
-        new_req = new_req.set(k, &v);
+        new_req.headers_mut().insert(
+            HeaderName::from_str(k).into_lua_err()?,
+            HeaderValue::from_str(&v).into_lua_err()?,
+        );
     }
-    new_req
+    Ok(new_req)
 }
 
 fn lua_lmb_fetch(
@@ -74,7 +72,7 @@ fn lua_lmb_fetch(
     (uri, options): (String, Option<LuaTable>),
 ) -> LuaResult<LuaModHTTPResponse> {
     let options = serde_json::to_value(options).into_lua_err()?;
-    let url: Url = uri.parse().into_lua_err()?;
+    let uri: Uri = uri.parse().into_lua_err()?;
     let method: Method = options
         .pointer("/method")
         .and_then(|v| v.as_str())
@@ -83,41 +81,62 @@ fn lua_lmb_fetch(
         .unwrap_or(Method::GET);
     let headers = options.pointer("/headers").and_then(|v| v.as_object());
     let res = if method.is_safe() {
-        let req = ureq::request_url(method.as_str(), &url);
-        let req = set_headers(req, headers);
-        let _s = trace_span!("send_http_request", %method, %url, ?headers).entered();
-        req.call()
+        let req = Request::builder()
+            .method(&method)
+            .uri(&uri)
+            .body(())
+            .into_lua_err()?;
+        let req = set_headers(req, headers).into_lua_err()?;
+        let _s = trace_span!("send_http_request", %method, %uri, ?headers).entered();
+        ureq::run(req)
     } else {
         let body = options
             .pointer("/body")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        let req = ureq::request_url(method.as_str(), &url);
-        let req = set_headers(req, headers);
-        let _s = trace_span!("send_http_request", %method, %url, ?headers).entered();
-        req.send(Cursor::new(body))
+        let req = Request::builder()
+            .method(&method)
+            .uri(&uri)
+            .body(body)
+            .into_lua_err()?;
+        let req = set_headers(req, headers).into_lua_err()?;
+        let _s = trace_span!("send_http_request", %method, %uri, ?headers).entered();
+        ureq::run(req)
     };
     let res = match res {
-        Ok(res) | Err(ureq::Error::Status(_, res)) => res,
+        Ok(res) => res,
         Err(e) => return Err(e.into_lua_err()),
     };
-    let charset = res.charset().to_owned().into_boxed_str();
-    let content_type = res.content_type().to_owned().into_boxed_str();
+    let charset = res
+        .body()
+        .charset()
+        .unwrap_or_default()
+        .to_owned()
+        .into_boxed_str();
+    let content_type = res
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .into();
     let headers = {
         let mut headers = HashMap::new();
-        for name in res.headers_names() {
+        for name in res.headers().keys() {
             let values = res
-                .all(&name)
-                .into_iter()
-                .map(|s| s.to_owned().into_boxed_str())
-                .collect::<Vec<_>>();
-            headers.insert(name.into_boxed_str(), values);
+                .headers()
+                .get_all(name)
+                .iter()
+                .filter_map(|s| s.to_str().ok())
+                .map(Into::into)
+                .collect();
+            headers.insert(name.to_string().into_boxed_str(), values);
         }
         headers
     };
-    let status_code = StatusCode::from_u16(res.status()).into_lua_err()?;
-    trace!(%status_code, charset, content_type, "response");
-    let reader = Arc::new(Mutex::new(BufReader::new(res.into_reader())));
+    let status_code = res.status();
+    trace!(%status_code, content_type, "response");
+    let (_, body) = res.into_parts();
+    let reader = Arc::new(Mutex::new(BufReader::new(body.into_reader())));
     Ok(LuaModHTTPResponse {
         charset,
         content_type,

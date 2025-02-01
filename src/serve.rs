@@ -196,7 +196,7 @@ pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
     Ok(app)
 }
 
-pub async fn serve_file<'a>(opts: &ServeOptions) -> anyhow::Result<()> {
+pub async fn serve_file(opts: &ServeOptions) -> anyhow::Result<()> {
     let bind = &opts.bind;
     let app = init_route(opts)?;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
