@@ -236,6 +236,7 @@ fn example_list() {
  algebra       Return the square of number.                                           
  count-bytes   Count bytes from standard input.                                       
  crypto        Hash data with HMAC-SHA256.                                            
+ echo          Echo the input.                                                        
  error         Demonstrate how the runner reacts when an error is thrown.             
  hello         Hello, world!                                                          
  http-echo     Echo headers and body from HTTP request.                               
