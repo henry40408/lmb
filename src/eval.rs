@@ -282,7 +282,7 @@ mod tests {
     #[test_case("input.lua", "lua", json!(null))]
     #[test_case("read-unicode.lua", "你好，世界", "你好".into())]
     #[test_case("return-table.lua", "123", json!({ "bool": true, "num": 1.23, "str": "hello" }))]
-    #[test_case("store.lua", "", json!([1]))]
+    #[test_case("store.lua", "", json!({ "a": 1 }))]
     fn evaluate_examples(filename: &str, input: &'static str, expected: Value) {
         let script = fs::read_to_string(format!("./lua-examples/{filename}")).unwrap();
         let store = Store::default();

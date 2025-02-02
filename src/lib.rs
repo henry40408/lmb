@@ -155,7 +155,12 @@ mod tests {
                 .store(store)
                 .build()
                 .unwrap();
-            e.evaluate().call().unwrap();
+            if let Err(err) = e.evaluate().call() {
+                let mut f = String::new();
+                let _ = e.write_errors(&mut f, vec![&err]);
+                eprintln!("{f}");
+                panic!("evaluation failed");
+            }
         }
 
         post_mock.assert();

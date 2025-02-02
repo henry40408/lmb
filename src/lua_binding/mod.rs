@@ -1,4 +1,5 @@
 use bon::{builder, Builder};
+use dashmap::DashMap;
 use mlua::prelude::*;
 use serde_json::Value;
 use std::{
@@ -101,6 +102,27 @@ impl LuaUserData for LuaStderr {
     }
 }
 
+struct LuaStoreSnapshot {
+    inner: Arc<DashMap<Box<str>, Value>>,
+}
+
+impl LuaUserData for LuaStoreSnapshot {
+    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: Box<str>| {
+            let value = this.inner.entry(key).or_insert_with(|| Value::Null).clone();
+            vm.to_value(&value)
+        });
+        methods.add_meta_method(
+            LuaMetaMethod::NewIndex,
+            |vm, this, (key, value): (Box<str>, LuaValue)| {
+                let v: Value = vm.from_value(value.clone()).into_lua_err()?;
+                this.inner.insert(key, v);
+                Ok(value)
+            },
+        );
+    }
+}
+
 struct LuaStoreBinding {
     store: Option<Store>,
 }
@@ -113,10 +135,9 @@ impl LuaUserData for LuaStoreBinding {
                 let Some(store) = &this.store else {
                     return Ok(LuaNil);
                 };
-                let update_fn = |old: &mut Vec<Value>| -> LuaResult<()> {
-                    let old_v = vm.to_value(old)?;
-                    let new = f.call::<LuaValue>(old_v)?;
-                    *old = vm.from_value(new)?;
+                let update_fn = |inner: Arc<DashMap<Box<str>, Value>>| -> LuaResult<()> {
+                    let snapshot = LuaStoreSnapshot { inner };
+                    f.call::<LuaValue>(snapshot)?;
                     Ok(())
                 };
                 let default_values = match default_values {
