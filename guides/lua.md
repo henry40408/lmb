@@ -95,18 +95,17 @@ The function accepts three arguments:
 local m = require('@lmb')
 
 local function do_update()
-  return m.store:update({ 'c' }, function(values)
-    local c = table.unpack(values)
-    assert(tonumber(c), 'c is not a number')
-    return table.pack(c + 1)
-  end, { 1 })
+  return m.store:update({ 'c' }, function(s) -- s = snapshot
+    assert(tonumber(s.c), 'c is not a number')
+    s.c = s.c + 1
+  end, { c = 1 })
 end
 
 assert(not m.store.c)
 
 m.store.c = 1
 assert(1 == m.store.c)
-assert(2 == do_update()[1])
+assert(2 == do_update().c)
 assert(2 == m.store.c)
 
 m.store.c = 'not_a_number'
@@ -125,13 +124,13 @@ The following is a classic example of a transaction:
 local m = require('@lmb')
 
 local function transfer(amount)
-  return m.store:update({ 'alice', 'bob' }, function(values)
-    local alice, bob = table.unpack(values)
-    if alice < amount then
+  return m.store:update({ 'alice', 'bob' }, function(s) -- s = snapshot
+    if s.alice < amount then
       error('insufficient funds')
     end
-    return table.pack(alice - amount, bob + amount)
-  end, { 0, 0 })
+    s.alice = s.alice - amount
+    s.bob = s.bob + amount
+  end, { alice = 0, bob = 0 })
 end
 
 m.store.alice = 50
@@ -151,9 +150,8 @@ m.store.bob = 0
 -- successful transfer
 local ok, res = pcall(function() return transfer(100) end)
 assert(ok)
-local alice, bob = table.unpack(res)
-assert(alice == 0)
-assert(bob == 100)
+assert(res.alice == 0)
+assert(res.bob == 100)
 
 assert(m.store.alice == 0)
 assert(m.store.bob == 100)

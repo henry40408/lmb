@@ -1,10 +1,12 @@
 use bon::Builder;
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use rusqlite_migration::SchemaVersion;
 use serde_json::Value;
 use std::{
+    collections::HashMap,
     mem::size_of,
     path::{Path, PathBuf},
     sync::Arc,
@@ -242,21 +244,22 @@ impl Store {
     /// # Successfully update the value
     ///
     /// ```rust
+    /// # use maplit::hashmap;
     /// # use serde_json::{json, Value};
     /// use lmb::*;
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let store = Store::default();
     /// let updated = store.update(&["b"], |old| {
-    ///     if let Some(old) = old.get_mut(0) {
-    ///         if let Value::Number(_) = old {
-    ///             let n = old.as_i64().ok_or(mlua::Error::runtime("n is required"))?;
-    ///             *old = json!(n + 1);
+    ///     old.entry("b".into()).and_modify(|v| {
+    ///         if let Value::Number(n) = v {
+    ///             let n = n.as_i64().expect("n is required");
+    ///             *v = json!(n + 1);
     ///         }
-    ///     }
+    ///     });
     ///     Ok(())
-    /// }, Some(vec![1.into()]));
-    /// assert_eq!(vec![json!(2)], updated?);
+    /// }, Some(hashmap!{ "b".into() => 1.into() }));
+    /// assert_eq!(hashmap!{ "b".into() => 2.into() }, updated?);
     /// assert_eq!(json!(2), store.get("b")?);
     /// # Ok(())
     /// # }
@@ -265,6 +268,7 @@ impl Store {
     /// # Do nothing when an error is returned
     ///
     /// ```rust
+    /// # use maplit::hashmap;
     /// # use serde_json::{json, Value};
     /// use lmb::*;
     ///
@@ -272,17 +276,15 @@ impl Store {
     /// let store = Store::default();
     /// store.put("a", &1.into());
     /// let res = store.update(&["a"], |old| {
-    ///     if let Some(old) = old.get_mut(0) {
-    ///        if let Value::Number(_) = old {
-    ///           let n = old.as_i64().ok_or(mlua::Error::runtime("n is required"))?;
-    ///           if n == 1 {
-    ///               return Err(mlua::Error::runtime("something went wrong"));
-    ///           }
-    ///           *old = json!(n + 1);
-    ///        }
+    ///     if let Value::Number(n) = old.get("a").expect("n is required").clone() {
+    ///         let n = n.as_i64().expect("n is required");
+    ///         if n == 1 {
+    ///             return Err(mlua::Error::runtime("n equals to 1"));
+    ///         }
+    ///         old.insert("a".into(), json!(n + 1));
     ///     }
     ///     Ok(())
-    /// }, Some(vec![1.into()]));
+    /// }, Some(hashmap!{ "a".into() => 1.into() }));
     /// assert!(res.is_err());
     /// assert_eq!(json!(1), store.get("a")?);
     /// # Ok(())
@@ -291,29 +293,31 @@ impl Store {
     pub fn update<S: AsRef<str>>(
         &self,
         names: &[S],
-        f: impl FnOnce(&mut Vec<Value>) -> mlua::Result<()>,
-        default_values: Option<Vec<Value>>,
-    ) -> Result<Vec<Value>> {
+        f: impl FnOnce(Arc<DashMap<Box<str>, Value>>) -> mlua::Result<()>,
+        default_values: Option<HashMap<Box<str>, Value>>,
+    ) -> Result<HashMap<Box<str>, Value>> {
         let mut conn = self.conn.lock();
         let tx = conn.transaction()?;
 
-        let names: Vec<String> = names.iter().map(|name| name.as_ref().to_owned()).collect();
+        let names = names
+            .iter()
+            .map(|name| name.as_ref().to_owned().into_boxed_str())
+            .collect::<Vec<_>>();
         let _s = trace_span!("store_update", ?names).entered();
 
-        let default_vs = default_values.unwrap_or_default();
-        let filled_default_values: Vec<&Value> = default_vs
-            .iter()
-            .chain(std::iter::repeat(&Value::Null))
-            .take(names.len())
-            .collect();
+        let mut default_values = default_values.unwrap_or_default();
 
-        let mut values = vec![];
-        for (name, default_value) in std::iter::zip(&names, &filled_default_values) {
+        let values = DashMap::new();
+        for name in &names {
             let mut cached_stmt = tx.prepare_cached(SQL_GET_VALUE_BY_NAME)?;
             let value = match cached_stmt.query_row((name,), |row| row.get(0)) {
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     trace!("default_value");
-                    rmp_serde::to_vec(default_value)?
+                    let default_value = default_values
+                        .entry(name.clone())
+                        .or_insert_with(|| Value::Null)
+                        .clone();
+                    rmp_serde::to_vec(&default_value)?
                 }
                 Err(e) => return Err(e.into()),
                 Ok(v) => {
@@ -322,17 +326,22 @@ impl Store {
                 }
             };
             let value: Value = rmp_serde::from_slice(&value)?;
-            values.push(value);
+            values.insert(name.clone(), value);
         }
 
+        let values = Arc::new(values);
         {
             let _s = trace_span!("call_function").entered();
-            f(&mut values)?;
+            f(values.clone())?;
         }
 
-        for (name, value) in std::iter::zip(&names, &values) {
-            let size = Self::get_size(value);
-            let type_hint = Self::type_hint(value);
+        for name in &names {
+            let value = values
+                .entry(name.clone())
+                .or_insert_with(|| Value::Null)
+                .clone();
+            let size = Self::get_size(&value);
+            let type_hint = Self::type_hint(&value);
 
             let value = rmp_serde::to_vec(&value)?;
             let mut cached_stmt = tx.prepare_cached(SQL_UPSERT_STORE)?;
@@ -342,6 +351,10 @@ impl Store {
         tx.commit()?;
         trace!("updated");
 
+        let values = values
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect::<HashMap<_, _>>();
         Ok(values)
     }
 
@@ -417,10 +430,9 @@ mod tests {
     #[test]
     fn concurrency() {
         let script = r#"
-        return require('@lmb').store:update({ 'a' }, function(values)
-          local a = table.unpack(values)
-          return table.pack(a + 1)
-        end, {0})
+        return require('@lmb').store:update({ 'a' }, function(s)
+          s.a = s.a + 1
+        end, { a = 0 })
         "#;
 
         let store = Store::default();
@@ -542,9 +554,8 @@ mod tests {
     #[test]
     fn update_without_default_value() {
         let script = r#"
-        return require('@lmb').store:update({ 'a' }, function(values)
-          local a = table.unpack(values)
-          return table.pack(a + 1)
+        return require('@lmb').store:update({ 'a' }, function(s)
+          s.a = s.a + 1
         end)
         "#;
 
@@ -557,7 +568,7 @@ mod tests {
             .unwrap();
 
         let res = e.evaluate().call().unwrap();
-        assert_eq!(json!([2]), res.payload);
+        assert_eq!(json!({ "a": 2 }), res.payload);
         assert_eq!(json!(2), store.get("a").unwrap());
     }
 

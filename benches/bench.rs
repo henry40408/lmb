@@ -47,8 +47,7 @@ fn store_update(bencher: &mut Bencher) {
         store.update(
             &["a"],
             |old| {
-                let old = old.get_mut(0).unwrap();
-                *old = json!(1);
+                old.insert("a".into(), json!(1));
                 Ok(())
             },
             None,
@@ -67,10 +66,9 @@ fn lmb_default_store(bencher: &mut Bencher) {
 
 fn lmb_update(bencher: &mut Bencher) {
     let script = r#"
-    return require("@lmb").store:update({ "a" }, function(values)
-    	local a = table.unpack(values)
-    	return table.pack(a + 1)
-    end, { 0 })
+    return require("@lmb").store:update({ "a" }, function(s)
+      s.a = s.a + 1
+    end, { a = 0 })
     "#;
     let store = Store::default();
     let e = Evaluation::builder(script, empty())
