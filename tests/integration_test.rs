@@ -20,7 +20,6 @@ fn check_stdin_syntax_error() {
    ·     ──┬─
    ·       ╰── unexpected expression when looking for a statement
    ╰────
-
   × unexpected token, this needs to be a statement
    ╭────
  1 │ ret true
@@ -46,7 +45,6 @@ fn check_stdin_tokenizer_error() {
    ·        ┬
    ·        ╰── unexpected character !
    ╰────
-
   × unexpected token, this needs to be a statement
    ╭────
  1 │ return !true
@@ -113,7 +111,6 @@ fn eval_stdin_runtime_error() {
         .assert()
         .failure()
         .stderr_eq(str![[r#"
-
   ×  attempt to perform arithmetic (add) on nil and number
    ╭─[2:1]
  1 │ print(1)
@@ -125,7 +122,6 @@ fn eval_stdin_runtime_error() {
 
 "#]])
         .stderr_eq(str![[r#"
-
   ×  attempt to perform arithmetic (add) on nil and number
    ╭─[2:1]
  1 │ print(1)
