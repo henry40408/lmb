@@ -27,7 +27,7 @@
 
 ### Prerequisites
 
-- Rust ≥1.81.0
+- Rust ≥ 1.85.0
 
 ```bash
 git clone https://github.com/henry40408/lmb
