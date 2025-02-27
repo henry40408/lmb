@@ -1,9 +1,9 @@
-use bon::{builder, Builder};
+use bon::{Builder, builder};
 use dashmap::DashMap;
 use mlua::prelude::*;
 use serde_json::Value;
 use std::{
-    io::{stderr, stdout, Read, Write as _},
+    io::{Read, Write as _, stderr, stdout},
     sync::Arc,
 };
 
@@ -230,7 +230,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::io::empty;
     use test_case::test_case;
 

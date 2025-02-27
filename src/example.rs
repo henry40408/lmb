@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use bon::Builder;
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 use toml::{Table, Value};
 
 use crate::LuaSource;

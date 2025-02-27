@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::BufReader, str::FromStr, sync::Arc};
 
-use http::{header::CONTENT_TYPE, HeaderName, HeaderValue, Request, Uri};
+use http::{HeaderName, HeaderValue, Request, Uri, header::CONTENT_TYPE};
 use http::{Method, StatusCode};
 use mlua::prelude::*;
 use parking_lot::Mutex;

@@ -14,7 +14,7 @@ use std::{
 use stmt::*;
 use tracing::{debug, trace, trace_span};
 
-use crate::{Result, MIGRATIONS};
+use crate::{MIGRATIONS, Result};
 
 mod stmt;
 
@@ -421,7 +421,7 @@ impl Default for Store {
 #[cfg(test)]
 mod tests {
     use assert_fs::NamedTempFile;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::{io::empty, thread};
     use test_case::test_case;
 

@@ -1,6 +1,6 @@
 use assert_fs::NamedTempFile;
 use snapbox::{
-    cmd::{cargo_bin, Command},
+    cmd::{Command, cargo_bin},
     str,
 };
 use std::time::Duration;

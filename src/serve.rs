@@ -1,11 +1,11 @@
 use crate::StoreOptions;
 use axum::{
+    Router,
     body::Bytes,
     extract::{Path, State as AxumState},
     http::{HeaderMap, Method, StatusCode},
     response::IntoResponse,
     routing::any,
-    Router,
 };
 use bon::Builder;
 use http::{HeaderName, HeaderValue};
@@ -15,7 +15,7 @@ use std::{
     collections::HashMap, io::Cursor, net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration,
 };
 use tower_http::trace::{self, TraceLayer};
-use tracing::{error, info, warn, Level};
+use tracing::{Level, error, info, warn};
 
 #[derive(Builder, Clone)]
 struct AppState {
@@ -176,7 +176,9 @@ pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
         store
     } else {
         let store = Store::default();
-        warn!("no store path is specified, an in-memory store will be used and values will be lost when process ends");
+        warn!(
+            "no store path is specified, an in-memory store will be used and values will be lost when process ends"
+        );
         store
     };
     let app_state = AppState::builder(opts.source.clone())
@@ -209,12 +211,12 @@ pub async fn serve_file(opts: &ServeOptions) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::init_route;
-    use crate::{serve::ServeOptions, Cli};
+    use crate::{Cli, serve::ServeOptions};
     use axum_test::TestServer;
     use clap::Parser;
     use http::HeaderValue;
     use lmb::StoreOptions;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::net::SocketAddr;
 
     #[tokio::test]
