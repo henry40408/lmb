@@ -1,14 +1,14 @@
-use bon::{bon, builder, Builder};
+use bon::{Builder, bon, builder};
 use chrono::Utc;
-use mlua::{prelude::*, Compiler};
+use mlua::{Compiler, prelude::*};
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
     fmt::Write,
     io::{BufReader, Read, Seek},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant},
@@ -16,7 +16,7 @@ use std::{
 use tracing::{debug, error, trace_span, warn};
 
 use crate::{
-    bind_vm, Error, Input, LuaSource, Result, ScheduleOptions, State, Store, DEFAULT_TIMEOUT,
+    DEFAULT_TIMEOUT, Error, Input, LuaSource, Result, ScheduleOptions, State, Store, bind_vm,
 };
 
 /// Solution obtained by the function.
@@ -238,10 +238,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::{
         fs,
-        io::{empty, Cursor},
+        io::{Cursor, empty},
         sync::Arc,
         time::{Duration, Instant},
     };

@@ -1,10 +1,10 @@
 #![allow(clippy::unwrap_used)]
 
-use bencher::{benchmark_group, benchmark_main, Bencher};
+use bencher::{Bencher, benchmark_group, benchmark_main};
 use lmb::{Evaluation, Store};
 use mlua::prelude::*;
 use serde_json::json;
-use std::io::{empty, BufReader, Cursor, Read as _};
+use std::io::{BufReader, Cursor, Read as _, empty};
 
 static SCRIPT: &str = "return true";
 

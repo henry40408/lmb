@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use bon::Builder;
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 /// Guide.

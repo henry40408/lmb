@@ -1,11 +1,11 @@
 use anyhow::bail;
 use clap::{Parser, Subcommand};
 use clio::*;
-use comfy_table::{presets, Table};
+use comfy_table::{Table, presets};
 use cron::Schedule;
 use lmb::{
-    Error, Evaluation, LuaSource, PrintOptions, ScheduleOptions, Store, StoreOptions,
-    DEFAULT_TIMEOUT, EXAMPLES, GUIDES,
+    DEFAULT_TIMEOUT, EXAMPLES, Error, Evaluation, GUIDES, LuaSource, PrintOptions, ScheduleOptions,
+    Store, StoreOptions,
 };
 use mlua::prelude::*;
 use rayon::prelude::*;
@@ -21,7 +21,7 @@ use std::{
 };
 use termimad::MadSkin;
 use tracing::Level;
-use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 mod serve;
 

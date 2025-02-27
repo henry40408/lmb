@@ -4,14 +4,14 @@ use bat::{
     input::Input as BatInput,
     style::{StyleComponent, StyleComponents},
 };
-use bon::{bon, Builder};
+use bon::{Builder, bon};
 use console::Term;
-use lazy_regex::{lazy_regex, Lazy, Regex};
-use miette::{miette, LabeledSpan};
+use lazy_regex::{Lazy, Regex, lazy_regex};
+use miette::{LabeledSpan, miette};
 use mlua::prelude::*;
 use std::{
     fmt::Write,
-    io::{stdout, IsTerminal as _},
+    io::{IsTerminal as _, stdout},
 };
 use string_offsets::StringOffsets;
 

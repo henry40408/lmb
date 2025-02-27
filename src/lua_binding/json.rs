@@ -17,7 +17,7 @@ impl LuaUserData for LuaModJSON {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::io::empty;
 
     use crate::Evaluation;

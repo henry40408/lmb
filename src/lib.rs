@@ -4,7 +4,7 @@
 
 use bon::Builder;
 use dashmap::DashMap;
-use include_dir::{include_dir, Dir};
+use include_dir::{Dir, include_dir};
 use parking_lot::Mutex;
 use rusqlite_migration::Migrations;
 use std::{
@@ -85,7 +85,7 @@ pub struct PrintOptions {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Evaluation, StateKey, Store, MIGRATIONS};
+    use crate::{Evaluation, MIGRATIONS, StateKey, Store};
     use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
     use serde_json::json;
     use std::io::empty;
