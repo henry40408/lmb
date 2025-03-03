@@ -22,7 +22,7 @@ chrono = "0.4.38"
 comfy-table = "7.1.1"
 clap = { version = "4.4.8", features = ["derive", "env"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
-console = "0.15.8"
+console = "0.15.11"
 crc32fast = "1.4.2"
 cron = "0.15.0"
 crypto-common = "0.1.3"
