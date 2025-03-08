@@ -1,3 +1,5 @@
+use std::num::TryFromIntError;
+
 use mlua::prelude::*;
 use thiserror::Error;
 
@@ -36,5 +38,8 @@ pub enum Error {
     RMPEncode(#[from] rmp_serde::encode::Error),
     /// Error from [`serde_json`] library
     #[error("serde JSON error: {0}")]
-    SerdeJSONError(#[from] serde_json::Error),
+    SerdeJSON(#[from] serde_json::Error),
+    /// Failed to convert integer
+    #[error("convert integer error: {0}")]
+    TryFromInt(#[from] TryFromIntError),
 }

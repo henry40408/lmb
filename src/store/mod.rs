@@ -110,7 +110,8 @@ impl Store {
     /// ```
     pub fn delete<S: AsRef<str>>(&self, name: S) -> Result<usize> {
         let conn = self.conn.lock();
-        let affected = conn.execute(SQL_DELETE_VALUE_BY_NAME, (name.as_ref(),))?;
+        let (sql, values) = stmt_delete_value_by_name(name);
+        let affected = conn.execute(&sql, &*values.as_params())?;
         Ok(affected)
     }
 
@@ -134,7 +135,8 @@ impl Store {
 
         let name = name.as_ref();
 
-        let mut cached_stmt = conn.prepare_cached(SQL_GET_VALUE_BY_NAME)?;
+        let (sql, _) = stmt_get_value_by_name(name);
+        let mut cached_stmt = conn.prepare_cached(&sql)?;
         let res = {
             let _s = trace_span!("store_get", name).entered();
             cached_stmt.query_row((name,), |row| {
@@ -174,7 +176,8 @@ impl Store {
     /// ```
     pub fn list(&self) -> Result<Vec<StoreValueMetadata>> {
         let conn = self.conn.lock();
-        let mut cached_stmt = conn.prepare_cached(SQL_GET_ALL_VALUES)?;
+        let (sql, _) = stmt_get_all_values();
+        let mut cached_stmt = conn.prepare_cached(&sql)?;
         let mut rows = cached_stmt.query([])?;
         let mut res = vec![];
         while let Some(row) = rows.next()? {
@@ -224,10 +227,11 @@ impl Store {
         let type_hint = Self::type_hint(value);
         let value = rmp_serde::to_vec(&value)?;
 
-        let mut cached_stmt = conn.prepare_cached(SQL_UPSERT_STORE)?;
+        let (sql, values) = stmt_upsert_store(name, value, size, type_hint)?;
+        let mut cached_stmt = conn.prepare_cached(&sql)?;
         let affected = {
             let _s = trace_span!("store_insert", name, type_hint).entered();
-            cached_stmt.execute((name, value, size, type_hint))?
+            cached_stmt.execute(&*values.as_params())?
         };
 
         Ok(affected)
@@ -309,8 +313,9 @@ impl Store {
 
         let values = DashMap::new();
         for name in &names {
-            let mut cached_stmt = tx.prepare_cached(SQL_GET_VALUE_BY_NAME)?;
-            let value = match cached_stmt.query_row((name,), |row| row.get(0)) {
+            let (sql, values_) = stmt_get_value_by_name(name);
+            let mut cached_stmt = tx.prepare_cached(&sql)?;
+            let value = match cached_stmt.query_row(&*values_.as_params(), |row| row.get(0)) {
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     trace!("default_value");
                     let default_value = default_values
@@ -344,8 +349,9 @@ impl Store {
             let type_hint = Self::type_hint(&value);
 
             let value = rmp_serde::to_vec(&value)?;
-            let mut cached_stmt = tx.prepare_cached(SQL_UPSERT_STORE)?;
-            cached_stmt.execute((name, value, size, type_hint))?;
+            let (sql, values) = stmt_upsert_store(name, value, size, type_hint)?;
+            let mut cached_stmt = tx.prepare_cached(&sql)?;
+            cached_stmt.execute(&*values.as_params())?;
         }
 
         tx.commit()?;
