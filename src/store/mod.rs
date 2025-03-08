@@ -147,12 +147,12 @@ impl Store {
         };
         let value: Vec<u8> = match res {
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                trace!("no_value");
+                trace!("value is absent");
                 return Ok(Value::Null);
             }
             Err(e) => return Err(e.into()),
             Ok((v, type_hint)) => {
-                trace!(type_hint, "value");
+                trace!(type_hint, "value is present");
                 v
             }
         };
@@ -313,11 +313,12 @@ impl Store {
 
         let values = DashMap::new();
         for name in &names {
+            let _s = trace_span!("query", name).entered();
             let (sql, values_) = stmt_get_value_by_name(name);
             let mut cached_stmt = tx.prepare_cached(&sql)?;
             let value = match cached_stmt.query_row(&*values_.as_params(), |row| row.get(0)) {
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
-                    trace!("default_value");
+                    trace!("use default value");
                     let default_value = default_values
                         .entry(name.clone())
                         .or_insert_with(|| Value::Null)
@@ -326,7 +327,7 @@ impl Store {
                 }
                 Err(e) => return Err(e.into()),
                 Ok(v) => {
-                    trace!("value");
+                    trace!("value is present");
                     v
                 }
             };
@@ -341,6 +342,7 @@ impl Store {
         }
 
         for name in &names {
+            let _s = trace_span!("upsert", name).entered();
             let value = values
                 .entry(name.clone())
                 .or_insert_with(|| Value::Null)
@@ -355,7 +357,7 @@ impl Store {
         }
 
         tx.commit()?;
-        trace!("updated");
+        trace!("value updated");
 
         let values = values
             .iter()
