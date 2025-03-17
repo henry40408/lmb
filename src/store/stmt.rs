@@ -46,7 +46,7 @@ where
     S: AsRef<str>,
 {
     let (sql, values) = Query::select()
-        .columns([StoreId::Value, StoreId::TypeHint])
+        .columns([StoreId::TypeHint, StoreId::Value])
         .from(StoreId::Table)
         .cond_where(Expr::column(StoreId::Name).eq(name.as_ref()))
         .build_rusqlite(SqliteQueryBuilder);
