@@ -135,29 +135,27 @@ impl Store {
 
         let name = name.as_ref();
 
-        let (sql, _) = stmt_get_value_by_name(name);
+        let (sql, values) = stmt_get_value_by_name(name);
         let mut cached_stmt = conn.prepare_cached(&sql)?;
-        let res = {
+        let row = {
             let _s = trace_span!("store_get", name).entered();
-            cached_stmt.query_row((name,), |row| {
-                let value: Vec<u8> = row.get_unwrap("value");
+            cached_stmt.query_row(&*values.as_params(), |row| {
                 let type_hint: Box<str> = row.get_unwrap("type_hint");
-                Ok((value, type_hint))
+                let value: Vec<u8> = row.get_unwrap("value");
+                Ok((type_hint, value))
             })
         };
-        let value: Vec<u8> = match res {
+        match row {
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 trace!("value is absent");
-                return Ok(Value::Null);
+                Ok(Value::Null)
             }
-            Err(e) => return Err(e.into()),
-            Ok((v, type_hint)) => {
+            Err(e) => Err(e.into()),
+            Ok((type_hint, value)) => {
                 trace!(type_hint, "value is present");
-                v
+                Ok(rmp_serde::from_slice(&value)?)
             }
-        };
-
-        Ok(rmp_serde::from_slice::<Value>(&value)?)
+        }
     }
 
     /// List values.
@@ -176,25 +174,20 @@ impl Store {
     /// ```
     pub fn list(&self) -> Result<Vec<StoreValueMetadata>> {
         let conn = self.conn.lock();
-        let (sql, _) = stmt_get_all_values();
+
+        let (sql, values) = stmt_get_all_values();
         let mut cached_stmt = conn.prepare_cached(&sql)?;
-        let mut rows = cached_stmt.query([])?;
+        let mut rows = cached_stmt.query(&*values.as_params())?;
+
         let mut res = vec![];
-        while let Some(row) = rows.next()? {
-            let name: Box<str> = row.get_unwrap("name");
-            let type_hint: Box<str> = row.get_unwrap("type_hint");
-            let size: usize = row.get_unwrap("size");
-            let created_at: DateTime<Utc> = row.get_unwrap("created_at");
-            let updated_at: DateTime<Utc> = row.get_unwrap("updated_at");
-            res.push(
-                StoreValueMetadata::builder()
-                    .name(name)
-                    .type_hint(type_hint)
-                    .size(size)
-                    .created_at(created_at)
-                    .updated_at(updated_at)
-                    .build(),
-            );
+        while let Ok(Some(row)) = rows.next() {
+            res.push(StoreValueMetadata {
+                name: row.get_unwrap("name"),
+                size: row.get_unwrap("size"),
+                type_hint: row.get_unwrap("type_hint"),
+                created_at: row.get_unwrap("created_at"),
+                updated_at: row.get_unwrap("updated_at"),
+            });
         }
         Ok(res)
     }
@@ -316,7 +309,7 @@ impl Store {
             let _s = trace_span!("query", name).entered();
             let (sql, values_) = stmt_get_value_by_name(name);
             let mut cached_stmt = tx.prepare_cached(&sql)?;
-            let value = match cached_stmt.query_row(&*values_.as_params(), |row| row.get(0)) {
+            let value = match cached_stmt.query_row(&*values_.as_params(), |row| row.get("value")) {
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     trace!("use default value");
                     let default_value = default_values
@@ -397,7 +390,7 @@ impl Store {
 }
 
 /// Value metadata. The value itself is intentionally not included.
-#[derive(Builder, Debug)]
+#[derive(Debug)]
 pub struct StoreValueMetadata {
     /// Name.
     pub name: Box<str>,
