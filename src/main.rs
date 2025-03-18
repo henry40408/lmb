@@ -47,21 +47,25 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
+    /// Database lock timeout in milliseconds.
+    #[arg(long, env = "LMB_BUSY_TIMEOUT_MS")]
+    busy_timeout: Option<u64>,
+
     /// No color <https://no-color.org/>
     #[arg(long, env = "NO_COLOR")]
     no_color: bool,
-
-    /// Store path. By default, the store is in-memory,
-    /// and changes will be lost when the program terminates.
-    /// To persist values, a store path must be specified
-    #[arg(long, env = "LMB_STORE_PATH")]
-    store_path: Option<PathBuf>,
 
     /// Migrate the store before startup.
     /// If the store path is not specified and the store is in-memory,
     /// it will be automatically migrated
     #[arg(long, env = "LMB_RUN_MIGRATIONS")]
     run_migrations: bool,
+
+    /// Store path. By default, the store is in-memory,
+    /// and changes will be lost when the program terminates.
+    /// To persist values, a store path must be specified
+    #[arg(long, env = "LMB_STORE_PATH")]
+    store_path: Option<PathBuf>,
 
     /// Theme. Checkout `list-themes` for available themes
     #[arg(long, env = "LMB_THEME")]
@@ -236,11 +240,13 @@ fn read_script(input: &mut Input) -> anyhow::Result<LuaSource> {
 
 #[builder]
 fn prepare_store(
+    #[builder(required)] busy_timeout_ms: Option<u64>,
     run_migrations: bool,
     #[builder(required)] store_path: Option<PathBuf>,
 ) -> anyhow::Result<Store> {
     let store = if let Some(store_path) = store_path {
         Store::builder()
+            .maybe_busy_timeout(busy_timeout_ms.map(Duration::from_millis))
             .path(&store_path)
             .run_migrations(run_migrations)
             .build()?
@@ -289,6 +295,7 @@ async fn try_main() -> anyhow::Result<()> {
         }),
         Commands::Evaluate { files, timeout } => {
             let store = prepare_store()
+                .busy_timeout_ms(cli.busy_timeout)
                 .run_migrations(cli.run_migrations)
                 .store_path(cli.store_path)
                 .call()?;
@@ -340,6 +347,7 @@ async fn try_main() -> anyhow::Result<()> {
             };
             let script = found.source.script.trim();
             let store = prepare_store()
+                .busy_timeout_ms(cli.busy_timeout)
                 .run_migrations(cli.run_migrations)
                 .store_path(cli.store_path)
                 .call()?;
@@ -423,6 +431,7 @@ async fn try_main() -> anyhow::Result<()> {
             initial_run,
         } => {
             let store = prepare_store()
+                .busy_timeout_ms(cli.busy_timeout)
                 .run_migrations(cli.run_migrations)
                 .store_path(cli.store_path)
                 .call()?;

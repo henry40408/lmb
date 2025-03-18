@@ -12,6 +12,9 @@ pub enum Error {
     /// Error from the `SQLite` database
     #[error("sqlite error: {0}")]
     Database(#[from] rusqlite::Error),
+    /// Database is busy
+    #[error("database is busy")]
+    DatabaseBusy,
     /// Error from database migration
     #[error("migration error: {0}")]
     DatabaseMigration(#[from] rusqlite_migration::Error),
