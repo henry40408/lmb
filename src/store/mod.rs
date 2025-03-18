@@ -1,16 +1,11 @@
-use bon::Builder;
+use bon::bon;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use rusqlite_migration::SchemaVersion;
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    mem::size_of,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::HashMap, mem::size_of, path::Path, sync::Arc};
 use stmt::*;
 use tracing::{debug, trace, trace_span};
 
@@ -18,22 +13,13 @@ use crate::{MIGRATIONS, Result};
 
 mod stmt;
 
-/// Store options for command line.
-#[derive(Builder, Clone, Debug)]
-pub struct StoreOptions {
-    /// Store path.
-    pub store_path: Option<PathBuf>,
-    /// Run migrations.
-    #[builder(default)]
-    pub run_migrations: bool,
-}
-
 /// Store that persists data across executions.
 #[derive(Clone, Debug)]
 pub struct Store {
     conn: Arc<Mutex<Connection>>,
 }
 
+#[bon]
 impl Store {
     /// Create a new store with path on the filesystem.
     ///
@@ -43,20 +29,25 @@ impl Store {
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let store_file = NamedTempFile::new("db.sqlite3")?;
-    /// Store::new(store_file.path())?;
+    /// Store::builder().path(store_file.path()).build()?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(path: &Path) -> Result<Self> {
+    #[builder]
+    pub fn new(path: &Path, run_migrations: Option<bool>) -> Result<Self> {
         debug!(?path, "open store");
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "busy_timeout", 5000)?;
         conn.pragma_update(None, "foreign_keys", "OFF")?;
         conn.pragma_update(None, "journal_mode", "wal")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        Ok(Self {
+        let store = Self {
             conn: Arc::new(Mutex::new(conn)),
-        })
+        };
+        if let Some(true) = run_migrations {
+            store.migrate(None)?;
+        }
+        Ok(store)
     }
 
     /// Perform migration on the database. Migrations should be idempotent. If version is omitted,
@@ -68,7 +59,7 @@ impl Store {
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let store_file = NamedTempFile::new("db.sqlite3")?;
-    /// let store = Store::new(store_file.path())?;
+    /// let store = Store::builder().path(store_file.path()).build()?;
     /// store.migrate(None)?;
     /// # Ok(())
     /// # }
@@ -502,7 +493,7 @@ mod tests {
     #[test]
     fn new_store() {
         let store_file = NamedTempFile::new("db.sqlite3").unwrap();
-        let store = Store::new(store_file.path()).unwrap();
+        let store = Store::builder().path(store_file.path()).build().unwrap();
         store.migrate(None).unwrap();
     }
 

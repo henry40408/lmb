@@ -1,4 +1,3 @@
-use crate::StoreOptions;
 use axum::{
     Router,
     body::Bytes,
@@ -12,7 +11,8 @@ use http::{HeaderName, HeaderValue};
 use lmb::{Evaluation, LuaSource, State, StateKey, Store};
 use serde_json::{Map, Value};
 use std::{
-    collections::HashMap, io::Cursor, net::SocketAddr, str::FromStr as _, sync::Arc, time::Duration,
+    collections::HashMap, io::Cursor, net::SocketAddr, path::PathBuf, str::FromStr as _, sync::Arc,
+    time::Duration,
 };
 use tower_http::trace::{self, TraceLayer};
 use tracing::{Level, error, info, warn};
@@ -33,7 +33,8 @@ pub struct ServeOptions {
     #[builder(start_fn)]
     source: LuaSource,
     json: bool,
-    store_options: StoreOptions,
+    run_migrations: Option<bool>,
+    store_path: Option<PathBuf>,
     timeout: Option<Duration>,
 }
 
@@ -167,11 +168,11 @@ async fn match_all_route(
 }
 
 pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
-    let store = if let Some(path) = &opts.store_options.store_path {
-        let store = Store::new(path.as_path())?;
-        if opts.store_options.run_migrations {
-            store.migrate(None)?;
-        }
+    let store = if let Some(path) = &opts.store_path {
+        let store = Store::builder()
+            .maybe_run_migrations(opts.run_migrations)
+            .path(path.as_path())
+            .build()?;
         info!(?path, "open store");
         store
     } else {
@@ -215,7 +216,6 @@ mod tests {
     use axum_test::TestServer;
     use clap::Parser;
     use http::HeaderValue;
-    use lmb::StoreOptions;
     use serde_json::{Value, json};
     use std::net::SocketAddr;
 
@@ -226,10 +226,8 @@ mod tests {
         local m = require('@lmb')
         return { request = m.request, body = io.read('*a') }
         "#;
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -263,10 +261,8 @@ mod tests {
         print(m.response)
         return "I'm a teapot."
         "#;
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -283,10 +279,8 @@ mod tests {
     async fn headers_status_code_bad_script() {
         let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
         let script = "ret 'hello'";
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -305,10 +299,8 @@ mod tests {
         m.response = res
         return "hello"
         "#;
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -321,10 +313,8 @@ mod tests {
     async fn json_string() {
         let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
         let script = "return 'hello'";
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -337,10 +327,8 @@ mod tests {
     async fn number() {
         let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
         let script = r#"return 1"#;
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -353,10 +341,8 @@ mod tests {
     async fn raw_string() {
         let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
         let script = "return 'hello'";
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
@@ -369,10 +355,8 @@ mod tests {
     async fn serve() {
         let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
         let script = "return 1";
-        let store_options = StoreOptions::builder().build();
         let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
             .json(cli.json)
-            .store_options(store_options)
             .build();
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
