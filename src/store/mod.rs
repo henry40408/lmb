@@ -444,7 +444,7 @@ impl Default for Store {
 mod tests {
     use assert_fs::NamedTempFile;
     use serde_json::{Value, json};
-    use std::{io::empty, thread};
+    use std::{io::empty, thread, time::Duration};
     use test_case::test_case;
 
     use crate::{Evaluation, Store};
@@ -518,6 +518,36 @@ mod tests {
         store.migrate(None).unwrap(); // duplicated
         store.current_version().unwrap();
         store.migrate(Some(0)).unwrap();
+    }
+
+    #[test]
+    fn nested_update() {
+        let store_file = NamedTempFile::new("db.sqlite3").unwrap();
+        let store = Store::builder()
+            .path(store_file.path())
+            .run_migrations(true)
+            .busy_timeout(Duration::from_micros(3))
+            .build()
+            .unwrap();
+        store.put("a", &0.into()).unwrap();
+        store.put("b", &0.into()).unwrap();
+
+        let source = r#"
+          local m = require('@lmb')
+          return m.store:update({'a'}, function(s)
+            s.a = s.a + 1
+            m.store:update({'b'}, function(t)
+              t.b = t.b + 1
+            end)
+          end)
+        "#;
+        let e = Evaluation::builder(source, empty())
+            .store(store)
+            .build()
+            .unwrap();
+        let res = e.evaluate().call();
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("lua error: database is busy"));
     }
 
     #[test]
