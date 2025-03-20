@@ -1,16 +1,11 @@
-use bon::Builder;
+use bon::bon;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use rusqlite_migration::SchemaVersion;
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    mem::size_of,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::HashMap, mem::size_of, path::Path, sync::Arc, time::Duration};
 use stmt::*;
 use tracing::{debug, trace, trace_span};
 
@@ -18,22 +13,16 @@ use crate::{MIGRATIONS, Result};
 
 mod stmt;
 
-/// Store options for command line.
-#[derive(Builder, Clone, Debug)]
-pub struct StoreOptions {
-    /// Store path.
-    pub store_path: Option<PathBuf>,
-    /// Run migrations.
-    #[builder(default)]
-    pub run_migrations: bool,
-}
+static DEFAULT_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Store that persists data across executions.
 #[derive(Clone, Debug)]
 pub struct Store {
+    busy_timeout: Duration,
     conn: Arc<Mutex<Connection>>,
 }
 
+#[bon]
 impl Store {
     /// Create a new store with path on the filesystem.
     ///
@@ -43,20 +32,36 @@ impl Store {
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let store_file = NamedTempFile::new("db.sqlite3")?;
-    /// Store::new(store_file.path())?;
+    /// Store::builder().path(store_file.path()).build()?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(path: &Path) -> Result<Self> {
+    #[builder]
+    pub fn new(
+        path: &Path,
+        busy_timeout: Option<Duration>,
+        run_migrations: Option<bool>,
+    ) -> Result<Self> {
         debug!(?path, "open store");
         let conn = Connection::open(path)?;
-        conn.pragma_update(None, "busy_timeout", 5000)?;
+
+        let busy_timeout = busy_timeout.unwrap_or(DEFAULT_BUSY_TIMEOUT);
+        let busy_timeout_ms = u64::try_from(busy_timeout.as_millis())?;
+        conn.pragma_update(None, "busy_timeout", busy_timeout_ms)?;
         conn.pragma_update(None, "foreign_keys", "OFF")?;
         conn.pragma_update(None, "journal_mode", "wal")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        Ok(Self {
+
+        // give the mutex a 20% buffer relative to the SQLite busy timeout
+        let busy_timeout = busy_timeout.mul_f64(0.8);
+        let store = Self {
+            busy_timeout,
             conn: Arc::new(Mutex::new(conn)),
-        })
+        };
+        if let Some(true) = run_migrations {
+            store.migrate(None)?;
+        }
+        Ok(store)
     }
 
     /// Perform migration on the database. Migrations should be idempotent. If version is omitted,
@@ -68,13 +73,15 @@ impl Store {
     ///
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let store_file = NamedTempFile::new("db.sqlite3")?;
-    /// let store = Store::new(store_file.path())?;
+    /// let store = Store::builder().path(store_file.path()).build()?;
     /// store.migrate(None)?;
     /// # Ok(())
     /// # }
     /// ```
     pub fn migrate(&self, version: Option<usize>) -> Result<()> {
-        let mut conn = self.conn.lock();
+        let Some(mut conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
         if let Some(version) = version {
             let _s = trace_span!("migrate_to_version", version).entered();
             MIGRATIONS.to_version(&mut conn, version)?;
@@ -87,7 +94,9 @@ impl Store {
 
     /// Return current version of migrations.
     pub fn current_version(&self) -> Result<SchemaVersion> {
-        let conn = self.conn.lock();
+        let Some(conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
         let version = MIGRATIONS.current_version(&conn)?;
         Ok(version)
     }
@@ -109,7 +118,9 @@ impl Store {
     /// # }
     /// ```
     pub fn delete<S: AsRef<str>>(&self, name: S) -> Result<usize> {
-        let conn = self.conn.lock();
+        let Some(conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
         let (sql, values) = stmt_delete_value_by_name(name);
         let affected = conn.execute(&sql, &*values.as_params())?;
         Ok(affected)
@@ -131,7 +142,9 @@ impl Store {
     /// # }
     /// ```
     pub fn get<S: AsRef<str>>(&self, name: S) -> Result<Value> {
-        let conn = self.conn.lock();
+        let Some(conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
 
         let name = name.as_ref();
 
@@ -173,7 +186,9 @@ impl Store {
     /// # }
     /// ```
     pub fn list(&self) -> Result<Vec<StoreValueMetadata>> {
-        let conn = self.conn.lock();
+        let Some(conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
 
         let (sql, values) = stmt_get_all_values();
         let mut cached_stmt = conn.prepare_cached(&sql)?;
@@ -213,7 +228,9 @@ impl Store {
     /// # }
     /// ```
     pub fn put<S: AsRef<str>>(&self, name: S, value: &Value) -> Result<usize> {
-        let conn = self.conn.lock();
+        let Some(conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
 
         let name = name.as_ref();
         let size = Self::get_size(value);
@@ -293,7 +310,10 @@ impl Store {
         f: impl FnOnce(Arc<DashMap<Box<str>, Value>>) -> mlua::Result<()>,
         default_values: Option<HashMap<Box<str>, Value>>,
     ) -> Result<HashMap<Box<str>, Value>> {
-        let mut conn = self.conn.lock();
+        let Some(mut conn) = self.conn.try_lock_for(self.busy_timeout) else {
+            return Err(crate::Error::DatabaseBusy);
+        };
+
         let tx = conn.transaction()?;
 
         let names = names
@@ -411,6 +431,7 @@ impl Default for Store {
         let conn = Connection::open_in_memory().expect("failed to open SQLite database in memory");
         let store = Self {
             conn: Arc::new(Mutex::new(conn)),
+            busy_timeout: DEFAULT_BUSY_TIMEOUT,
         };
         store
             .migrate(None)
@@ -423,7 +444,7 @@ impl Default for Store {
 mod tests {
     use assert_fs::NamedTempFile;
     use serde_json::{Value, json};
-    use std::{io::empty, thread};
+    use std::{io::empty, thread, time::Duration};
     use test_case::test_case;
 
     use crate::{Evaluation, Store};
@@ -500,9 +521,39 @@ mod tests {
     }
 
     #[test]
+    fn nested_update() {
+        let store_file = NamedTempFile::new("db.sqlite3").unwrap();
+        let store = Store::builder()
+            .path(store_file.path())
+            .run_migrations(true)
+            .busy_timeout(Duration::from_micros(3))
+            .build()
+            .unwrap();
+        store.put("a", &0.into()).unwrap();
+        store.put("b", &0.into()).unwrap();
+
+        let source = r#"
+          local m = require('@lmb')
+          return m.store:update({'a'}, function(s)
+            s.a = s.a + 1
+            m.store:update({'b'}, function(t)
+              t.b = t.b + 1
+            end)
+          end)
+        "#;
+        let e = Evaluation::builder(source, empty())
+            .store(store)
+            .build()
+            .unwrap();
+        let res = e.evaluate().call();
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("lua error: database is busy"));
+    }
+
+    #[test]
     fn new_store() {
         let store_file = NamedTempFile::new("db.sqlite3").unwrap();
-        let store = Store::new(store_file.path()).unwrap();
+        let store = Store::builder().path(store_file.path()).build().unwrap();
         store.migrate(None).unwrap();
     }
 

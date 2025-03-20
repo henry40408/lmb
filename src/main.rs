@@ -1,11 +1,12 @@
 use anyhow::bail;
+use bon::builder;
 use clap::{Parser, Subcommand};
 use clio::*;
 use comfy_table::{Table, presets};
 use cron::Schedule;
 use lmb::{
     DEFAULT_TIMEOUT, EXAMPLES, Error, Evaluation, GUIDES, LuaSource, PrintOptions, ScheduleOptions,
-    Store, StoreOptions,
+    Store,
 };
 use mlua::prelude::*;
 use rayon::prelude::*;
@@ -46,21 +47,25 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
+    /// Database lock timeout in milliseconds.
+    #[arg(long, env = "LMB_BUSY_TIMEOUT_MS")]
+    busy_timeout: Option<u64>,
+
     /// No color <https://no-color.org/>
     #[arg(long, env = "NO_COLOR")]
     no_color: bool,
-
-    /// Store path. By default, the store is in-memory,
-    /// and changes will be lost when the program terminates.
-    /// To persist values, a store path must be specified
-    #[arg(long, env = "LMB_STORE_PATH")]
-    store_path: Option<PathBuf>,
 
     /// Migrate the store before startup.
     /// If the store path is not specified and the store is in-memory,
     /// it will be automatically migrated
     #[arg(long, env = "LMB_RUN_MIGRATIONS")]
     run_migrations: bool,
+
+    /// Store path. By default, the store is in-memory,
+    /// and changes will be lost when the program terminates.
+    /// To persist values, a store path must be specified
+    #[arg(long, env = "LMB_STORE_PATH")]
+    store_path: Option<PathBuf>,
 
     /// Theme. Checkout `list-themes` for available themes
     #[arg(long, env = "LMB_THEME")]
@@ -233,13 +238,18 @@ fn read_script(input: &mut Input) -> anyhow::Result<LuaSource> {
     Ok(LuaSource::builder(script).name(name).build())
 }
 
-fn prepare_store(options: &StoreOptions) -> anyhow::Result<Store> {
-    let store = if let Some(store_path) = &options.store_path {
-        let store = Store::new(store_path)?;
-        if options.run_migrations {
-            store.migrate(None)?;
-        }
-        store
+#[builder]
+fn prepare_store(
+    #[builder(required)] busy_timeout_ms: Option<u64>,
+    run_migrations: bool,
+    #[builder(required)] store_path: Option<PathBuf>,
+) -> anyhow::Result<Store> {
+    let store = if let Some(store_path) = store_path {
+        Store::builder()
+            .maybe_busy_timeout(busy_timeout_ms.map(Duration::from_millis))
+            .path(&store_path)
+            .run_migrations(run_migrations)
+            .build()?
     } else {
         Store::default()
     };
@@ -278,17 +288,17 @@ async fn try_main() -> anyhow::Result<()> {
         .no_color(cli.no_color)
         .maybe_theme(cli.theme)
         .build();
-    let store_options = StoreOptions::builder()
-        .maybe_store_path(cli.store_path)
-        .run_migrations(cli.run_migrations)
-        .build();
     match cli.command {
         Commands::Check { files } => files.into_par_iter().try_for_each(|mut file| {
             let source = read_script(&mut file)?;
             do_check_syntax(&source)
         }),
         Commands::Evaluate { files, timeout } => {
-            let store = prepare_store(&store_options)?;
+            let store = prepare_store()
+                .busy_timeout_ms(cli.busy_timeout)
+                .run_migrations(cli.run_migrations)
+                .store_path(cli.store_path)
+                .call()?;
             files.into_par_iter().try_for_each(|mut file| {
                 let source = read_script(&mut file)?;
                 if cli.check_syntax {
@@ -336,7 +346,11 @@ async fn try_main() -> anyhow::Result<()> {
                 bail!("example with {name} not found");
             };
             let script = found.source.script.trim();
-            let store = prepare_store(&store_options)?;
+            let store = prepare_store()
+                .busy_timeout_ms(cli.busy_timeout)
+                .run_migrations(cli.run_migrations)
+                .store_path(cli.store_path)
+                .call()?;
             let source = LuaSource::builder(script).name(name.into()).build();
             let e = Evaluation::builder(source, io::stdin())
                 .store(store)
@@ -378,8 +392,9 @@ async fn try_main() -> anyhow::Result<()> {
             let timeout = timeout.map(Duration::from_secs);
             let options = ServeOptions::builder(bind, found.source.clone())
                 .json(cli.json)
-                .store_options(store_options)
+                .maybe_store_path(cli.store_path)
                 .maybe_timeout(timeout)
+                .run_migrations(cli.run_migrations)
                 .build();
             serve::serve_file(&options).await?;
             Ok(())
@@ -415,7 +430,11 @@ async fn try_main() -> anyhow::Result<()> {
             files,
             initial_run,
         } => {
-            let store = prepare_store(&store_options)?;
+            let store = prepare_store()
+                .busy_timeout_ms(cli.busy_timeout)
+                .run_migrations(cli.run_migrations)
+                .store_path(cli.store_path)
+                .call()?;
             let schedule = Schedule::from_str(&cron)?;
             files.into_par_iter().try_for_each(|mut file| {
                 let source = read_script(&mut file)?;
@@ -454,21 +473,22 @@ async fn try_main() -> anyhow::Result<()> {
             let bind = bind.parse::<SocketAddr>()?;
             let options = ServeOptions::builder(bind, first_source)
                 .json(cli.json)
-                .store_options(store_options)
+                .maybe_store_path(cli.store_path)
                 .maybe_timeout(timeout)
+                .run_migrations(cli.run_migrations)
                 .build();
             serve::serve_file(&options).await?;
 
             Ok(())
         }
         Commands::Store(c) => {
-            let Some(store_path) = store_options.store_path else {
+            let Some(store_path) = cli.store_path else {
                 bail!("store_path is required");
             };
-            let store = Store::new(&store_path)?;
-            if store_options.run_migrations {
-                store.migrate(None)?;
-            }
+            let store = Store::builder()
+                .path(&store_path)
+                .run_migrations(cli.run_migrations)
+                .build()?;
             match c {
                 StoreCommands::Delete { name } => {
                     let affected = store.delete(name)?;
