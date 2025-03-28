@@ -2891,9 +2891,9 @@ checksum = "f42444fea5b87a39db4218d9422087e66a85d0e7a0963a439b07bcdf91804006"
 
 [[package]]
 name = "string-offsets"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b29d69667ff8ba10f976b0c29a53252d7cec1b1e2f5174bddaaf40b69f6af633"
+checksum = "a651d1095b5b70f1a88e10dbcf58625e30140112b0f9f55f334e0f84ec2e3176"
 
 [[package]]
 name = "strsim"
