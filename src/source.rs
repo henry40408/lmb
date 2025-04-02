@@ -13,7 +13,7 @@ use std::{
     fmt::Write,
     io::{IsTerminal as _, stdout},
 };
-use string_offsets::StringOffsets;
+use string_offsets::{AllConfig, StringOffsets};
 
 use crate::{Error, PrintOptions};
 
@@ -106,7 +106,7 @@ impl LuaSource {
                     else {
                         continue;
                     };
-                    let offsets = StringOffsets::new(&self.script);
+                    let offsets: StringOffsets<AllConfig> = StringOffsets::new(&self.script);
                     let span = offsets.line_to_chars(line_number - 1);
                     (message.to_owned().into_boxed_str(), span.start, span.end)
                 }
