@@ -233,6 +233,7 @@ fn example_list() {
  count-bytes   Count bytes from standard input.                                       
  crypto        Hash data with HMAC-SHA256.                                            
  echo          Echo the input.                                                        
+ env           Print environment variable.                                            
  error         Demonstrate how the runner reacts when an error is thrown.             
  hello         Hello, world!                                                          
  http-echo     Echo headers and body from HTTP request.                               

@@ -32,6 +32,7 @@ where
     next: Option<Box<LuaSource>>,
     state: Option<Arc<State>>,
     store: Option<Store>,
+    allowed_env_vars: Option<Vec<Box<str>>>,
 }
 
 /// Bind Lua interface to Lua VM.
@@ -42,6 +43,7 @@ pub fn bind_vm<R>(
     next: Option<Box<LuaSource>>,
     store: Option<Store>,
     state: Option<Arc<State>>,
+    allowed_env_vars: Option<Vec<Box<str>>>,
 ) -> Result<()>
 where
     for<'lua> R: 'lua + Read + Send,
@@ -74,6 +76,7 @@ where
         .maybe_next(next)
         .maybe_store(store)
         .maybe_state(state)
+        .maybe_allowed_env_vars(allowed_env_vars)
         .build();
     loaded.set("@lmb", binding)?;
     loaded.set("@lmb/crypto", LuaModCrypto {})?;
@@ -224,6 +227,19 @@ where
         });
         methods.add_method("read_unicode", |vm, this, f| {
             lua_lmb_read_unicode(vm, &this.input, f)
+        });
+        methods.add_method("get_env", |vm, this, key: String| {
+            let Some(allowed_vars) = &this.allowed_env_vars else {
+                return Ok(LuaNil);
+            };
+            let key = key.into_boxed_str();
+            if !allowed_vars.contains(&key) {
+                return Ok(LuaNil);
+            }
+            match std::env::var(&*key).ok() {
+                Some(v) => vm.to_value(&v),
+                None => Ok(LuaNil),
+            }
         });
     }
 }

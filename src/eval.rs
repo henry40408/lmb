@@ -75,6 +75,7 @@ where
     store: Option<Store>,
     timeout: Option<Duration>,
     vm: Lua,
+    allowed_env_vars: Option<Vec<Box<str>>>,
 }
 
 #[bon]
@@ -89,11 +90,13 @@ where
         #[builder(start_fn)] input: R,
         store: Option<Store>,
         timeout: Option<Duration>,
+        allowed_env_vars: Option<Vec<Box<str>>>,
     ) -> Result<Arc<Evaluation<R>>> {
         let input = Arc::new(Mutex::new(BufReader::new(input)));
         Self::new_with_input(source, input)
             .maybe_store(store)
             .maybe_timeout(timeout)
+            .maybe_allowed_env_vars(allowed_env_vars)
             .call()
     }
 
@@ -104,6 +107,7 @@ where
         #[builder(start_fn)] input: Input<R>,
         store: Option<Store>,
         timeout: Option<Duration>,
+        allowed_env_vars: Option<Vec<Box<str>>>,
     ) -> Result<Arc<Evaluation<R>>> {
         let compiled = {
             let _s = trace_span!("compile").entered();
@@ -115,6 +119,7 @@ where
         bind_vm(&vm, input.clone())
             .maybe_next(source.next.clone())
             .maybe_store(store.clone())
+            .maybe_allowed_env_vars(allowed_env_vars.clone())
             .call()?;
         Ok(Arc::new(Evaluation {
             compiled,
@@ -123,6 +128,7 @@ where
             store,
             timeout,
             vm,
+            allowed_env_vars,
         }))
     }
 
@@ -149,6 +155,7 @@ where
                 .maybe_next(self.source.next.clone())
                 .maybe_store(self.store.clone())
                 .maybe_state(state)
+                .maybe_allowed_env_vars(self.allowed_env_vars.clone())
                 .call()?;
         }
 

@@ -32,6 +32,10 @@ static VERSION: &str = env!("APP_VERSION");
 #[derive(Parser)]
 #[command(about, author, version=VERSION)]
 struct Cli {
+    /// Allow environment variables to be used in the script.
+    #[arg(long, env = "LMB_ALLOW_ENV")]
+    allow_env: Option<Vec<Box<str>>>,
+
     /// Checks the syntax of the function before evaluation or serving,
     /// disabled by default for startup performance
     #[arg(long, env = "LMB_CHECK_SYNTAX")]
@@ -307,6 +311,7 @@ async fn try_main() -> anyhow::Result<()> {
                 let e = match Evaluation::builder(source.clone(), io::stdin())
                     .store(store.clone())
                     .timeout(Duration::from_secs(timeout))
+                    .maybe_allowed_env_vars(cli.allow_env.clone())
                     .build()
                 {
                     Ok(e) => e,
