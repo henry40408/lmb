@@ -76,11 +76,6 @@ predicates = "3.1.0"
 snapbox = { version = "0.6.10", features = ["cmd"] }
 test-case = "3.3.1"
 
-# https://doc.rust-lang.org/cargo/reference/profiles.html#overrides
-# https://github.com/Kampfkarren/full-moon/issues/140#issuecomment-925954867
-[profile.dev.package."*"]
-opt-level = 3
-
 [profile.release]
 codegen-units = 1
 lto = true
