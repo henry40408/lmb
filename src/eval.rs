@@ -169,7 +169,7 @@ where
                 max_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
                 if start.elapsed() > timeout {
                     vm.remove_interrupt();
-                    return Err(mlua::Error::runtime("timeout"));
+                    return Err(LuaError::runtime("timeout"));
                 }
                 Ok(LuaVmState::Continue)
             }

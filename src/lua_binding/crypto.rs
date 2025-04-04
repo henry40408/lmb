@@ -52,7 +52,7 @@ impl LuaUserData for LuaModCrypto {
                 "sha256" => compute_hmac::<Hmac<Sha256>>(&secret, &data),
                 "sha384" => compute_hmac::<Hmac<Sha384>>(&secret, &data),
                 "sha512" => compute_hmac::<Hmac<Sha512>>(&secret, &data),
-                _ => Err(mlua::Error::runtime(format!("unsupported algorithm {alg}"))),
+                _ => Err(LuaError::runtime(format!("unsupported algorithm {alg}"))),
             },
         );
         methods.add_method(
@@ -61,13 +61,13 @@ impl LuaUserData for LuaModCrypto {
                 .as_str()
             {
                 "aes-cbc" => {
-                    let iv = iv.ok_or_else(|| mlua::Error::runtime("expect IV as 4th argument"))?;
+                    let iv = iv.ok_or_else(|| LuaError::runtime("expect IV as 4th argument"))?;
                     let encrypted = Aes128CbcEnc::new(key.as_bytes().into(), iv.as_bytes().into())
                         .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
                 "des-cbc" => {
-                    let iv = iv.ok_or_else(|| mlua::Error::runtime("expect IV as 4th argument"))?;
+                    let iv = iv.ok_or_else(|| LuaError::runtime("expect IV as 4th argument"))?;
                     let encrypted = DesCbcEnc::new(key.as_bytes().into(), iv.as_bytes().into())
                         .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
@@ -77,7 +77,7 @@ impl LuaUserData for LuaModCrypto {
                         .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
-                _ => Err(mlua::Error::runtime(format!("unsupported method {method}"))),
+                _ => Err(LuaError::runtime(format!("unsupported method {method}"))),
             },
         );
         methods.add_method(
@@ -86,31 +86,31 @@ impl LuaUserData for LuaModCrypto {
                 match method.as_str() {
                     "aes-cbc" => {
                         let iv =
-                            iv.ok_or_else(|| mlua::Error::runtime("expect IV as 4th argument"))?;
+                            iv.ok_or_else(|| LuaError::runtime("expect IV as 4th argument"))?;
                         let data = hex::decode(&encrypted).into_lua_err()?;
                         let decrypted =
                             Aes128CbcDec::new(key.as_bytes().into(), iv.as_bytes().into())
                                 .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                                .map_err(|e| mlua::Error::runtime(e.to_string()))?;
+                                .map_err(|e| LuaError::runtime(e.to_string()))?;
                         Ok(String::from_utf8(decrypted).into_lua_err()?)
                     }
                     "des-cbc" => {
                         let iv =
-                            iv.ok_or_else(|| mlua::Error::runtime("expect IV as 4th argument"))?;
+                            iv.ok_or_else(|| LuaError::runtime("expect IV as 4th argument"))?;
                         let data = hex::decode(&encrypted).into_lua_err()?;
                         let decrypted = DesCbcDec::new(key.as_bytes().into(), iv.as_bytes().into())
                             .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                            .map_err(|e| mlua::Error::runtime(e.to_string()))?;
+                            .map_err(|e| LuaError::runtime(e.to_string()))?;
                         Ok(String::from_utf8(decrypted).into_lua_err()?)
                     }
                     "des-ecb" => {
                         let data = hex::decode(&encrypted).into_lua_err()?;
                         let decrypted = DesEcbDec::new(key.as_bytes().into())
                             .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                            .map_err(|e| mlua::Error::runtime(e.to_string()))?;
+                            .map_err(|e| LuaError::runtime(e.to_string()))?;
                         Ok(String::from_utf8(decrypted).into_lua_err()?)
                     }
-                    _ => Err(mlua::Error::runtime(format!("unsupported method {method}"))),
+                    _ => Err(LuaError::runtime(format!("unsupported method {method}"))),
                 }
             },
         );

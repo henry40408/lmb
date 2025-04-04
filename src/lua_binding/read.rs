@@ -128,5 +128,5 @@ where
     }
 
     let f = f.to_string()?;
-    Err(mlua::Error::runtime(format!("unexpected format {f}")))
+    Err(LuaError::runtime(format!("unexpected format {f}")))
 }

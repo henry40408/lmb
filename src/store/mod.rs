@@ -283,6 +283,7 @@ impl Store {
     ///
     /// ```rust
     /// # use maplit::hashmap;
+    /// # use mlua::prelude::*;
     /// # use serde_json::{json, Value};
     /// use lmb::*;
     ///
@@ -293,7 +294,7 @@ impl Store {
     ///     if let Value::Number(n) = old.get("a").expect("n is required").clone() {
     ///         let n = n.as_i64().expect("n is required");
     ///         if n == 1 {
-    ///             return Err(mlua::Error::runtime("n equals to 1"));
+    ///             return Err(LuaError::runtime("n equals to 1"));
     ///         }
     ///         old.insert("a".into(), json!(n + 1));
     ///     }
