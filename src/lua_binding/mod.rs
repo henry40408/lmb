@@ -35,6 +35,73 @@ where
     allowed_env_vars: Option<Vec<Box<str>>>,
 }
 
+impl<R> LuaUserData for LuaBinding<R>
+where
+    for<'lua> R: 'lua + Read + Send,
+{
+    fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
+        fields.add_field("_VERSION", env!("APP_VERSION"));
+        fields.add_field_method_get("store", |_, this| {
+            Ok(LuaStoreBinding {
+                store: this.store.clone(),
+            })
+        });
+        fields.add_field_method_get("request", |vm, this| {
+            let Some(v) = this.state.as_ref().and_then(|m| m.get(&StateKey::Request)) else {
+                return Ok(LuaNil);
+            };
+            vm.to_value(&*v)
+        });
+        fields.add_field_method_get("response", |vm, this| {
+            let Some(v) = this.state.as_ref().and_then(|m| m.get(&StateKey::Response)) else {
+                return Ok(LuaNil);
+            };
+            vm.to_value(&*v)
+        });
+        fields.add_field_method_set("response", |vm, this, value: LuaValue| {
+            if let Some(v) = this.state.as_ref() {
+                v.insert(StateKey::Response, vm.from_value(value)?);
+            }
+            Ok(())
+        });
+    }
+
+    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("next", |vm, this, ()| {
+            let Some(next) = &this.next else {
+                return Ok(LuaNil);
+            };
+            let next = next.clone();
+            let e = Evaluation::new_with_input(*next, this.input.clone())
+                .maybe_store(this.store.clone())
+                .call()
+                .into_lua_err()?;
+            let res = e
+                .evaluate()
+                .maybe_state(this.state.clone())
+                .call()
+                .into_lua_err()?;
+            vm.to_value(&res.payload)
+        });
+        methods.add_method("read_unicode", |vm, this, f| {
+            lua_lmb_read_unicode(vm, &this.input, f)
+        });
+        methods.add_method("get_env", |vm, this, key: String| {
+            let Some(allowed_vars) = &this.allowed_env_vars else {
+                return Ok(LuaNil);
+            };
+            let key = key.into_boxed_str();
+            if !allowed_vars.contains(&key) {
+                return Ok(LuaNil);
+            }
+            match std::env::var(&*key).ok() {
+                Some(v) => vm.to_value(&v),
+                None => Ok(LuaNil),
+            }
+        });
+    }
+}
+
 /// Bind Lua interface to Lua VM.
 #[builder]
 pub fn bind_vm<R>(
@@ -105,27 +172,6 @@ impl LuaUserData for LuaStderr {
     }
 }
 
-struct LuaStoreSnapshot {
-    inner: Arc<DashMap<Box<str>, Value>>,
-}
-
-impl LuaUserData for LuaStoreSnapshot {
-    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: Box<str>| {
-            let value = this.inner.entry(key).or_insert_with(|| Value::Null).clone();
-            vm.to_value(&value)
-        });
-        methods.add_meta_method(
-            LuaMetaMethod::NewIndex,
-            |vm, this, (key, value): (Box<str>, LuaValue)| {
-                let v: Value = vm.from_value(value.clone()).into_lua_err()?;
-                this.inner.insert(key, v);
-                Ok(value)
-            },
-        );
-    }
-}
-
 struct LuaStoreBinding {
     store: Option<Store>,
 }
@@ -177,70 +223,24 @@ impl LuaUserData for LuaStoreBinding {
     }
 }
 
-impl<R> LuaUserData for LuaBinding<R>
-where
-    for<'lua> R: 'lua + Read + Send,
-{
-    fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field("_VERSION", env!("APP_VERSION"));
-        fields.add_field_method_get("store", |_, this| {
-            Ok(LuaStoreBinding {
-                store: this.store.clone(),
-            })
-        });
-        fields.add_field_method_get("request", |vm, this| {
-            let Some(v) = this.state.as_ref().and_then(|m| m.get(&StateKey::Request)) else {
-                return Ok(LuaNil);
-            };
-            vm.to_value(&*v)
-        });
-        fields.add_field_method_get("response", |vm, this| {
-            let Some(v) = this.state.as_ref().and_then(|m| m.get(&StateKey::Response)) else {
-                return Ok(LuaNil);
-            };
-            vm.to_value(&*v)
-        });
-        fields.add_field_method_set("response", |vm, this, value: LuaValue| {
-            if let Some(v) = this.state.as_ref() {
-                v.insert(StateKey::Response, vm.from_value(value)?);
-            }
-            Ok(())
-        });
-    }
+struct LuaStoreSnapshot {
+    inner: Arc<DashMap<Box<str>, Value>>,
+}
 
+impl LuaUserData for LuaStoreSnapshot {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("next", |vm, this, ()| {
-            let Some(next) = &this.next else {
-                return Ok(LuaNil);
-            };
-            let next = next.clone();
-            let e = Evaluation::new_with_input(*next, this.input.clone())
-                .maybe_store(this.store.clone())
-                .call()
-                .into_lua_err()?;
-            let res = e
-                .evaluate()
-                .maybe_state(this.state.clone())
-                .call()
-                .into_lua_err()?;
-            vm.to_value(&res.payload)
+        methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: Box<str>| {
+            let value = this.inner.entry(key).or_insert_with(|| Value::Null).clone();
+            vm.to_value(&value)
         });
-        methods.add_method("read_unicode", |vm, this, f| {
-            lua_lmb_read_unicode(vm, &this.input, f)
-        });
-        methods.add_method("get_env", |vm, this, key: String| {
-            let Some(allowed_vars) = &this.allowed_env_vars else {
-                return Ok(LuaNil);
-            };
-            let key = key.into_boxed_str();
-            if !allowed_vars.contains(&key) {
-                return Ok(LuaNil);
-            }
-            match std::env::var(&*key).ok() {
-                Some(v) => vm.to_value(&v),
-                None => Ok(LuaNil),
-            }
-        });
+        methods.add_meta_method(
+            LuaMetaMethod::NewIndex,
+            |vm, this, (key, value): (Box<str>, LuaValue)| {
+                let v: Value = vm.from_value(value.clone()).into_lua_err()?;
+                this.inner.insert(key, v);
+                Ok(value)
+            },
+        );
     }
 }
 
