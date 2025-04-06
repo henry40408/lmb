@@ -245,6 +245,7 @@ fn example_list() {
  return-table  The function can also return a table.                                  
                Please note that JSON mode is needed to show the whole table,          
                otherwise "table: 0x..." will be printed, which aligns how Lua works.  
+ sleep         Schedule asynchronous tasks.                                           
  store         Update an absent key 'a' in store and return the new value.            
                Please note that since store is epheremal the output will always be 1. 
                                                                                       

@@ -69,21 +69,25 @@ where
     }
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("next", |vm, this, ()| {
+        methods.add_async_method("next", |vm, this, ()| async {
             let Some(next) = &this.next else {
                 return Ok(LuaNil);
             };
             let next = next.clone();
-            let e = Evaluation::new_with_input(*next, this.input.clone())
-                .maybe_store(this.store.clone())
-                .call()
-                .into_lua_err()?;
-            let res = e
-                .evaluate()
-                .maybe_state(this.state.clone())
-                .call()
-                .into_lua_err()?;
-            vm.to_value(&res.payload)
+            tokio::task::spawn_blocking(move || {
+                let e = Evaluation::new_with_input(*next, this.input.clone())
+                    .maybe_store(this.store.clone())
+                    .call()
+                    .into_lua_err()?;
+                let res = e
+                    .evaluate()
+                    .maybe_state(this.state.clone())
+                    .call()
+                    .into_lua_err()?;
+                vm.to_value(&res.payload)
+            })
+            .await
+            .into_lua_err()?
         });
         methods.add_method("read_unicode", |vm, this, f| {
             lua_lmb_read_unicode(vm, &this.input, f)

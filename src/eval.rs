@@ -257,8 +257,8 @@ mod tests {
 
     use crate::{Evaluation, LuaSource, State, StateKey, Store};
 
-    #[test]
-    fn call_next() {
+    #[tokio::test]
+    async fn call_next() {
         let input = "1";
         let next_source: LuaSource = r#"
         return io.read('*n')
