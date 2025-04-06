@@ -257,7 +257,7 @@ mod tests {
 
     use crate::{Evaluation, LuaSource, State, StateKey, Store};
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn call_next() {
         let input = "1";
         let next_source: LuaSource = r#"

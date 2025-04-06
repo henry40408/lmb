@@ -89,3 +89,24 @@ impl LuaUserData for LuaModAsync {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use std::io::empty;
+
+    use crate::Evaluation;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sleep_async() {
+        let script = r#"
+        local m = require('@lmb/async')
+        local s = m:sleep_async(0.1)
+        s:join()
+        return 1
+        "#;
+        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let res = e.evaluate().call().unwrap();
+        assert_eq!(json!(1), res.payload);
+    }
+}
