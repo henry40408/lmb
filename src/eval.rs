@@ -184,7 +184,8 @@ where
 
         let result = {
             let _s = trace_span!("evaluate").entered();
-            self.vm.from_value(chunk.eval()?)?
+            let awaited = futures::executor::block_on(chunk.eval_async())?;
+            self.vm.from_value(awaited)?
         };
 
         let duration = start.elapsed();

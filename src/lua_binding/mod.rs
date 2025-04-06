@@ -9,11 +9,13 @@ use std::{
 
 use crate::{Evaluation, Input, LuaSource, Result, State, StateKey, Store};
 
+use concurrency::*;
 use crypto::*;
 use http::*;
 use json::*;
 use read::*;
 
+mod concurrency;
 mod crypto;
 mod http;
 mod json;
@@ -146,6 +148,7 @@ where
         .maybe_allowed_env_vars(allowed_env_vars)
         .build();
     loaded.set("@lmb", binding)?;
+    loaded.set("@lmb/async", LuaModAsync {})?;
     loaded.set("@lmb/crypto", LuaModCrypto {})?;
     loaded.set("@lmb/http", LuaModHTTP {})?;
     loaded.set("@lmb/json", LuaModJSON {})?;
