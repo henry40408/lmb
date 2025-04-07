@@ -175,7 +175,7 @@ mod tests {
         let url = server.url();
         let script = format!(
             r#"
-            local m = require('@lmb/http')
+            local m = require('@lmb').http
             local res = m:fetch('{url}/html')
             return res:read('*a')
             "#
@@ -202,7 +202,7 @@ mod tests {
         let url = server.url();
         let script = format!(
             r#"
-            local m = require('@lmb/http')
+            local m = require('@lmb').http
             local res = m:fetch('{url}/headers', {{ headers = {{ a = 'b' }} }})
             return res:read('*a')
             "#
@@ -228,7 +228,7 @@ mod tests {
         let url = server.url();
         let script = format!(
             r#"
-            local m = require('@lmb/http')
+            local m = require('@lmb').http
             local res = m:fetch('{url}/html')
             return res:read_unicode('*a')
             "#
@@ -254,7 +254,7 @@ mod tests {
         let url = server.url();
         let script = format!(
             r#"
-            local m = require('@lmb/http')
+            local m = require('@lmb').http
             local res = m:fetch('{url}/json')
             return res:json()
             "#
@@ -280,7 +280,7 @@ mod tests {
         let url = server.url();
         let script = format!(
             r#"
-            local m = require('@lmb/http')
+            local m = require('@lmb').http
             local res = m:fetch('{url}/add', {{
               method = 'POST',
               body = '1+1',

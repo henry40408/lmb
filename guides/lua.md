@@ -174,12 +174,12 @@ $ lmb --store-path db.sqlite3 --run-migrations eval --file lua-examples/store.lu
 1
 ```
 
-## HTTP `@lmb/http`
+## HTTP
 
 Lmb is able to send HTTP requests. It provides a function called `fetch`, whose signature is similar to the [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) from JavaScript. The following example sends a GET request to <https://httpbingo.org/headers> with the header `I-Am: A teapot`:
 
 ```lua
-local http = require('@lmb/http')
+local http = require('@lmb').http
 
 local res = http:fetch('https://httpbingo.org/headers', {
   method = 'GET',
@@ -196,12 +196,12 @@ assert('A teapot' == res:json()['headers']['I-Am'])
 I have used JavaScript and Node.js for a decade, and the Fetch API is the method
 I am most familiar with for sending HTTP requests.
 
-## JSON `@lmb/json`
+## JSON
 
 JSON is a common format used to send HTTP requests. Lmb supports both encoding and decoding JSON data:
 
 ```lua
-local json = require('@lmb/json')
+local json = require('@lmb').json
 assert('{"bool":true,"num":1.23,"str":"string"}' == json:encode({ bool = true, num = 1.23, str = 'string' }))
 assert('[true,1.23,"string"]' == json:encode({ true, 1.23, 'string' }))
 
@@ -227,8 +227,8 @@ assert(actual == expected)
 Send an HTTP request with a JSON request body:
 
 ```lua
-local http = require('@lmb/http')
-local json = require('@lmb/json')
+local http = require('@lmb').http
+local json = require('@lmb').json
 
 local res = http:fetch('https://httpbingo.org/post', {
 	method = 'POST',
@@ -237,7 +237,7 @@ local res = http:fetch('https://httpbingo.org/post', {
 assert('{"foo":"bar"}' == res:json().data)
 ```
 
-## Crypto `@lmb/crypto`
+## Cryptography
 
 When receiving webhook events from another service, e.g. [GitHub](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries), it's secure to validate them before processing. Lmb provides several cryptography functions to meet this need:
 
@@ -246,7 +246,7 @@ When receiving webhook events from another service, e.g. [GitHub](https://docs.g
 - (Contributions are welcome if more algorithms are needed)
 
 ```lua
-local crypto = require('@lmb/crypto')
+local crypto = require('@lmb').crypto
 
 assert(crypto:base64_encode(' ')    == 'IA==')
 assert(crypto:base64_decode('IA==') == ' ')

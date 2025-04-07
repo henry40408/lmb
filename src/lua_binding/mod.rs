@@ -41,11 +41,9 @@ where
 {
     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field("_VERSION", env!("APP_VERSION"));
-        fields.add_field_method_get("store", |_, this| {
-            Ok(LuaStoreBinding {
-                store: this.store.clone(),
-            })
-        });
+        fields.add_field("crypto", LuaModCrypto {});
+        fields.add_field("http", LuaModHTTP {});
+        fields.add_field("json", LuaModJSON {});
         fields.add_field_method_get("request", |vm, this| {
             let Some(v) = this.state.as_ref().and_then(|m| m.get(&StateKey::Request)) else {
                 return Ok(LuaNil);
@@ -63,6 +61,11 @@ where
                 v.insert(StateKey::Response, vm.from_value(value)?);
             }
             Ok(())
+        });
+        fields.add_field_method_get("store", |_, this| {
+            Ok(LuaStoreBinding {
+                store: this.store.clone(),
+            })
         });
     }
 
@@ -146,9 +149,6 @@ where
         .maybe_allowed_env_vars(allowed_env_vars)
         .build();
     loaded.set("@lmb", binding)?;
-    loaded.set("@lmb/crypto", LuaModCrypto {})?;
-    loaded.set("@lmb/http", LuaModHTTP {})?;
-    loaded.set("@lmb/json", LuaModJSON {})?;
     vm.set_named_registry_value(K_LOADED, loaded)?;
 
     Ok(())

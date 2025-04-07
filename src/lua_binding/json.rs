@@ -25,7 +25,7 @@ mod tests {
     #[test]
     fn json_decode() {
         let script = r#"
-        local m = require('@lmb/json');
+        local m = require('@lmb').json;
         return m:decode('{"bool":true,"num":2,"str":"hello"}')
         "#;
         let e = Evaluation::builder(script, empty()).build().unwrap();
@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn json_encode() {
         let script = r#"
-        local m = require('@lmb/json');
+        local m = require('@lmb').json;
         return m:encode({ bool = true, num = 2, str = 'hello' })
         "#;
         let e = Evaluation::builder(script, empty()).build().unwrap();
@@ -50,7 +50,7 @@ mod tests {
     fn json_decode_encode() {
         // https://github.com/rxi/json.lua/issues/19
         let script = r#"
-        local m = require('@lmb/json');
+        local m = require('@lmb').json;
         return m:encode(m:decode('{"a":[{}]}'))
         "#;
         let e = Evaluation::builder(script, empty()).build().unwrap();

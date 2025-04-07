@@ -9,7 +9,7 @@ return io.read('*a') -- return request body
 
 -- mw2.lua
 local m = require('@lmb')
-local json = require('@lmb/json')
+local json = require('@lmb').json
 print('>', json:encode(m.request))
 local res = m:next() -- call mw1.lua
 print('<', json:encode(res))
