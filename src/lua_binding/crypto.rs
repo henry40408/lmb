@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn hmac_sha256() {
         let input = "input";
-        let script = "return require('@lmb/crypto'):hmac('sha256', io.read('*a'), 'secret')";
+        let script = "return require('@lmb').crypto:hmac('sha256', io.read('*a'), 'secret')";
         let e = Evaluation::builder(script, input.as_bytes())
             .build()
             .unwrap();
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn sha256() {
         let input = "input";
-        let script = "return require('@lmb/crypto'):sha256(io.read('*a'))";
+        let script = "return require('@lmb').crypto:sha256(io.read('*a'))";
         let e = Evaluation::builder(script, input.as_bytes())
             .build()
             .unwrap();
@@ -153,7 +153,7 @@ mod tests {
         let key_iv = "0123456701234567";
 
         let script = format!(
-            "return require('@lmb/crypto'):encrypt(io.read('*a'),'aes-cbc','{key_iv}','{key_iv}')"
+            "return require('@lmb').crypto:encrypt(io.read('*a'),'aes-cbc','{key_iv}','{key_iv}')"
         );
         let e = Evaluation::builder(script, input.as_bytes())
             .build()
@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(json!(expected), res.payload);
 
         let script = format!(
-            "return require('@lmb/crypto'):decrypt(io.read('*a'),'aes-cbc','{key_iv}','{key_iv}')"
+            "return require('@lmb').crypto:decrypt(io.read('*a'),'aes-cbc','{key_iv}','{key_iv}')"
         );
         let e = Evaluation::builder(script, expected.as_bytes())
             .build()

@@ -31,6 +31,7 @@ jobs:
           tool: cargo-deny@0.16.4
       - run: cargo deny check
   bench:
+    needs: [check]
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -63,6 +64,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summary-always: true
   coverage:
+    needs: [check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
@@ -84,6 +86,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
   msrv:
+    needs: [check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
@@ -92,7 +95,7 @@ jobs:
           tool: cargo-hack@0.6.28
       - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
   build-and-publish:
-    needs: [check, coverage, msrv]
+    needs: [coverage, msrv]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.1.1
