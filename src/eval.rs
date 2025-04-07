@@ -10,7 +10,6 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    thread,
     time::{Duration, Instant},
 };
 use tracing::{debug, error, trace_span, warn};
@@ -60,6 +59,12 @@ where
                 _ => Ok(write!(f, "{}", self.payload)?),
             }
         }
+    }
+
+    /// Convert payload to Lua value.
+    #[builder]
+    pub fn to_lua(&self) -> crate::Result<LuaValue> {
+        Ok(self.evaluation.vm.to_value(&self.payload)?)
     }
 }
 
@@ -150,6 +155,17 @@ where
     /// ```
     #[builder]
     pub fn evaluate(self: &Arc<Self>, state: Option<Arc<State>>) -> Result<Solution<R>> {
+        futures::executor::block_on(
+            async move { self.evaluate_async().maybe_state(state).call().await },
+        )
+    }
+
+    /// Evaluate the function with a state asynchronously.
+    #[builder]
+    pub async fn evaluate_async(
+        self: &Arc<Self>,
+        state: Option<Arc<State>>,
+    ) -> Result<Solution<R>> {
         if state.is_some() {
             bind_vm(&self.vm, self.input.clone())
                 .maybe_next(self.source.next.clone())
@@ -184,7 +200,7 @@ where
 
         let result = {
             let _s = trace_span!("evaluate").entered();
-            self.vm.from_value(chunk.eval()?)?
+            self.vm.from_value(chunk.eval_async().await?)?
         };
 
         let duration = start.elapsed();
@@ -199,7 +215,7 @@ where
     }
 
     /// Schedule the script.
-    pub fn schedule(self: &Arc<Self>, options: &ScheduleOptions) {
+    pub async fn schedule_async(self: &Arc<Self>, options: &ScheduleOptions) {
         let bail = options.bail;
         debug!(bail, "script scheduled");
         let mut error_count = 0usize;
@@ -208,8 +224,9 @@ where
             if let Some(next) = options.schedule.upcoming(Utc).take(1).next() {
                 debug!(%next, "next run");
                 let elapsed = next - now;
-                thread::sleep(elapsed.to_std().expect("failed to fetch next schedule"));
-                if let Err(err) = self.clone().evaluate().call() {
+                let elapsed = elapsed.to_std().expect("failed to fetch next schedule");
+                tokio::time::sleep(elapsed).await;
+                if let Err(err) = self.clone().evaluate_async().call().await {
                     warn!(?err, "failed to evaluate");
                     if bail > 0 {
                         debug!(bail, error_count, "check bail threshold");
@@ -256,8 +273,8 @@ mod tests {
 
     use crate::{Evaluation, LuaSource, State, StateKey, Store};
 
-    #[test]
-    fn call_next() {
+    #[tokio::test]
+    async fn call_next() {
         let input = "1";
         let next_source: LuaSource = r#"
         return io.read('*n')
