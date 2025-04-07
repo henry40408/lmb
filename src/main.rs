@@ -441,19 +441,27 @@ async fn try_main() -> anyhow::Result<()> {
                 .store_path(cli.store_path)
                 .call()?;
             let schedule = Schedule::from_str(&cron)?;
-            files.into_par_iter().try_for_each(|mut file| {
+            let mut tasks = vec![];
+            for mut file in files {
                 let source = read_script(&mut file)?;
-                let options = ScheduleOptions::builder()
-                    .bail(bail)
-                    .initial_run(initial_run)
-                    .schedule(schedule.clone())
-                    .build();
-                let e = Evaluation::builder(source, io::stdin())
-                    .store(store.clone())
-                    .build()?;
-                e.schedule(&options);
-                Ok(())
-            })
+                let store = store.clone();
+                let schedule = schedule.clone();
+                let task = async move {
+                    let options = ScheduleOptions::builder()
+                        .bail(bail)
+                        .initial_run(initial_run)
+                        .schedule(schedule.clone())
+                        .build();
+                    let e = Evaluation::builder(source, io::stdin())
+                        .store(store.clone())
+                        .build()?;
+                    e.schedule_async(&options).await;
+                    Ok::<(), crate::Error>(())
+                };
+                tasks.push(task);
+            }
+            futures::future::join_all(tasks).await;
+            Ok(())
         }
         Commands::Serve {
             bind,
