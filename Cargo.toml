@@ -30,6 +30,7 @@ dashmap = "6.0.1"
 des = "0.8.1"
 ecb = "0.1.2"
 full_moon = { version = "1.2.0", features = ["roblox"] }
+futures = "0.3.31"
 hex = "0.4.3"
 hmac = "0.12.1"
 http = "1.1.0"
@@ -37,7 +38,12 @@ include_dir = { version = "0.7.3", features = ["glob"] }
 lazy-regex = "3.1.0"
 md-5 = "0.10.6"
 miette = { version = "7.4.0", features = ["fancy"] }
-mlua = { version = "0.10.1", features = ["luau", "send", "serialize"] }
+mlua = { version = "0.10.1", features = [
+  "async",
+  "error-send",
+  "luau",
+  "serialize",
+] }
 parking_lot = "0.12.1"
 pulldown-cmark = "0.13.0"
 rayon = "1.10.0"
