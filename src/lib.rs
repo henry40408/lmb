@@ -5,14 +5,13 @@
 use bon::Builder;
 use dashmap::DashMap;
 use include_dir::{Dir, include_dir};
-use parking_lot::Mutex;
 use rusqlite_migration::Migrations;
 use std::{
-    io::BufReader,
     result::Result as StdResult,
     sync::{Arc, LazyLock},
     time::Duration,
 };
+use tokio::{io::BufReader, sync::Mutex};
 
 pub use error::*;
 pub use eval::*;
@@ -88,10 +87,10 @@ mod tests {
     use crate::{Evaluation, MIGRATIONS, StateKey, Store};
     use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
     use serde_json::json;
-    use std::io::empty;
+    use tokio::io::empty;
 
-    #[test]
-    fn test_evaluation() {
+    #[tokio::test]
+    async fn test_evaluation() {
         let markdown = include_str!("../guides/lua.md");
         let blocks = {
             let mut blocks = Vec::new();
@@ -124,7 +123,7 @@ mod tests {
             blocks
         };
 
-        let mut server = mockito::Server::new();
+        let mut server = mockito::Server::new_async().await;
 
         let headers_mock = server
             .mock("GET", "/headers")
@@ -134,7 +133,8 @@ mod tests {
             .with_body(
                 serde_json::to_string(&json!({ "headers": { "I-Am": "A teapot" } })).unwrap(),
             )
-            .create();
+            .create_async()
+            .await;
 
         let post_mock = server
             .mock("POST", "/post")
@@ -146,7 +146,8 @@ mod tests {
                 )
                 .unwrap(),
             )
-            .create();
+            .create_async()
+            .await;
 
         for block in blocks {
             let block = block.replace("https://httpbingo.org", &server.url());
@@ -155,7 +156,7 @@ mod tests {
                 .store(store)
                 .build()
                 .unwrap();
-            if let Err(err) = e.evaluate().call() {
+            if let Err(err) = e.evaluate_async().call().await {
                 let mut f = String::new();
                 let _ = e.write_errors(&mut f, vec![&err]);
                 eprintln!("{f}");
@@ -163,8 +164,8 @@ mod tests {
             }
         }
 
-        post_mock.assert();
-        headers_mock.assert();
+        post_mock.assert_async().await;
+        headers_mock.assert_async().await;
     }
 
     #[test]
