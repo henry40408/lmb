@@ -181,7 +181,7 @@ impl LuaSource {
 
 #[cfg(test)]
 mod tests {
-    use std::io::empty;
+    use tokio::io::empty;
 
     use crate::{Error, Evaluation, LuaSource};
 

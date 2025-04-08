@@ -1,7 +1,7 @@
 use anyhow::bail;
 use bon::builder;
 use clap::{Parser, Subcommand};
-use clio::*;
+use clio::Input;
 use comfy_table::{Table, presets};
 use cron::Schedule;
 use lmb::{
@@ -9,18 +9,13 @@ use lmb::{
     Store,
 };
 use mlua::prelude::*;
-use rayon::prelude::*;
 use serde_json::json;
 use serve::ServeOptions;
 use std::{
-    io::{self, Read},
-    net::SocketAddr,
-    path::PathBuf,
-    process::ExitCode,
-    str::FromStr,
-    time::Duration,
+    io::Read, net::SocketAddr, path::PathBuf, process::ExitCode, str::FromStr, time::Duration,
 };
 use termimad::MadSkin;
+use tokio::{io, task::JoinSet};
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
@@ -236,10 +231,10 @@ fn do_check_syntax(source: &LuaSource) -> anyhow::Result<()> {
 }
 
 fn read_script(input: &mut Input) -> anyhow::Result<LuaSource> {
-    let name = input.path().to_string_lossy().into_owned().into_boxed_str();
+    let path = input.path().to_string_lossy().into_owned().into_boxed_str();
     let mut script = String::new();
     input.read_to_string(&mut script)?;
-    Ok(LuaSource::builder(script).name(name).build())
+    Ok(LuaSource::builder(script).name(path).build())
 }
 
 #[builder]
@@ -293,47 +288,66 @@ async fn try_main() -> anyhow::Result<()> {
         .maybe_theme(cli.theme)
         .build();
     match cli.command {
-        Commands::Check { files } => files.into_par_iter().try_for_each(|mut file| {
-            let source = read_script(&mut file)?;
-            do_check_syntax(&source)
-        }),
+        Commands::Check { files } => {
+            let mut set = JoinSet::new();
+            for mut file in files {
+                set.spawn(async move {
+                    let source = read_script(&mut file)?;
+                    do_check_syntax(&source)?;
+                    Ok::<(), anyhow::Error>(())
+                });
+            }
+            while let Some(next) = set.join_next().await {
+                next??;
+            }
+            Ok(())
+        }
         Commands::Evaluate { files, timeout } => {
             let store = prepare_store()
                 .busy_timeout_ms(cli.busy_timeout)
                 .run_migrations(cli.run_migrations)
                 .store_path(cli.store_path)
                 .call()?;
-            files.into_par_iter().try_for_each(|mut file| {
-                let source = read_script(&mut file)?;
-                if cli.check_syntax {
-                    do_check_syntax(&source)?;
-                }
-                let e = match Evaluation::builder(source.clone(), io::stdin())
-                    .store(store.clone())
-                    .timeout(Duration::from_secs(timeout))
-                    .maybe_allowed_env_vars(cli.allow_env.clone())
-                    .build()
-                {
-                    Ok(e) => e,
-                    Err(err) => {
-                        eprint!("{err}");
-                        return Err(err.into());
+            let mut set = JoinSet::new();
+            for mut file in files {
+                let store = store.clone();
+                let allow_env = cli.allow_env.clone();
+                set.spawn(async move {
+                    let source = read_script(&mut file)?;
+                    if cli.check_syntax {
+                        do_check_syntax(&source)?;
                     }
-                };
-                let mut buf = String::new();
-                match e.evaluate().call() {
-                    Ok(s) => {
-                        s.write(&mut buf).json(cli.json).call()?;
-                        print!("{buf}");
-                        Ok(())
+                    let e = match Evaluation::builder(source.clone(), io::stdin())
+                        .store(store.clone())
+                        .timeout(Duration::from_secs(timeout))
+                        .maybe_allowed_env_vars(allow_env)
+                        .build()
+                    {
+                        Ok(e) => e,
+                        Err(err) => {
+                            eprint!("{err}");
+                            return Err(err.into());
+                        }
+                    };
+                    let mut buf = String::new();
+                    match e.evaluate_async().call().await {
+                        Ok(s) => {
+                            s.write(&mut buf).json(cli.json).call()?;
+                            print!("{buf}");
+                            Ok::<(), anyhow::Error>(())
+                        }
+                        Err(err) => {
+                            e.write_errors(&mut buf, vec![&err])?;
+                            eprint!("{buf}");
+                            Err(err.into())
+                        }
                     }
-                    Err(err) => {
-                        e.write_errors(&mut buf, vec![&err])?;
-                        eprint!("{buf}");
-                        Err(err.into())
-                    }
-                }
-            })
+                });
+            }
+            for result in set.join_all().await {
+                result?;
+            }
+            Ok(())
         }
         Commands::Example(ExampleCommands::Cat { name }) => {
             let name = &*name;
@@ -441,12 +455,12 @@ async fn try_main() -> anyhow::Result<()> {
                 .store_path(cli.store_path)
                 .call()?;
             let schedule = Schedule::from_str(&cron)?;
-            let mut tasks = vec![];
+            let mut set = JoinSet::new();
             for mut file in files {
-                let source = read_script(&mut file)?;
                 let store = store.clone();
                 let schedule = schedule.clone();
-                let task = async move {
+                set.spawn(async move {
+                    let source = read_script(&mut file)?;
                     let options = ScheduleOptions::builder()
                         .bail(bail)
                         .initial_run(initial_run)
@@ -456,11 +470,12 @@ async fn try_main() -> anyhow::Result<()> {
                         .store(store.clone())
                         .build()?;
                     e.schedule_async(&options).await;
-                    Ok::<(), crate::Error>(())
-                };
-                tasks.push(task);
+                    Ok::<(), anyhow::Error>(())
+                });
             }
-            futures::future::join_all(tasks).await;
+            for result in set.join_all().await {
+                result?;
+            }
             Ok(())
         }
         Commands::Serve {

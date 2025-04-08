@@ -3,9 +3,10 @@ use dashmap::DashMap;
 use mlua::prelude::*;
 use serde_json::Value;
 use std::{
-    io::{Read, Write as _, stderr, stdout},
+    io::{Write as _, stderr, stdout},
     sync::Arc,
 };
+use tokio::io::AsyncRead;
 
 use crate::{Evaluation, Input, LuaSource, Result, State, StateKey, Store};
 
@@ -26,7 +27,7 @@ const K_LOADED: &str = "_LOADED";
 #[derive(Builder, Debug)]
 pub struct LuaBinding<R>
 where
-    R: Read + Send,
+    R: AsyncRead + Send + Unpin,
 {
     input: Input<R>,
     next: Option<Box<LuaSource>>,
@@ -37,7 +38,7 @@ where
 
 impl<R> LuaUserData for LuaBinding<R>
 where
-    for<'lua> R: 'lua + Read + Send,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field("_VERSION", env!("APP_VERSION"));
@@ -87,8 +88,8 @@ where
                 .into_lua_err()?;
             res.to_lua().call().into_lua_err()
         });
-        methods.add_method("read_unicode", |vm, this, f| {
-            lua_lmb_read_unicode(vm, &this.input, f)
+        methods.add_async_method("read_unicode", |vm, this, f| {
+            lua_lmb_read_unicode(vm, this.input.clone(), f)
         });
         methods.add_method("get_env", |vm, this, key: String| {
             let Some(allowed_vars) = &this.allowed_env_vars else {
@@ -117,13 +118,13 @@ pub fn bind_vm<R>(
     allowed_env_vars: Option<Vec<Box<str>>>,
 ) -> Result<()>
 where
-    for<'lua> R: 'lua + Read + Send,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     let io_table = vm.create_table()?;
 
-    let read_fn = vm.create_function({
+    let read_fn = vm.create_async_function({
         let input = input.clone();
-        move |vm, f: Option<LuaValue>| lua_lmb_read(vm, &input, f)
+        move |vm, f: Option<LuaValue>| lua_lmb_read(vm, input.clone(), f)
     })?;
     io_table.set("read", read_fn)?;
 
@@ -248,8 +249,8 @@ impl LuaUserData for LuaStoreSnapshot {
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
-    use std::io::empty;
     use test_case::test_case;
+    use tokio::io::empty;
 
     use crate::Evaluation;
 

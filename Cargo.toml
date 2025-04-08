@@ -17,6 +17,7 @@ bat = { version = "0.25.0", default-features = false, features = [
   "regex-fancy",
 ] }
 bon = "3.3.2"
+bytes = "1.10.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
 chrono = "0.4.38"
 comfy-table = "7.1.1"
@@ -38,16 +39,11 @@ include_dir = { version = "0.7.3", features = ["glob"] }
 lazy-regex = "3.1.0"
 md-5 = "0.10.6"
 miette = { version = "7.4.0", features = ["fancy"] }
-mlua = { version = "0.10.1", features = [
-  "async",
-  "error-send",
-  "luau",
-  "serialize",
-] }
+mlua = { version = "0.10.1", features = ["async", "luau", "send", "serialize"] }
 parking_lot = "0.12.1"
 pulldown-cmark = "0.13.0"
-rayon = "1.10.0"
 rmp-serde = "1.1.2"
+reqwest = "0.12.15"
 rusqlite = { version = "0.32.1", features = ["bundled", "chrono"] }
 rusqlite_migration = { version = "1.3.1", features = ["from-directory"] }
 sea-query = "0.32.2"
@@ -60,6 +56,8 @@ string-offsets = "0.2.0"
 termimad = "0.31.1"
 thiserror = "2.0.11"
 tokio = { version = "1.43.0", default-features = false, features = [
+  "fs",
+  "io-util",
   "macros",
   "rt-multi-thread",
 ] }
