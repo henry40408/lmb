@@ -51,9 +51,9 @@ jobs:
       - run: |
           echo '# Benchmark' | tee output.txt
           echo '' | tee -a output.txt
-          echo -n '```' | tee -a output.txt
+          echo '```' | tee -a output.txt
           cargo bench --bench bench | tee -a output.txt
-          echo -n '```' | tee -a output.txt
+          echo '```' | tee -a output.txt
       # output format of divan is different from bencher or rust nightly
       # ref: https://github.com/nvzqz/divan/issues/10
       #- name: Download previous benchmark data
