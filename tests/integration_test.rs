@@ -276,6 +276,40 @@ fn example_serve() {
 }
 
 #[test]
+fn guide_cat() {
+    Command::new(cargo_bin("lmb"))
+        .args(["guide", "cat", "--name", "lua"])
+        .assert()
+        .success()
+        .stderr_eq(str![]);
+}
+
+#[test]
+fn guide_cat_absent() {
+    Command::new(cargo_bin("lmb"))
+        .args(["guide", "cat", "--name", "__absent__"])
+        .assert()
+        .failure()
+        .stderr_eq(str![[r#"
+guide with __absent__ not found
+
+"#]])
+        .stderr_eq(str![[r#"
+guide with __absent__ not found
+
+"#]]);
+}
+
+#[test]
+fn guide_list() {
+    Command::new(cargo_bin("lmb"))
+        .args(["guide", "list"])
+        .assert()
+        .success()
+        .stderr_eq(str![]);
+}
+
+#[test]
 fn list_themes() {
     Command::new(cargo_bin("lmb"))
         .args(["list-themes"])
@@ -308,40 +342,6 @@ gruvbox-light
 zenburn
 
 "#]])
-        .stderr_eq(str![]);
-}
-
-#[test]
-fn guide_cat() {
-    Command::new(cargo_bin("lmb"))
-        .args(["guide", "cat", "--name", "lua"])
-        .assert()
-        .success()
-        .stderr_eq(str![]);
-}
-
-#[test]
-fn guide_cat_absent() {
-    Command::new(cargo_bin("lmb"))
-        .args(["guide", "cat", "--name", "__absent__"])
-        .assert()
-        .failure()
-        .stderr_eq(str![[r#"
-guide with __absent__ not found
-
-"#]])
-        .stderr_eq(str![[r#"
-guide with __absent__ not found
-
-"#]]);
-}
-
-#[test]
-fn guide_list() {
-    Command::new(cargo_bin("lmb"))
-        .args(["guide", "list"])
-        .assert()
-        .success()
         .stderr_eq(str![]);
 }
 
