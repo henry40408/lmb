@@ -71,6 +71,19 @@ where
     }
 
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("get_env", |vm, this, key: String| {
+            let Some(allowed_vars) = &this.allowed_env_vars else {
+                return Ok(LuaNil);
+            };
+            let key = key.into_boxed_str();
+            if !allowed_vars.contains(&key) {
+                return Ok(LuaNil);
+            }
+            match std::env::var(&*key).ok() {
+                Some(v) => vm.to_value(&v),
+                None => Ok(LuaNil),
+            }
+        });
         methods.add_async_method("next", |_, this, ()| async move {
             let Some(next) = &this.next else {
                 return Ok(LuaNil);
@@ -90,19 +103,6 @@ where
         });
         methods.add_async_method("read_unicode", |vm, this, f| {
             lua_lmb_read_unicode(vm, this.input.clone(), f)
-        });
-        methods.add_method("get_env", |vm, this, key: String| {
-            let Some(allowed_vars) = &this.allowed_env_vars else {
-                return Ok(LuaNil);
-            };
-            let key = key.into_boxed_str();
-            if !allowed_vars.contains(&key) {
-                return Ok(LuaNil);
-            }
-            match std::env::var(&*key).ok() {
-                Some(v) => vm.to_value(&v),
-                None => Ok(LuaNil),
-            }
         });
     }
 }

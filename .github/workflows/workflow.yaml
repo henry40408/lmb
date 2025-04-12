@@ -49,7 +49,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
       - run: |
-          echo '# Benchmark' | tee output.txt
+          echo '# Benchmark (ubuntu-latest)' | tee output.txt
           echo '' | tee -a output.txt
           echo '```' | tee -a output.txt
           cargo bench --bench bench | tee -a output.txt
