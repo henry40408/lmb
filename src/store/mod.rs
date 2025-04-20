@@ -445,8 +445,9 @@ impl Default for Store {
 mod tests {
     use assert_fs::NamedTempFile;
     use serde_json::{Value, json};
-    use std::{io::empty, thread, time::Duration};
+    use std::{thread, time::Duration};
     use test_case::test_case;
+    use tokio::io::empty;
 
     use crate::{Evaluation, Store};
 

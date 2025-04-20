@@ -1,19 +1,20 @@
 use bon::{Builder, bon, builder};
 use chrono::Utc;
 use mlua::{Compiler, prelude::*};
-use parking_lot::Mutex;
 use serde_json::Value;
 use std::{
     fmt::Write,
-    io::{BufReader, Read, Seek},
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    thread,
     time::{Duration, Instant},
 };
-use tracing::{debug, error, trace_span, warn};
+use tokio::{
+    io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader},
+    sync::Mutex,
+};
+use tracing::{Instrument as _, debug, error, trace_span, warn};
 
 use crate::{
     DEFAULT_TIMEOUT, Error, Input, LuaSource, Result, ScheduleOptions, State, Store, bind_vm,
@@ -23,7 +24,7 @@ use crate::{
 #[derive(Builder, Debug)]
 pub struct Solution<R>
 where
-    for<'lua> R: 'lua + Read,
+    for<'lua> R: 'lua + AsyncRead + Send,
 {
     /// Evaluation.
     #[builder(start_fn)]
@@ -39,7 +40,7 @@ where
 #[bon]
 impl<R> Solution<R>
 where
-    for<'lua> R: 'lua + Read,
+    for<'lua> R: 'lua + AsyncRead + Send,
 {
     /// Render the solution.
     #[builder]
@@ -61,13 +62,19 @@ where
             }
         }
     }
+
+    /// Convert payload to Lua value.
+    #[builder]
+    pub fn to_lua(&self) -> crate::Result<LuaValue> {
+        Ok(self.evaluation.vm.to_value(&self.payload)?)
+    }
 }
 
 /// Container holding the function and input for evaluation.
 #[derive(Debug)]
 pub struct Evaluation<R>
 where
-    for<'lua> R: 'lua + Read,
+    for<'lua> R: 'lua + AsyncRead + Send,
 {
     compiled: Box<[u8]>,
     input: Input<R>,
@@ -81,7 +88,7 @@ where
 #[bon]
 impl<R> Evaluation<R>
 where
-    for<'lua> R: 'lua + Read + Send,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     /// Build evaluation with a reader.
     #[builder]
@@ -135,8 +142,9 @@ where
     /// Evaluate the function with a state.
     ///
     /// ```rust
-    /// # use std::{io::empty, sync::Arc};
+    /// # use std::sync::Arc;
     /// # use serde_json::json;
+    /// # use tokio::io::empty;
     /// use lmb::*;
     ///
     /// # fn main() -> Result<()> {
@@ -150,6 +158,17 @@ where
     /// ```
     #[builder]
     pub fn evaluate(self: &Arc<Self>, state: Option<Arc<State>>) -> Result<Solution<R>> {
+        futures::executor::block_on(
+            async move { self.evaluate_async().maybe_state(state).call().await },
+        )
+    }
+
+    /// Evaluate the function with a state asynchronously.
+    #[builder]
+    pub async fn evaluate_async(
+        self: &Arc<Self>,
+        state: Option<Arc<State>>,
+    ) -> Result<Solution<R>> {
         if state.is_some() {
             bind_vm(&self.vm, self.input.clone())
                 .maybe_next(self.source.next.clone())
@@ -182,10 +201,10 @@ where
             None => chunk,
         };
 
-        let result = {
-            let _s = trace_span!("evaluate").entered();
-            self.vm.from_value(chunk.eval()?)?
-        };
+        let span = trace_span!("evaluate");
+        let result = self
+            .vm
+            .from_value(chunk.eval_async().instrument(span).await?)?;
 
         let duration = start.elapsed();
         let max_memory = max_memory.load(Ordering::Acquire);
@@ -199,7 +218,7 @@ where
     }
 
     /// Schedule the script.
-    pub fn schedule(self: &Arc<Self>, options: &ScheduleOptions) {
+    pub async fn schedule_async(self: &Arc<Self>, options: &ScheduleOptions) {
         let bail = options.bail;
         debug!(bail, "script scheduled");
         let mut error_count = 0usize;
@@ -208,8 +227,9 @@ where
             if let Some(next) = options.schedule.upcoming(Utc).take(1).next() {
                 debug!(%next, "next run");
                 let elapsed = next - now;
-                thread::sleep(elapsed.to_std().expect("failed to fetch next schedule"));
-                if let Err(err) = self.clone().evaluate().call() {
+                let elapsed = elapsed.to_std().expect("failed to fetch next schedule");
+                tokio::time::sleep(elapsed).await;
+                if let Err(err) = self.clone().evaluate_async().call().await {
                     warn!(?err, "failed to evaluate");
                     if bail > 0 {
                         debug!(bail, error_count, "check bail threshold");
@@ -235,11 +255,16 @@ where
 
 impl<R> Evaluation<R>
 where
-    for<'lua> R: 'lua + Read + Send + Seek,
+    for<'lua> R: 'lua + AsyncRead + Send + AsyncSeek + Unpin,
 {
     /// Rewind the input.
-    pub fn rewind_input(self: &Arc<Self>) -> Result<()> {
-        Ok(self.input.lock().rewind()?)
+    pub fn rewind_input(self: &Arc<Self>) -> Result<u64> {
+        futures::executor::block_on(async move { self.rewind_input_async().await })
+    }
+
+    /// Rewind the input.
+    pub async fn rewind_input_async(self: &Arc<Self>) -> Result<u64> {
+        Ok(self.input.lock().await.rewind().await?)
     }
 }
 
@@ -248,16 +273,17 @@ mod tests {
     use serde_json::{Value, json};
     use std::{
         fs,
-        io::{Cursor, empty},
+        io::Cursor,
         sync::Arc,
         time::{Duration, Instant},
     };
     use test_case::test_case;
+    use tokio::io::empty;
 
     use crate::{Evaluation, LuaSource, State, StateKey, Store};
 
-    #[test]
-    fn call_next() {
+    #[tokio::test]
+    async fn call_next() {
         let input = "1";
         let next_source: LuaSource = r#"
         return io.read('*n')
@@ -341,8 +367,8 @@ mod tests {
         assert_eq!(json!("bar"), res.payload);
     }
 
-    #[test]
-    fn rewind_input() {
+    #[tokio::test]
+    async fn rewind_input() {
         let input = Cursor::new("0");
         let script = "return io.read('*a')";
         let e = Evaluation::builder(script, input).build().unwrap();
