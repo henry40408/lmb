@@ -390,9 +390,9 @@ dependencies = [
 
 [[package]]
 name = "bon"
-version = "3.6.0"
+version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8baa8e2f74b721b16b14e6b8e0516c8df35708273d5e89ca7be391cb9a419ff9"
+checksum = "94054366e2ff97b455acdd4fdb03913f717febc57b7bbd1741b2c3b87efae030"
 dependencies = [
  "bon-macros",
  "rustversion",
@@ -400,9 +400,9 @@ dependencies = [
 
 [[package]]
 name = "bon-macros"
-version = "3.6.0"
+version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bff68fc8bb0a7a05683bc799f9c50ec05379c4a6104446eb1fed7b07341eebc5"
+checksum = "542a990e676ce0a0a895ae54b2d94afd012434f2228a85b186c6bc1a7056cdc6"
 dependencies = [
  "darling",
  "ident_case",
@@ -606,7 +606,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -687,9 +687,9 @@ dependencies = [
 
 [[package]]
 name = "crokey"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "520e83558f4c008ac06fa6a86e5c1d4357be6f994cce7434463ebcdaadf47bb1"
+checksum = "c5ff945e42bb93d29b10ba509970066a269903a932f0ea07d99d8621f97e90d7"
 dependencies = [
  "crokey-proc_macros",
  "crossterm",
@@ -700,15 +700,15 @@ dependencies = [
 
 [[package]]
 name = "crokey-proc_macros"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "370956e708a1ce65fe4ac5bb7185791e0ece7485087f17736d54a23a0895049f"
+checksum = "665f2180fd82d0ba2bf3deb45fafabb18f23451024ff71ee47f6bfdfb4bbe09e"
 dependencies = [
  "crossterm",
  "proc-macro2",
  "quote",
  "strict",
- "syn 1.0.109",
+ "syn 2.0.93",
 ]
 
 [[package]]
@@ -994,7 +994,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2511,7 +2511,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2584,9 +2584,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sea-query"
-version = "0.32.3"
+version = "0.32.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5a24d8b9fcd2674a6c878a3d871f4f1380c6c43cc3718728ac96864d888458e"
+checksum = "d99447c24da0cded00089e2021e1624af90878c65f7534319448d01da3df869d"
 dependencies = [
  "inherent",
  "sea-query-derive",
@@ -2991,14 +2991,14 @@ dependencies = [
  "fastrand",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "termimad"
-version = "0.31.2"
+version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8e19c6dbf107bec01d0e216bb8219485795b7d75328e4fa5ef2756c1be4f8dc"
+checksum = "7301d9c2c4939c97f25376b70d3c13311f8fefdee44092fc361d2a98adc2cbb6"
 dependencies = [
  "coolor",
  "crokey",
@@ -3006,7 +3006,7 @@ dependencies = [
  "lazy-regex",
  "minimad",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "unicode-width 0.1.14",
 ]
 
@@ -3441,9 +3441,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "ureq"
-version = "3.0.10"
+version = "3.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b0351ca625c7b41a8e4f9bb6c5d9755f67f62c2187ebedecacd9974674b271d"
+checksum = "b7a3e9af6113ecd57b8c63d3cd76a385b2e3881365f1f489e54f49801d0c83ea"
 dependencies = [
  "base64",
  "flate2",
@@ -3459,9 +3459,9 @@ dependencies = [
 
 [[package]]
 name = "ureq-proto"
-version = "0.3.5"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae239d0a3341aebc94259414d1dc67cfce87d41cbebc816772c91b77902fafa4"
+checksum = "fadf18427d33828c311234884b7ba2afb57143e6e7e69fda7ee883b624661e36"
 dependencies = [
  "base64",
  "http",
@@ -3650,7 +3650,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
