@@ -40,7 +40,7 @@ lazy-regex = "3.1.0"
 md-5 = "0.10.6"
 miette = { version = "7.4.0", features = ["fancy"] }
 mlua = { version = "0.10.1", features = ["async", "luau", "send", "serialize"] }
-parking_lot = "0.12.1"
+parking_lot = "0.12.4"
 pulldown-cmark = "0.13.0"
 reqwest = "0.12.15"
 rmp-serde = "1.1.2"
