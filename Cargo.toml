@@ -55,7 +55,7 @@ sha2 = "0.10.8"
 string-offsets = "0.2.0"
 termimad = "0.33.0"
 thiserror = "2.0.11"
-tokio = { version = "1.43.0", default-features = false, features = [
+tokio = { version = "1.46.1", default-features = false, features = [
   "fs",
   "io-util",
   "macros",
