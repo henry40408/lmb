@@ -70,11 +70,7 @@ fn build_headers(headers: Option<&Map<String, Value>>) -> crate::Result<HeaderMa
     Ok(m)
 }
 
-async fn lua_lmb_fetch(
-    _: Lua,
-    _: LuaUserDataRef<LuaModHTTP>,
-    (uri, options): (String, Option<LuaTable>),
-) -> LuaResult<LuaModHTTPResponse> {
+async fn lua_lmb_fetch(uri: String, options: Option<LuaTable>) -> LuaResult<LuaModHTTPResponse> {
     let options = serde_json::to_value(options).into_lua_err()?;
     let uri: Uri = uri.parse().into_lua_err()?;
     let method: Method = options
@@ -143,7 +139,12 @@ async fn lua_lmb_fetch(
 
 impl LuaUserData for LuaModHTTP {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_async_method("fetch", lua_lmb_fetch);
+        methods.add_async_method(
+            "fetch",
+            |_, _, (uri, options): (String, Option<LuaTable>)| async move {
+                lua_lmb_fetch(uri, options).await
+            },
+        );
     }
 }
 
