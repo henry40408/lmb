@@ -1,7 +1,10 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use bytes::BytesMut;
-use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, header::CONTENT_TYPE};
+use http::{
+    HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri,
+    header::{ACCEPT, CONTENT_TYPE, USER_AGENT},
+};
 use mlua::prelude::*;
 use reqwest::{Client, Response};
 use serde_json::{Map, Value};
@@ -53,10 +56,12 @@ impl LuaUserData for LuaModHTTPResponse {
 }
 
 fn build_headers(headers: Option<&Map<String, Value>>) -> crate::Result<HeaderMap> {
-    let mut m = HeaderMap::new();
-    let Some(headers) = headers else {
-        return Ok(m);
+    let headers = match headers {
+        Some(h) => h,
+        None => &Map::new(),
     };
+
+    let mut m = HeaderMap::new();
     for (k, v) in headers.iter() {
         let v = match v {
             Value::String(s) => s.to_owned().into_boxed_str(),
@@ -67,6 +72,18 @@ fn build_headers(headers: Option<&Map<String, Value>>) -> crate::Result<HeaderMa
             HeaderValue::from_str(&v).into_lua_err()?,
         );
     }
+
+    if !m.contains_key(USER_AGENT) {
+        let value = format!("lmb/{}", env!("APP_VERSION"));
+        #[allow(clippy::unwrap_used)]
+        m.insert(USER_AGENT, value.parse().unwrap());
+    }
+
+    if !m.contains_key(ACCEPT) {
+        #[allow(clippy::unwrap_used)]
+        m.insert(ACCEPT, "*/*".parse().unwrap());
+    }
+
     Ok(m)
 }
 
@@ -150,6 +167,7 @@ impl LuaUserData for LuaModHTTP {
 
 #[cfg(test)]
 mod tests {
+    use http::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
     use mockito::Server;
     use serde_json::json;
     use tokio::io::empty;
@@ -163,7 +181,8 @@ mod tests {
         let body = "<html>content</html>";
         let get_mock = server
             .mock("GET", "/html")
-            .with_header("content-type", "text/html")
+            .match_request(|r| r.has_header(ACCEPT) && r.has_header(USER_AGENT))
+            .with_header(CONTENT_TYPE, "text/html")
             .with_body(body)
             .create_async()
             .await;
@@ -191,7 +210,8 @@ mod tests {
         let get_mock = server
             .mock("GET", "/headers")
             .match_header("a", "b")
-            .with_header("content-type", "text/plain")
+            .match_header(USER_AGENT, "agent/1.0")
+            .with_header(CONTENT_TYPE, "text/plain")
             .with_body(body)
             .create_async()
             .await;
@@ -200,7 +220,7 @@ mod tests {
         let script = format!(
             r#"
             local m = require('@lmb').http
-            local res = m:fetch('{url}/headers', {{ headers = {{ a = 'b' }} }})
+            local res = m:fetch('{url}/headers', {{ headers = {{ a = 'b', ['user-agent'] = 'agent/1.0' }} }})
             return res:text()
             "#
         );
@@ -218,7 +238,7 @@ mod tests {
         let body = "<html>中文</html>";
         let get_mock = server
             .mock("GET", "/html")
-            .with_header("content-type", "text/html")
+            .with_header(CONTENT_TYPE, "text/html")
             .with_body(body)
             .create_async()
             .await;
@@ -245,7 +265,7 @@ mod tests {
         let body = r#"{"a":1}"#;
         let get_mock = server
             .mock("GET", "/json")
-            .with_header("content-type", "application/json")
+            .with_header(CONTENT_TYPE, "application/json")
             .with_body(body)
             .create_async()
             .await;
@@ -272,7 +292,7 @@ mod tests {
         let post_mock = server
             .mock("POST", "/add")
             .match_body("1+1")
-            .with_header("content-type", "text/plain")
+            .with_header(CONTENT_TYPE, "text/plain")
             .with_body("2")
             .create_async()
             .await;

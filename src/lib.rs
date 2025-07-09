@@ -85,6 +85,7 @@ pub struct PrintOptions {
 #[cfg(test)]
 mod tests {
     use crate::{Evaluation, MIGRATIONS, StateKey, Store};
+    use http::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
     use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
     use serde_json::json;
     use tokio::io::empty;
@@ -128,8 +129,9 @@ mod tests {
         let headers_mock = server
             .mock("GET", "/headers")
             .with_status(200)
+            .match_request(|r| r.has_header(ACCEPT) && r.has_header(USER_AGENT))
             .match_header("I-Am", "A teapot")
-            .with_header("content-type", "application/json")
+            .with_header(CONTENT_TYPE, "application/json")
             .with_body(
                 serde_json::to_string(&json!({ "headers": { "I-Am": "A teapot" } })).unwrap(),
             )
@@ -138,8 +140,9 @@ mod tests {
 
         let post_mock = server
             .mock("POST", "/post")
+            .match_request(|r| r.has_header(ACCEPT) && r.has_header(USER_AGENT))
             .with_status(200)
-            .with_header("content-type", "application/json")
+            .with_header(CONTENT_TYPE, "application/json")
             .with_body(
                 serde_json::to_string(
                     &json!({ "data": serde_json::to_string(&json!({ "foo": "bar" })).unwrap() }),
