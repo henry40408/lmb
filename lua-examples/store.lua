@@ -6,5 +6,5 @@
 --]]
 local m = require("@lmb")
 return m.store:update({ "a" }, function(s)
-	s.a = s.a + 1
+  s.a = s.a + 1
 end, { a = 0 })
