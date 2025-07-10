@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::{
     io::{Write as _, stderr, stdout},
     sync::Arc,
+    time::Duration,
 };
 use tokio::io::AsyncRead;
 
@@ -86,6 +87,10 @@ where
                 Some(v) => vm.to_value(&v),
                 None => Ok(LuaNil),
             }
+        });
+        methods.add_async_method("sleep_ms", |_, _, ms: u64| async move {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            Ok(ms)
         });
         methods.add_async_method("next", |_, this, ()| async move {
             let Some(next) = &this.next else {
