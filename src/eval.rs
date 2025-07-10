@@ -54,10 +54,10 @@ where
     {
         if json {
             let res = serde_json::to_string(&self.payload)?;
-            Ok(write!(f, "{}", res)?)
+            Ok(write!(f, "{res}",)?)
         } else {
             match &self.payload {
-                Value::String(s) => Ok(write!(f, "{}", s)?),
+                Value::String(s) => Ok(write!(f, "{s}")?),
                 _ => Ok(write!(f, "{}", self.payload)?),
             }
         }

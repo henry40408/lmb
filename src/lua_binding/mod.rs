@@ -5,16 +5,19 @@ use serde_json::Value;
 use std::{
     io::{Write as _, stderr, stdout},
     sync::Arc,
+    time::Duration,
 };
 use tokio::io::AsyncRead;
 
 use crate::{Evaluation, Input, LuaSource, Result, State, StateKey, Store};
 
+use coroutine::*;
 use crypto::*;
 use http::*;
 use json::*;
 use read::*;
 
+mod coroutine;
 mod crypto;
 mod http;
 mod json;
@@ -42,6 +45,7 @@ where
 {
     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field("_VERSION", env!("APP_VERSION"));
+        fields.add_field("coroutine", LuaModCoroutine {});
         fields.add_field("crypto", LuaModCrypto {});
         fields.add_field("http", LuaModHTTP {});
         fields.add_field("json", LuaModJSON {});
@@ -83,6 +87,10 @@ where
                 Some(v) => vm.to_value(&v),
                 None => Ok(LuaNil),
             }
+        });
+        methods.add_async_method("sleep_ms", |_, _, ms: u64| async move {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            Ok(ms)
         });
         methods.add_async_method("next", |_, this, ()| async move {
             let Some(next) = &this.next else {

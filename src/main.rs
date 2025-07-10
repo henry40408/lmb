@@ -28,7 +28,7 @@ static VERSION: &str = env!("APP_VERSION");
 #[command(about, author, version=VERSION)]
 struct Cli {
     /// Allow environment variables to be used in the script.
-    #[arg(long, env = "LMB_ALLOW_ENV")]
+    #[arg(long, env = "LMB_ALLOW_ENV", value_delimiter = ',')]
     allow_env: Option<Vec<Box<str>>>,
 
     /// Checks the syntax of the function before evaluation or serving,

@@ -236,8 +236,10 @@ fn example_list() {
  env           Print environment variable.                                            
  error         Demonstrate how the runner reacts when an error is thrown.             
  hello         Hello, world!                                                          
+ http-client   Send HTTP GET request.                                                 
  http-echo     Echo headers and body from HTTP request.                               
  input         Echo the standard input.                                               
+ join-all      Join multiple coroutines and wait for all to finish.                   
  last          The LAST Lua script to handle HTTP request.                            
  mw1           The FIRST Lua script to read request body.                             
  mw2           The SECOND Lua script to log request.                                  
