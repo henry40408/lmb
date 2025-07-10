@@ -129,7 +129,7 @@ impl LuaSource {
                 "{message}"
             )
             .with_source_code(self.script.to_string());
-            write!(f, "{:?}", report)?;
+            write!(f, "{report:?}")?;
         }
         Ok(())
     }
