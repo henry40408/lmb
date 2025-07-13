@@ -1,0 +1,3 @@
+local m = require("@lmb").http
+local res = m:fetch(io.read("*a") .. "/json")
+return res:json()

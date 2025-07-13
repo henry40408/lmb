@@ -167,10 +167,11 @@ impl LuaUserData for LuaModHTTP {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use http::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
     use mockito::Server;
     use serde_json::json;
-    use tokio::io::empty;
 
     use crate::Evaluation;
 
@@ -187,15 +188,9 @@ mod tests {
             .create_async()
             .await;
 
-        let url = server.url();
-        let script = format!(
-            r#"
-            local m = require('@lmb').http
-            local res = m:fetch('{url}/html')
-            return res:text()
-            "#
-        );
-        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let script = include_str!("fixtures/html.lua");
+        let input = Cursor::new(server.url());
+        let e = Evaluation::builder(script, input).build().unwrap();
         let res = e.evaluate_async().call().await.unwrap();
         assert_eq!(json!(body), res.payload);
 
@@ -216,15 +211,9 @@ mod tests {
             .create_async()
             .await;
 
-        let url = server.url();
-        let script = format!(
-            r#"
-            local m = require('@lmb').http
-            local res = m:fetch('{url}/headers', {{ headers = {{ a = 'b', ['user-agent'] = 'agent/1.0' }} }})
-            return res:text()
-            "#
-        );
-        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let script = include_str!("fixtures/headers.lua");
+        let input = Cursor::new(server.url());
+        let e = Evaluation::builder(script, input).build().unwrap();
         let res = e.evaluate_async().call().await.unwrap();
         assert_eq!(json!(body), res.payload);
 
@@ -243,15 +232,9 @@ mod tests {
             .create_async()
             .await;
 
-        let url = server.url();
-        let script = format!(
-            r#"
-            local m = require('@lmb').http
-            local res = m:fetch('{url}/html')
-            return res:text()
-            "#
-        );
-        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let script = include_str!("fixtures/html.lua");
+        let input = Cursor::new(server.url());
+        let e = Evaluation::builder(script, input).build().unwrap();
         let res = e.evaluate_async().call().await.unwrap();
         assert_eq!(json!(body), res.payload);
 
@@ -270,15 +253,9 @@ mod tests {
             .create_async()
             .await;
 
-        let url = server.url();
-        let script = format!(
-            r#"
-            local m = require('@lmb').http
-            local res = m:fetch('{url}/json')
-            return res:json()
-            "#
-        );
-        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let script = include_str!("fixtures/http-json.lua");
+        let input = Cursor::new(server.url());
+        let e = Evaluation::builder(script, input).build().unwrap();
         let res = e.evaluate_async().call().await.unwrap();
         assert_eq!(json!({ "a": 1 }), res.payload);
 
@@ -297,18 +274,9 @@ mod tests {
             .create_async()
             .await;
 
-        let url = server.url();
-        let script = format!(
-            r#"
-            local m = require('@lmb').http
-            local res = m:fetch('{url}/add', {{
-              method = 'POST',
-              body = '1+1',
-            }})
-            return res:text()
-            "#
-        );
-        let e = Evaluation::builder(script, empty()).build().unwrap();
+        let script = include_str!("fixtures/http-post.lua");
+        let input = Cursor::new(server.url());
+        let e = Evaluation::builder(script, input).build().unwrap();
         let res = e.evaluate_async().call().await.unwrap();
         assert_eq!(json!("2"), res.payload);
 

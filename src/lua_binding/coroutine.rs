@@ -38,7 +38,7 @@ impl LuaUserData for LuaModCoroutine {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{io::Cursor, time::Duration};
 
     use serde_json::json;
     use tokio::io::empty;
@@ -48,20 +48,9 @@ mod tests {
     #[tokio::test]
     async fn join_all() {
         let ms = 100;
-        let script = format!(
-            r#"
-            local m = require('@lmb')
-            m.coroutine:join_all({{
-                coroutine.create(function()
-                    m:sleep_ms({ms})
-                end),
-                coroutine.create(function()
-                    m:sleep_ms({ms})
-                end),
-            }})
-            "#
-        );
-        let e = Evaluation::builder(script, empty())
+        let input = Cursor::new(format!("{ms}"));
+        let script = include_str!("fixtures/join-all.lua");
+        let e = Evaluation::builder(script, input)
             .timeout(Duration::from_millis(ms * 5 / 4))
             .build()
             .unwrap();
@@ -71,19 +60,7 @@ mod tests {
 
     #[tokio::test]
     async fn race() {
-        let script = r#"
-        local m = require('@lmb')
-        return m.coroutine:race({
-            coroutine.create(function()
-                m:sleep_ms(100)
-                return 100
-            end),
-            coroutine.create(function()
-                m:sleep_ms(200)
-                return 200
-            end),
-        })
-        "#;
+        let script = include_str!("fixtures/race.lua");
         let e = Evaluation::builder(script, empty()).build().unwrap();
         let res = e.evaluate_async().call().await.unwrap();
         assert_eq!(json!(100), res.payload);

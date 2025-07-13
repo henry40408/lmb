@@ -199,19 +199,16 @@ mod tests {
 
     #[test]
     fn syntax() {
-        let script = "ret true";
-        let source = LuaSource::builder(script).build();
+        let source: LuaSource = "ret true".into();
         assert!(source.check().is_err());
 
-        let script = "return true";
-        let source = LuaSource::builder(script).build();
+        let source: LuaSource = "return true".into();
         assert!(source.check().is_ok());
     }
 
     #[test]
     fn syntax_error() {
-        let script = "ret true";
-        let source = LuaSource::builder(script).build();
+        let source: LuaSource = "ret true".into();
         let errors = source.check().unwrap_err();
         let errors: Vec<&Error> = errors.iter().collect();
         let mut buf = String::new();

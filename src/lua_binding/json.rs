@@ -17,45 +17,16 @@ impl LuaUserData for LuaModJSON {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::{Value, json};
+    use serde_json::json;
     use tokio::io::empty;
 
     use crate::Evaluation;
 
     #[test]
-    fn json_decode() {
-        let script = r#"
-        local m = require('@lmb').json;
-        return m:decode('{"bool":true,"num":2,"str":"hello"}')
-        "#;
+    fn json() {
+        let script = include_str!("fixtures/json.lua");
         let e = Evaluation::builder(script, empty()).build().unwrap();
         let res = e.evaluate().call().unwrap();
-        let expected = json!({ "bool": true, "num": 2, "str": "hello" });
-        assert_eq!(expected, res.payload);
-    }
-
-    #[test]
-    fn json_encode() {
-        let script = r#"
-        local m = require('@lmb').json;
-        return m:encode({ bool = true, num = 2, str = 'hello' })
-        "#;
-        let e = Evaluation::builder(script, empty()).build().unwrap();
-        let res = e.evaluate().call().unwrap();
-        let actual: Value = serde_json::from_str(res.payload.as_str().unwrap()).unwrap();
-        assert_eq!(json!({"bool":true,"num":2,"str":"hello"}), actual);
-    }
-
-    #[test]
-    fn json_decode_encode() {
-        // https://github.com/rxi/json.lua/issues/19
-        let script = r#"
-        local m = require('@lmb').json;
-        return m:encode(m:decode('{"a":[{}]}'))
-        "#;
-        let e = Evaluation::builder(script, empty()).build().unwrap();
-        let res = e.evaluate().call().unwrap();
-        let actual: Value = serde_json::from_str(res.payload.as_str().unwrap()).unwrap();
-        assert_eq!(json!({"a":[{}]}), actual);
+        assert_eq!(json!(null), res.payload);
     }
 }

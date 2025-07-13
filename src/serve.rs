@@ -21,7 +21,7 @@ use tracing::{Level, error, info, warn};
 struct AppState {
     #[builder(start_fn)]
     source: LuaSource,
-    json: bool,
+    json: Option<bool>,
     store: Store,
     timeout: Option<Duration>,
 }
@@ -32,7 +32,7 @@ pub struct ServeOptions {
     bind: SocketAddr,
     #[builder(start_fn)]
     source: LuaSource,
-    json: bool,
+    json: Option<bool>,
     run_migrations: Option<bool>,
     store_path: Option<PathBuf>,
     timeout: Option<Duration>,
@@ -81,8 +81,9 @@ where
     eval_state.insert(StateKey::Request, request_map.into());
 
     let res = e.evaluate().state(eval_state.clone()).call();
+    let json = state.json.unwrap_or_default();
     match res {
-        Ok(res) => match build_response(state.json, eval_state, &res.payload) {
+        Ok(res) => match build_response(json, eval_state, &res.payload) {
             Ok(t) => t,
             Err(err) => {
                 error!(?err, "failed to build response");
@@ -183,7 +184,7 @@ pub fn init_route(opts: &ServeOptions) -> anyhow::Result<Router> {
         store
     };
     let app_state = AppState::builder(opts.source.clone())
-        .json(opts.json)
+        .maybe_json(opts.json)
         .store(store)
         .maybe_timeout(opts.timeout)
         .build();
@@ -212,23 +213,18 @@ pub async fn serve_file(opts: &ServeOptions) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::init_route;
-    use crate::{Cli, serve::ServeOptions};
+    use crate::serve::ServeOptions;
     use axum_test::TestServer;
-    use clap::Parser;
     use http::HeaderValue;
     use serde_json::{Value, json};
     use std::net::SocketAddr;
 
     #[tokio::test]
     async fn echo_request() {
-        let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
-        let script = r#"
-        local m = require('@lmb')
-        return { request = m.request, body = io.read('*a') }
-        "#;
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = include_str!("fixtures/echo-request.lua").into();
+        let opts = ServeOptions::builder(addr, script).json(true).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/foo/bar/baz").json(&json!({"a":1})).await;
@@ -250,20 +246,10 @@ mod tests {
 
     #[tokio::test]
     async fn headers_status_code() {
-        let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
-        let script = r#"
-        local m = require('@lmb')
-        print(m.response)
-        local res = {}
-        res.status_code = 418 -- I'm a teapot
-        res.headers = { quantity = 1, whoami = "a teapot" }
-        m.response = res
-        print(m.response)
-        return "I'm a teapot."
-        "#;
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = include_str!("fixtures/headers-status-code.lua").into();
+        let opts = ServeOptions::builder(addr, script).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
@@ -277,11 +263,10 @@ mod tests {
 
     #[tokio::test]
     async fn headers_status_code_bad_script() {
-        let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
-        let script = "ret 'hello'";
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = "ret 'hello'".into();
+        let opts = ServeOptions::builder(addr, script).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
@@ -291,17 +276,10 @@ mod tests {
 
     #[tokio::test]
     async fn headers_status_code_invalid_status_code() {
-        let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
-        let script = r#"
-        local m = require('@lmb')
-        local res = {}
-        res.status_code = 10000
-        m.response = res
-        return "hello"
-        "#;
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = include_str!("fixtures/invalid-status-code.lua").into();
+        let opts = ServeOptions::builder(addr, script).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
@@ -311,11 +289,10 @@ mod tests {
 
     #[tokio::test]
     async fn json_string() {
-        let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
-        let script = "return 'hello'";
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = "return 'hello'".into();
+        let opts = ServeOptions::builder(addr, script).json(true).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
@@ -325,11 +302,10 @@ mod tests {
 
     #[tokio::test]
     async fn number() {
-        let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
-        let script = r#"return 1"#;
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = "return 1".into();
+        let opts = ServeOptions::builder(addr, script).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
@@ -339,11 +315,10 @@ mod tests {
 
     #[tokio::test]
     async fn raw_string() {
-        let cli = Cli::parse_from(["lmb", "serve", "--file", "-"]);
-        let script = "return 'hello'";
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = "return 'hello'".into();
+        let opts = ServeOptions::builder(addr, script).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
@@ -353,11 +328,10 @@ mod tests {
 
     #[tokio::test]
     async fn serve() {
-        let cli = Cli::parse_from(["lmb", "--json", "serve", "--file", "-"]);
-        let script = "return 1";
-        let opts = ServeOptions::builder("0.0.0.0:0".parse::<SocketAddr>().unwrap(), script.into())
-            .json(cli.json)
-            .build();
+        let addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let script = "return 1".into();
+        let opts = ServeOptions::builder(addr, script).json(true).build();
+
         let router = init_route(&opts).unwrap();
         let server = TestServer::new(router.into_make_service()).unwrap();
         let res = server.post("/").await;
