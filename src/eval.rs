@@ -285,7 +285,7 @@ mod tests {
     #[tokio::test]
     async fn call_next() {
         let input = "1";
-        let next_source: LuaSource = r#"return io.read('*n')"#.into();
+        let next_source = r#"return io.read('*n')"#.into();
         let mut source: LuaSource = r#"local m = require('@lmb') return m:next() + 1"#.into();
         source.next = Some(Box::new(next_source));
         let e = Evaluation::builder(source, input.as_bytes())

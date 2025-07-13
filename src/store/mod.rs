@@ -453,12 +453,7 @@ mod tests {
 
     #[test]
     fn concurrency() {
-        let script = r#"
-        return require('@lmb').store:update({ 'a' }, function(s)
-          s.a = s.a + 1
-        end, { a = 0 })
-        "#;
-
+        let script = include_str!("fixtures/update.lua");
         let store = Store::default();
 
         let mut threads = vec![];
@@ -472,9 +467,11 @@ mod tests {
                 e.evaluate().call().unwrap();
             }));
         }
+
         for t in threads {
             let _ = t.join();
         }
+
         assert_eq!(json!(1001), store.get("a").unwrap());
     }
 
@@ -492,13 +489,7 @@ mod tests {
 
     #[test]
     fn get_put() {
-        let script = r#"
-        local m = require('@lmb')
-        local a = m.store.a
-        assert(not m.store.b)
-        m.store.a = 4.56
-        return a
-        "#;
+        let script = include_str!("fixtures/get-put.lua");
 
         let store = Store::default();
         store.put("a", &1.23.into()).unwrap();
@@ -534,15 +525,7 @@ mod tests {
         store.put("a", &0.into()).unwrap();
         store.put("b", &0.into()).unwrap();
 
-        let source = r#"
-          local m = require('@lmb')
-          return m.store:update({'a'}, function(s)
-            s.a = s.a + 1
-            m.store:update({'b'}, function(t)
-              t.b = t.b + 1
-            end)
-          end)
-        "#;
+        let source = include_str!("fixtures/nested-update.lua");
         let e = Evaluation::builder(source, empty())
             .store(store)
             .build()
@@ -577,12 +560,7 @@ mod tests {
 
     #[test]
     fn reuse() {
-        let script = r#"
-        local m = require('@lmb')
-        local a = m.store.a
-        m.store.a = a + 1
-        return a
-        "#;
+        let script = include_str!("fixtures/reuse.lua");
 
         let store = Store::default();
         store.put("a", &1.into()).unwrap();
@@ -607,11 +585,7 @@ mod tests {
 
     #[test]
     fn update_without_default_value() {
-        let script = r#"
-        return require('@lmb').store:update({ 'a' }, function(s)
-          s.a = s.a + 1
-        end)
-        "#;
+        let script = include_str!("fixtures/update.lua");
 
         let store = Store::default();
         store.put("a", &1.into()).unwrap();
@@ -628,13 +602,7 @@ mod tests {
 
     #[test]
     fn rollback_when_error() {
-        let script = r#"
-        return require('@lmb').store:update({ 'a' }, function(values)
-          local a = table.unpack(values)
-          assert(a ~= 1, 'expect a not to equal 1')
-          return table.pack(a + 1)
-        end, { 0 })
-        "#;
+        let script = include_str!("fixtures/rollback-when-error.lua");
 
         let store = Store::default();
         store.put("a", &1.into()).unwrap();
