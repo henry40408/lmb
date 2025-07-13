@@ -120,57 +120,15 @@ impl LuaUserData for LuaModCrypto {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use tokio::io::empty;
 
     use crate::Evaluation;
 
     #[test]
-    fn hmac_sha256() {
-        let input = "input";
-        let script = "return require('@lmb').crypto:hmac('sha256', io.read('*a'), 'secret')";
-        let e = Evaluation::builder(script, input.as_bytes())
-            .build()
-            .unwrap();
+    fn crypto() {
+        let script = include_str!("fixtures/crypto.lua");
+        let e = Evaluation::builder(script, empty()).build().unwrap();
         let res = e.evaluate().call().unwrap();
-        let expected = "8d8985d04b7abd32cbaa3779a3daa019e0d269a22aec15af8e7296f702cc68c6";
-        assert_eq!(json!(expected), res.payload);
-    }
-
-    #[test]
-    fn sha256() {
-        let input = "input";
-        let script = "return require('@lmb').crypto:sha256(io.read('*a'))";
-        let e = Evaluation::builder(script, input.as_bytes())
-            .build()
-            .unwrap();
-        let res = e.evaluate().call().unwrap();
-        let expected = "c96c6d5be8d08a12e7b5cdc1b207fa6b2430974c86803d8891675e76fd992c20";
-        assert_eq!(json!(expected), res.payload);
-    }
-
-    #[test]
-    fn encrypt_decrypt() {
-        let input = " ";
-        let key_iv = "0123456701234567";
-
-        let script = format!(
-            "return require('@lmb').crypto:encrypt(io.read('*a'),'aes-cbc','{key_iv}','{key_iv}')"
-        );
-        let e = Evaluation::builder(script, input.as_bytes())
-            .build()
-            .unwrap();
-        let res = e.evaluate().call().unwrap();
-
-        let expected = "b019fc0029f1ae88e96597dc0667e7c8";
-        assert_eq!(json!(expected), res.payload);
-
-        let script = format!(
-            "return require('@lmb').crypto:decrypt(io.read('*a'),'aes-cbc','{key_iv}','{key_iv}')"
-        );
-        let e = Evaluation::builder(script, expected.as_bytes())
-            .build()
-            .unwrap();
-        let res = e.evaluate().call().unwrap();
-
-        assert_eq!(json!(input), res.payload);
+        assert_eq!(json!(null), res.payload);
     }
 }

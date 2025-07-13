@@ -265,14 +265,7 @@ mod tests {
     #[test]
     fn read_binary() {
         let input: &[u8] = &[1, 2, 3];
-        let script = r#"
-        local s = io.read('*a')
-        local t = {}
-        for b in (s or ""):gmatch('.') do
-          table.insert(t, string.byte(b))
-        end
-        return t
-        "#;
+        let script = include_str!("fixtures/read-binary.lua");
         let e = Evaluation::builder(script, input).build().unwrap();
         let res = e.evaluate().call().unwrap();
         assert_eq!(json!([1, 2, 3]), res.payload);
