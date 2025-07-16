@@ -285,3 +285,36 @@ local decrypted = crypto:decrypt(encrypted, 'aes-cbc', key, iv)
 assert(decrypted == '')
 
 ```
+
+## Logging
+
+Lmb provides a simple logging module that can be used to log messages at different levels:
+
+```lua
+local logging = require('@lmb').logging
+
+logging:log('This is a log message', { a = 1, b = 2 })
+logging:log({ a = 1, b = 2 }, 'This is a log message')
+logging:log('First log message', 'Second log message', { a = 1, b = 2 })
+
+logging:trace('This is a trace message')
+logging:debug('This is a debug message')
+logging:info('This is an info message')
+logging:warn('This is a warning message')
+logging:error('This is an error message')
+```
+
+The log messages will be printed to the standard output, and you can control the log level by setting the `RUST_LOG` environment variable. The available log levels are `trace`, `debug`, `info`, `warn`, and `error`. For example, to set the log level to `warn`, you can run:
+
+```sh
+$ cat your_script.lua
+local logging = require('@lmb').logging
+logging:debug('This is a debug message')
+logging:info('This is an info message')
+logging:warn('This is a warning message')
+logging:error('This is an error message')
+
+$ RUST_LOG=warn lmb eval --file your_script.lua
+2025-07-16T18:09:11.449744Z  INFO (lua): This is a warning message
+2025-07-16T18:09:11.449857Z  INFO (lua): This is an error message
+```

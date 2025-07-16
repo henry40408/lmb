@@ -15,12 +15,14 @@ use coroutine::*;
 use crypto::*;
 use http::*;
 use json::*;
+use logging::*;
 use read::*;
 
 mod coroutine;
 mod crypto;
 mod http;
 mod json;
+mod logging;
 mod read;
 
 // ref: https://www.lua.org/pil/8.1.html
@@ -47,6 +49,7 @@ where
         fields.add_field("_VERSION", env!("APP_VERSION"));
         fields.add_field("coroutine", LuaModCoroutine {});
         fields.add_field("crypto", LuaModCrypto {});
+        fields.add_field("logging", LuaModLogging {});
         fields.add_field("http", LuaModHTTP {});
         fields.add_field("json", LuaModJSON {});
         fields.add_field_method_get("request", |vm, this| {
