@@ -48,34 +48,21 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-      - run: |
-          echo '# Benchmark (ubuntu-latest)' | tee output.txt
-          echo '' | tee -a output.txt
-          echo '```' | tee -a output.txt
-          cargo bench --bench bench | tee -a output.txt
-          echo '```' | tee -a output.txt
-      # output format of divan is different from bencher or rust nightly
-      # ref: https://github.com/nvzqz/divan/issues/10
-      #- name: Download previous benchmark data
-      #  uses: actions/cache@v4.2.0
-      #  with:
-      #    path: ./cache
-      #    key: ${{ runner.os }}-benchmark
-      #- name: Store benchmark result
-      #  uses: benchmark-action/github-action-benchmark@v1.20.4
-      #  with:
-      #    tool: cargo
-      #    output-file-path: output.txt
-      #    external-data-json-path: ./cache/benchmark-data.json
-      #    fail-on-alert: true
-      #    github-token: ${{ secrets.GITHUB_TOKEN }}
-      #    summary-always: true
-      # post benchmark report on ubuntu as PR comment instead
-      - uses: thollander/actions-comment-pull-request@v3.0.1
+      - run: cargo bench --bench bench -- --output-format bencher | tee output.txt
+      - name: Download previous benchmark data
+        uses: actions/cache@v4.2.0
         with:
-          file-path: output.txt
-          comment-tag: benchmark
-        if: matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
+          path: ./cache-criterion
+          key: ${{ runner.os }}-benchmark
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1.20.4
+        with:
+          tool: cargo
+          output-file-path: output.txt
+          external-data-json-path: ./cache-criterion/benchmark-data.json
+          fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          summary-always: true
   coverage:
     needs: [check]
     runs-on: ubuntu-latest
