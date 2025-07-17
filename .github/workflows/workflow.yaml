@@ -48,18 +48,18 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
-      - run: cargo bench | tee output.txt
+      - run: cargo bench --bench bench -- --output-format bencher | tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4.2.0
         with:
-          path: ./cache
+          path: ./cache-criterion
           key: ${{ runner.os }}-benchmark
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1.20.4
         with:
           tool: cargo
           output-file-path: output.txt
-          external-data-json-path: ./cache/benchmark-data.json
+          external-data-json-path: ./cache-criterion/benchmark-data.json
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summary-always: true
