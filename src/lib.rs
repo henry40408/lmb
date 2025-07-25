@@ -58,16 +58,24 @@ mod tests {
 
     #[test]
     fn test_call() {
-        let source = include_str!("fixtures/hello.lua");
-        let runner = Runner::builder().source(&source).build().unwrap();
-        runner.call().maybe_state(None).call().unwrap();
-    }
-
-    #[test]
-    fn test_add() {
-        let source = include_str!("fixtures/add.lua");
-        let runner = Runner::builder().source(&source).build().unwrap();
-        let result = runner.call().state(json!(1)).call().unwrap();
-        assert_eq!(json!(2), result);
+        {
+            let source = include_str!("fixtures/hello.lua");
+            let runner = Runner::builder().source(&source).build().unwrap();
+            runner.call().maybe_state(None).call().unwrap();
+        }
+        {
+            let source = include_str!("fixtures/add.lua");
+            let runner = Runner::builder().source(&source).build().unwrap();
+            let result = runner.call().state(json!(1)).call().unwrap();
+            assert_eq!(json!(2), result);
+        }
+        {
+            let source = include_str!("fixtures/closure.lua");
+            let runner = Runner::builder().source(&source).build().unwrap();
+            for i in 1..=10 {
+                let result = runner.call().call().unwrap();
+                assert_eq!(json!(i), result);
+            }
+        }
     }
 }
