@@ -5,5 +5,14 @@ edition = "2024"
 
 [dependencies]
 bon = "3.6.5"
-mlua = { version = "0.11.1", features = ["luau"] }
+mlua = { version = "0.11.1", features = ["luau", "serde"] }
+serde = "1.0.219"
+serde_json = "1.0.141"
 thiserror = "2.0.12"
+
+[dev-dependencies]
+criterion = "0.7.0"
+
+[[bench]]
+name = "bench"
+harness = false

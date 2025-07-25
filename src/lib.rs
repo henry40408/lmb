@@ -1,9 +1,10 @@
 use bon::bon;
 use mlua::prelude::*;
+use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-enum LmbError {
+pub enum LmbError {
     #[error("Lua error: {0}")]
     LuaError(#[from] mlua::Error),
     #[error("Expected a Lua function, but got {actual} instead")]
@@ -13,7 +14,7 @@ enum LmbError {
 type LmbResult<T> = Result<T, LmbError>;
 
 #[derive(Debug)]
-struct Runner {
+pub struct Runner {
     func: LuaFunction,
     source: Box<str>,
     vm: Lua,
@@ -42,19 +43,31 @@ impl Runner {
         })
     }
 
-    pub fn call(&self) -> LmbResult<()> {
-        Ok(self.func.call::<()>(())?)
+    #[builder]
+    pub fn call(&self, state: Option<Value>) -> LmbResult<Value> {
+        let value = self.func.call::<LuaValue>(self.vm.to_value(&state))?;
+        Ok(self.vm.from_value(value)?)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
     fn test_call() {
         let source = include_str!("fixtures/hello.lua");
         let runner = Runner::builder().source(&source).build().unwrap();
-        runner.call().unwrap();
+        runner.call().maybe_state(None).call().unwrap();
+    }
+
+    #[test]
+    fn test_add() {
+        let source = include_str!("fixtures/add.lua");
+        let runner = Runner::builder().source(&source).build().unwrap();
+        let result = runner.call().state(json!(1)).call().unwrap();
+        assert_eq!(json!(2), result);
     }
 }
