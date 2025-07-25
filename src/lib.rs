@@ -1,4 +1,9 @@
-use bon::bon;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+use bon::{Builder, bon};
 use mlua::prelude::*;
 use serde_json::Value;
 use thiserror::Error;
@@ -18,6 +23,12 @@ pub struct Runner {
     func: LuaFunction,
     source: Box<str>,
     vm: Lua,
+}
+
+#[derive(Builder, Debug)]
+pub struct CallResult {
+    pub used_memory: usize,
+    pub value: Value,
 }
 
 #[bon]
@@ -44,9 +55,20 @@ impl Runner {
     }
 
     #[builder]
-    pub fn call(&self, state: Option<Value>) -> LmbResult<Value> {
+    pub fn call(&self, state: Option<Value>) -> LmbResult<CallResult> {
+        let used_memory = Arc::new(AtomicUsize::new(0));
+        self.vm.set_interrupt({
+            let used_memory = used_memory.clone();
+            move |vm| {
+                used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+                Ok(LuaVmState::Continue)
+            }
+        });
         let value = self.func.call::<LuaValue>(self.vm.to_value(&state))?;
-        Ok(self.vm.from_value(value)?)
+        Ok(CallResult::builder()
+            .used_memory(used_memory.load(Ordering::Relaxed))
+            .value(self.vm.from_value::<Value>(value)?)
+            .build())
     }
 }
 
@@ -61,20 +83,21 @@ mod tests {
         {
             let source = include_str!("fixtures/hello.lua");
             let runner = Runner::builder().source(&source).build().unwrap();
-            runner.call().maybe_state(None).call().unwrap();
+            let result = runner.call().maybe_state(None).call().unwrap();
+            assert_eq!(json!(true), result.value);
         }
         {
             let source = include_str!("fixtures/add.lua");
             let runner = Runner::builder().source(&source).build().unwrap();
             let result = runner.call().state(json!(1)).call().unwrap();
-            assert_eq!(json!(2), result);
+            assert_eq!(json!(2), result.value);
         }
         {
             let source = include_str!("fixtures/closure.lua");
             let runner = Runner::builder().source(&source).build().unwrap();
             for i in 1..=10 {
                 let result = runner.call().call().unwrap();
-                assert_eq!(json!(i), result);
+                assert_eq!(json!(i), result.value);
             }
         }
     }
