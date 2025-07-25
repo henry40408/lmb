@@ -21,27 +21,20 @@ pub enum LmbError {
     FromLuaConversionError { actual: Box<str> },
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Timeout after {elapsed:?}, timeout was {timeout:?}")]
+    Timeout {
+        elapsed: Duration,
+        timeout: Duration,
+    },
 }
 
 type LmbResult<T> = Result<T, LmbError>;
 
 #[derive(Builder, Debug)]
-pub struct CallResult {
+pub struct Invoked {
     pub elapsed: Duration,
+    pub result: LmbResult<Value>,
     pub used_memory: usize,
-    pub value: Value,
-}
-
-#[derive(Debug)]
-pub struct Runner<R>
-where
-    for<'lua> R: 'lua + Read + Seek,
-{
-    func: LuaFunction,
-    reader: Arc<Mutex<BufReader<R>>>,
-    source: Box<str>,
-    timeout: Option<Duration>,
-    vm: Lua,
 }
 
 fn setup_io<R>(runner: &mut Runner<R>) -> LmbResult<()>
@@ -91,6 +84,19 @@ where
     Ok(())
 }
 
+#[derive(Debug)]
+pub struct Runner<R>
+where
+    for<'lua> R: 'lua + Read + Seek,
+{
+    func: LuaFunction,
+    name: Box<str>,
+    reader: Arc<Mutex<BufReader<R>>>,
+    source: Box<str>,
+    timeout: Option<Duration>,
+    vm: Lua,
+}
+
 #[bon]
 impl<R> Runner<R>
 where
@@ -100,6 +106,7 @@ where
     pub fn new<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
+        #[builder(into)] name: Option<Box<str>>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
@@ -110,7 +117,8 @@ where
         let vm = Lua::new();
         vm.sandbox(true)?;
 
-        let func: LuaValue = vm.load(source).eval()?;
+        let name = name.unwrap_or_else(|| "(unnamed)".into());
+        let func: LuaValue = vm.load(source).set_name(&*name).eval()?;
         let LuaValue::Function(func) = func else {
             return Err(LmbError::FromLuaConversionError {
                 actual: func.type_name().into(),
@@ -119,16 +127,17 @@ where
         let mut runner = Self {
             func,
             reader: Arc::new(Mutex::new(BufReader::new(reader))),
-            vm, // otherwise the Lua VM would be destroyed
+            name,
             source: source.into(),
             timeout,
+            vm, // otherwise the Lua VM would be destroyed
         };
         setup_io(&mut runner)?;
         Ok(runner)
     }
 
     #[builder]
-    pub fn invoke(&self, state: Option<Value>) -> LmbResult<CallResult> {
+    pub fn invoke(&self, state: Option<Value>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         self.vm.set_interrupt({
@@ -144,12 +153,25 @@ where
                 Ok(LuaVmState::Continue)
             }
         });
-        let value = self.func.call::<LuaValue>(self.vm.to_value(&state))?;
-        Ok(CallResult::builder()
+        let invoked = Invoked::builder()
             .elapsed(start.elapsed())
-            .used_memory(used_memory.load(Ordering::Relaxed))
-            .value(self.vm.from_value::<Value>(value)?)
-            .build())
+            .used_memory(used_memory.load(Ordering::Relaxed));
+        let value = match self.func.call::<LuaValue>(self.vm.to_value(&state)) {
+            Ok(value) => value,
+            Err(LuaError::RuntimeError(msg)) if msg == "timeout" => {
+                let e = LmbError::Timeout {
+                    elapsed: start.elapsed(),
+                    timeout: self.timeout.unwrap_or_default(),
+                };
+                return Ok(invoked.result(Err(e)).build());
+            }
+            Err(e) => {
+                return Ok(invoked.result(Err(LmbError::LuaError(e))).build());
+            }
+        };
+
+        let value = self.vm.from_value::<Value>(value)?;
+        Ok(invoked.result(Ok(value)).build())
     }
 
     pub fn rewind_input(&self) -> LmbResult<()> {
@@ -167,25 +189,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_call() {
+    fn test_invoke() {
         {
             let source = include_str!("fixtures/hello.lua");
             let runner = Runner::builder(&source, empty()).build().unwrap();
             let result = runner.invoke().call().unwrap();
-            assert_eq!(json!(true), result.value);
+            assert_eq!(json!(true), result.result.unwrap());
         }
         {
             let source = include_str!("fixtures/add.lua");
             let runner = Runner::builder(&source, empty()).build().unwrap();
             let result = runner.invoke().state(json!(1)).call().unwrap();
-            assert_eq!(json!(2), result.value);
+            assert_eq!(json!(2), result.result.unwrap());
         }
         {
             let source = include_str!("fixtures/closure.lua");
             let runner = Runner::builder(&source, empty()).build().unwrap();
             for i in 1..=10 {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(i), result.value);
+                assert_eq!(json!(i), result.result.unwrap());
             }
         }
         {
@@ -209,7 +231,7 @@ mod tests {
             let input = Cursor::new(text);
             let runner = Runner::builder(&source, input).build().unwrap();
             let result = runner.invoke().call().unwrap();
-            assert_eq!(json!(text), result.value);
+            assert_eq!(json!(text), result.result.unwrap());
         }
         {
             let source = include_str!("fixtures/read-line.lua");
@@ -217,15 +239,15 @@ mod tests {
             let runner = Runner::builder(&source, input).build().unwrap();
             {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!("first line"), result.value);
+                assert_eq!(json!("first line"), result.result.unwrap());
             }
             {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!("second line"), result.value);
+                assert_eq!(json!("second line"), result.result.unwrap());
             }
             {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(null), result.value);
+                assert_eq!(json!(null), result.result.unwrap());
             }
         }
         {
@@ -234,16 +256,30 @@ mod tests {
             let runner = Runner::builder(&source, input).build().unwrap();
             {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(42), result.value);
+                assert_eq!(json!(42), result.result.unwrap());
             }
             {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(3.14), result.value);
+                assert_eq!(json!(3.14), result.result.unwrap());
             }
             {
                 let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(null), result.value);
+                assert_eq!(json!(null), result.result.unwrap());
             }
         }
+    }
+
+    #[test]
+    fn test_error_handling() {
+        let source = include_str!("fixtures/error.lua");
+        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let Some(Invoked {
+            result: Err(LmbError::LuaError(LuaError::RuntimeError(msg))),
+            ..
+        }) = runner.invoke().call().ok()
+        else {
+            panic!("Expected a Lua runtime error");
+        };
+        assert!(msg.starts_with("[string \"(unnamed)\"]:3: An error occurred"));
     }
 }
