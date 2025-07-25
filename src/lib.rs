@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use bon::{Builder, bon};
@@ -22,11 +25,13 @@ type LmbResult<T> = Result<T, LmbError>;
 pub struct Runner {
     func: LuaFunction,
     source: Box<str>,
+    timeout: Option<Duration>,
     vm: Lua,
 }
 
 #[derive(Builder, Debug)]
 pub struct CallResult {
+    pub elapsed: Duration,
     pub used_memory: usize,
     pub value: Value,
 }
@@ -34,7 +39,7 @@ pub struct CallResult {
 #[bon]
 impl Runner {
     #[builder]
-    pub fn new<S: AsRef<str>>(source: S) -> LmbResult<Self> {
+    pub fn new<S: AsRef<str>>(source: S, timeout: Option<Duration>) -> LmbResult<Self> {
         let source = source.as_ref();
 
         let vm = Lua::new();
@@ -51,21 +56,30 @@ impl Runner {
             func,
             vm, // otherwise the Lua VM would be destroyed
             source: source.into(),
+            timeout,
         })
     }
 
     #[builder]
     pub fn call(&self, state: Option<Value>) -> LmbResult<CallResult> {
         let used_memory = Arc::new(AtomicUsize::new(0));
+        let start = Instant::now();
         self.vm.set_interrupt({
+            let timeout = self.timeout.clone();
             let used_memory = used_memory.clone();
             move |vm| {
                 used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+                if let Some(t) = timeout {
+                    if start.elapsed() > t {
+                        return Err(LuaError::runtime("timeout"));
+                    }
+                }
                 Ok(LuaVmState::Continue)
             }
         });
         let value = self.func.call::<LuaValue>(self.vm.to_value(&state))?;
         Ok(CallResult::builder()
+            .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed))
             .value(self.vm.from_value::<Value>(value)?)
             .build())
@@ -99,6 +113,18 @@ mod tests {
                 let result = runner.call().call().unwrap();
                 assert_eq!(json!(i), result.value);
             }
+        }
+        {
+            let source = include_str!("fixtures/infinite.lua");
+            let runner = Runner::builder()
+                .source(&source)
+                .timeout(Duration::from_millis(10))
+                .build()
+                .unwrap();
+            assert!(matches!(
+                runner.call().call().unwrap_err(),
+                LmbError::LuaError(LuaError::RuntimeError(..))
+            ));
         }
     }
 }
