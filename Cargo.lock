@@ -348,6 +348,7 @@ dependencies = [
  "bon",
  "criterion",
  "mlua",
+ "parking_lot",
  "serde",
  "serde_json",
  "thiserror",
