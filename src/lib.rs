@@ -53,22 +53,19 @@ where
                     match &*f {
                         "*a" | "*all" => {
                             let mut buf = vec![];
-                            let mut locked = reader.lock();
-                            locked.read_to_end(&mut buf)?;
+                            reader.lock().read_to_end(&mut buf)?;
                             return Ok(LuaValue::String(vm.create_string(buf)?));
                         }
                         "*l" | "*line" => {
-                            let mut locked = reader.lock();
                             let mut line = String::new();
-                            if locked.read_line(&mut line)? == 0 {
+                            if reader.lock().read_line(&mut line)? == 0 {
                                 return Ok(LuaNil);
                             }
                             return Ok(LuaValue::String(vm.create_string(line.trim_end())?));
                         }
                         "*n" | "*number" => {
-                            let mut locked = reader.lock();
                             let mut buf = String::new();
-                            if locked.read_line(&mut buf)? == 0 {
+                            if reader.lock().read_line(&mut buf)? == 0 {
                                 return Ok(LuaNil);
                             }
                             match buf.trim().parse::<f64>() {
@@ -86,7 +83,25 @@ where
                         }
                     }
                 }
-                Ok(LuaNil)
+
+                if let Some(i) = fmt.as_usize() {
+                    let mut buf = vec![0; i];
+                    let count = reader.lock().read(&mut buf)?;
+                    if count == 0 {
+                        return Ok(LuaNil);
+                    }
+                    buf.truncate(count);
+                    // Unlike Rust strings, Lua strings may not be valid UTF-8.
+                    // We leverage this trait to give Lua the power to handle binary.
+                    return Ok(LuaValue::String(vm.create_string(&buf)?));
+                }
+
+                Err(LuaError::BadArgument {
+                    to: Some("read".to_string()),
+                    pos: 1,
+                    name: None,
+                    cause: Arc::new(LuaError::runtime("invalid option")),
+                })
             }
         })?,
     )?;
@@ -248,35 +263,23 @@ mod tests {
             let source = include_str!("fixtures/read-line.lua");
             let input = Cursor::new("first line\nsecond line\n");
             let runner = Runner::builder(&source, input).build().unwrap();
-            {
-                let result = runner.invoke().call().unwrap();
-                assert_eq!(json!("first line"), result.result.unwrap());
-            }
-            {
-                let result = runner.invoke().call().unwrap();
-                assert_eq!(json!("second line"), result.result.unwrap());
-            }
-            {
-                let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(null), result.result.unwrap());
-            }
+            assert_eq!(
+                json!("first line"),
+                runner.invoke().call().unwrap().result.unwrap()
+            );
+            assert_eq!(
+                json!("second line"),
+                runner.invoke().call().unwrap().result.unwrap()
+            );
+            assert_eq!(json!(null), runner.invoke().call().unwrap().result.unwrap());
         }
         {
             let source = include_str!("fixtures/read-number.lua");
             let input = Cursor::new("42\n3.14\nnot a number\n");
             let runner = Runner::builder(&source, input).build().unwrap();
-            {
-                let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(42), result.result.unwrap());
-            }
-            {
-                let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(3.14), result.result.unwrap());
-            }
-            {
-                let result = runner.invoke().call().unwrap();
-                assert_eq!(json!(null), result.result.unwrap());
-            }
+            assert_eq!(json!(42), runner.invoke().call().unwrap().result.unwrap());
+            assert_eq!(json!(3.14), runner.invoke().call().unwrap().result.unwrap());
+            assert_eq!(json!(null), runner.invoke().call().unwrap().result.unwrap());
         }
         {
             let source = include_str!("fixtures/invalid-format.lua");
@@ -289,6 +292,33 @@ mod tests {
                 err.to_string()
                     .contains("bad argument #1 to `read`: runtime error: invalid format")
             );
+        }
+        {
+            let source = include_str!("fixtures/read-count.lua");
+            let input = Cursor::new("123");
+            let runner = Runner::builder(&source, input).build().unwrap();
+            assert_eq!(json!("1"), runner.invoke().call().unwrap().result.unwrap());
+            assert_eq!(json!("2"), runner.invoke().call().unwrap().result.unwrap());
+            assert_eq!(json!("3"), runner.invoke().call().unwrap().result.unwrap());
+            assert_eq!(json!(null), runner.invoke().call().unwrap().result.unwrap());
+        }
+        {
+            let source = include_str!("fixtures/read-count.lua");
+            let input = Cursor::new(&[1, 2, 3]);
+            let runner = Runner::builder(&source, input).build().unwrap();
+            assert_eq!(
+                json!("\u{1}"),
+                runner.invoke().call().unwrap().result.unwrap()
+            );
+            assert_eq!(
+                json!("\u{2}"),
+                runner.invoke().call().unwrap().result.unwrap()
+            );
+            assert_eq!(
+                json!("\u{3}"),
+                runner.invoke().call().unwrap().result.unwrap()
+            );
+            assert_eq!(json!(null), runner.invoke().call().unwrap().result.unwrap());
         }
     }
 
