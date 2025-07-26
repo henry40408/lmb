@@ -48,33 +48,45 @@ where
         "read",
         runner.vm.create_function_mut({
             let reader = runner.reader.clone();
-            move |vm, fmt: String| match &*fmt {
-                "*a" | "*all" => {
-                    let mut buf = vec![];
-                    let mut locked = reader.lock();
-                    locked.read_to_end(&mut buf)?;
-                    Ok(LuaValue::String(vm.create_string(buf)?))
-                }
-                "*l" | "*line" => {
-                    let mut locked = reader.lock();
-                    let mut line = String::new();
-                    if locked.read_line(&mut line)? == 0 {
-                        return Ok(LuaNil);
+            move |vm, fmt: LuaValue| {
+                if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
+                    match &*f {
+                        "*a" | "*all" => {
+                            let mut buf = vec![];
+                            let mut locked = reader.lock();
+                            locked.read_to_end(&mut buf)?;
+                            return Ok(LuaValue::String(vm.create_string(buf)?));
+                        }
+                        "*l" | "*line" => {
+                            let mut locked = reader.lock();
+                            let mut line = String::new();
+                            if locked.read_line(&mut line)? == 0 {
+                                return Ok(LuaNil);
+                            }
+                            return Ok(LuaValue::String(vm.create_string(line.trim_end())?));
+                        }
+                        "*n" | "*number" => {
+                            let mut locked = reader.lock();
+                            let mut buf = String::new();
+                            if locked.read_line(&mut buf)? == 0 {
+                                return Ok(LuaNil);
+                            }
+                            match buf.trim().parse::<f64>() {
+                                Ok(num) => return Ok(LuaValue::Number(num)),
+                                Err(_) => return Ok(LuaNil),
+                            }
+                        }
+                        _ => {
+                            return Err(LuaError::BadArgument {
+                                to: Some("read".to_string()),
+                                pos: 1,
+                                name: None,
+                                cause: Arc::new(LuaError::runtime("invalid format")),
+                            });
+                        }
                     }
-                    Ok(LuaValue::String(vm.create_string(line.trim_end())?))
                 }
-                "*n" | "*number" => {
-                    let mut locked = reader.lock();
-                    let mut buf = String::new();
-                    if locked.read_line(&mut buf)? == 0 {
-                        return Ok(LuaNil);
-                    }
-                    match buf.trim().parse::<f64>() {
-                        Ok(num) => Ok(LuaValue::Number(num)),
-                        Err(_) => Ok(LuaNil),
-                    }
-                }
-                _ => Ok(LuaNil),
+                Ok(LuaNil)
             }
         })?,
     )?;
@@ -216,10 +228,9 @@ mod tests {
                 .timeout(Duration::from_millis(10))
                 .build()
                 .unwrap();
-            assert!(matches!(
-                runner.invoke().call().unwrap_err(),
-                LmbError::LuaError(LuaError::RuntimeError(..))
-            ));
+            let res = runner.invoke().call().unwrap();
+            let err = res.result.unwrap_err();
+            assert!(matches!(err, LmbError::Timeout { .. }));
         }
     }
 
@@ -266,6 +277,18 @@ mod tests {
                 let result = runner.invoke().call().unwrap();
                 assert_eq!(json!(null), result.result.unwrap());
             }
+        }
+        {
+            let source = include_str!("fixtures/invalid-format.lua");
+            let text = "first line\nsecond line\n";
+            let input = Cursor::new(text);
+            let runner = Runner::builder(&source, input).build().unwrap();
+            let result = runner.invoke().call().unwrap();
+            let err = result.result.err().unwrap();
+            assert!(
+                err.to_string()
+                    .contains("bad argument #1 to `read`: runtime error: invalid format")
+            );
         }
     }
 
