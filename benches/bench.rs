@@ -33,6 +33,21 @@ fn lmb_call(c: &mut Criterion) {
             )
         });
     }
+    {
+        let source = include_str!("fixtures/read-unicode.lua");
+        let text = "你好，世界";
+        let input = Cursor::new(text);
+        let runner = Runner::builder(source, input).build().unwrap();
+        c.bench_function("read unicode", |b| {
+            b.iter_batched(
+                || {
+                    runner.rewind_input().unwrap();
+                },
+                |_| runner.invoke().call().unwrap(),
+                BatchSize::SmallInput,
+            )
+        });
+    }
 }
 
 criterion_group!(lmb, lmb_call);
