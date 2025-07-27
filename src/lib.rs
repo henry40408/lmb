@@ -113,7 +113,7 @@ where
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         self.vm.set_interrupt({
-            let timeout = self.timeout.clone();
+            let timeout = self.timeout;
             let used_memory = used_memory.clone();
             move |vm| {
                 used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);

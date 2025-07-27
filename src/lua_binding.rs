@@ -36,14 +36,14 @@ where
                     "*a" | "*all" => {
                         let mut buf = String::new();
                         reader.lock().read_to_string(&mut buf).await?;
-                        return Ok(vm.to_value(&buf)?);
+                        return vm.to_value(&buf);
                     }
                     "*l" | "*line" => {
                         let mut line = String::new();
                         if reader.lock().read_line(&mut line).await? == 0 {
                             return Ok(LuaNil);
                         }
-                        return Ok(vm.to_value(&line.trim_end())?);
+                        return vm.to_value(&line.trim_end());
                     }
                     _ => {
                         return Err(LuaError::BadArgument {
