@@ -104,6 +104,7 @@ where
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
         vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
+        vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
 
         let mut runner = Self {
             func,
