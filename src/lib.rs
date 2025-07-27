@@ -1,5 +1,4 @@
 use std::{
-    io::{BufReader, Read, Seek},
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -12,6 +11,7 @@ use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_json::Value;
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, BufReader};
 
 use crate::lua_binding::Binding;
 
@@ -45,7 +45,7 @@ pub struct Invoked {
 #[derive(Debug)]
 pub struct Runner<R>
 where
-    for<'lua> R: 'lua + Read + Seek,
+    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
     func: LuaFunction,
     name: Box<str>,
@@ -58,7 +58,7 @@ where
 #[bon]
 impl<R> Runner<R>
 where
-    for<'lua> R: 'lua + Read + Seek,
+    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
     #[builder]
     pub fn new<S>(
@@ -109,7 +109,7 @@ where
     }
 
     #[builder]
-    pub fn invoke(&self, state: Option<Value>) -> LmbResult<Invoked> {
+    pub async fn invoke(&self, state: Option<Value>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         self.vm.set_interrupt({
@@ -146,59 +146,59 @@ where
         Ok(invoked.result(Ok(value)).build())
     }
 
-    pub fn rewind_input(&self) -> LmbResult<()> {
-        self.reader.lock().rewind()?;
+    pub async fn rewind_input(&self) -> LmbResult<()> {
+        self.reader.lock().rewind().await?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::empty;
-
     use serde_json::json;
     use test_case::test_case;
+    use tokio::io::empty;
 
     use super::*;
 
     #[test_case(include_str!("fixtures/hello.lua"), None, json!(true); "hello")]
     #[test_case(include_str!("fixtures/add.lua"), Some(json!(1)), json!(2); "add")]
-    fn test_invoke(source: &'static str, state: Option<Value>, expected: Value) {
+    #[tokio::test]
+    async fn test_invoke(source: &'static str, state: Option<Value>, expected: Value) {
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner.invoke().maybe_state(state).call().unwrap();
+        let result = runner.invoke().maybe_state(state).call().await.unwrap();
         assert_eq!(expected, result.result.unwrap());
     }
 
-    #[test]
-    fn test_invoke_closure() {
+    #[tokio::test]
+    async fn test_invoke_closure() {
         let source = include_str!("fixtures/closure.lua");
         let runner = Runner::builder(&source, empty()).build().unwrap();
         for i in 1..=10 {
-            let result = runner.invoke().call().unwrap();
+            let result = runner.invoke().call().await.unwrap();
             assert_eq!(json!(i), result.result.unwrap());
         }
     }
 
-    #[test]
-    fn test_invoke_timeout() {
+    #[tokio::test]
+    async fn test_invoke_timeout() {
         let source = include_str!("fixtures/infinite.lua");
         let runner = Runner::builder(&source, empty())
             .timeout(Duration::from_millis(10))
             .build()
             .unwrap();
-        let res = runner.invoke().call().unwrap();
+        let res = runner.invoke().call().await.unwrap();
         let err = res.result.unwrap_err();
         assert!(matches!(err, LmbError::Timeout { .. }));
     }
 
-    #[test]
-    fn test_error_handling() {
+    #[tokio::test]
+    async fn test_error_handling() {
         let source = include_str!("fixtures/error.lua");
         let runner = Runner::builder(&source, empty()).build().unwrap();
         let Some(Invoked {
             result: Err(LmbError::LuaError(LuaError::RuntimeError(msg))),
             ..
-        }) = runner.invoke().call().ok()
+        }) = runner.invoke().call().await.ok()
         else {
             panic!("Expected a Lua runtime error");
         };

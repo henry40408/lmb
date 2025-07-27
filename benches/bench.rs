@@ -1,21 +1,27 @@
-use std::io::{Cursor, empty};
+use std::io::Cursor;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use lmb::Runner;
 use serde_json::json;
+use tokio::io::empty;
 
 const SOURCE: &str = include_str!("fixtures/true.lua");
 
 fn lmb_call(c: &mut Criterion) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     {
         let runner = Runner::builder(SOURCE, empty()).build().unwrap();
-        c.bench_function("true", |b| b.iter(|| runner.invoke().call().unwrap()));
+        c.bench_function("true", |b| {
+            b.to_async(&rt)
+                .iter(async || runner.invoke().call().await.unwrap())
+        });
     }
     {
         let source = include_str!("fixtures/add.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("add", |b| {
-            b.iter(|| runner.invoke().state(json!(1)).call().unwrap())
+            b.to_async(&rt)
+                .iter(async || runner.invoke().state(json!(1)).call().await.unwrap())
         });
     }
     {
@@ -24,11 +30,11 @@ fn lmb_call(c: &mut Criterion) {
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
         c.bench_function("read", |b| {
-            b.iter_batched(
-                || {
-                    runner.rewind_input().unwrap();
+            b.to_async(&rt).iter_batched(
+                async || {
+                    runner.rewind_input().await.unwrap();
                 },
-                |_| runner.invoke().call().unwrap(),
+                async |_| runner.invoke().call().await.unwrap(),
                 BatchSize::SmallInput,
             )
         });
@@ -39,11 +45,11 @@ fn lmb_call(c: &mut Criterion) {
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
         c.bench_function("read unicode", |b| {
-            b.iter_batched(
-                || {
-                    runner.rewind_input().unwrap();
+            b.to_async(&rt).iter_batched(
+                async || {
+                    runner.rewind_input().await.unwrap();
                 },
-                |_| runner.invoke().call().unwrap(),
+                async |_| runner.invoke().call().await.unwrap(),
                 BatchSize::SmallInput,
             )
         });

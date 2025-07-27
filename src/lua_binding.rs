@@ -1,15 +1,13 @@
-use std::{
-    io::{BufRead as _, BufReader, Read, Seek},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use bon::bon;
 use mlua::prelude::*;
 use parking_lot::Mutex;
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek, BufReader};
 
 pub(crate) struct Binding<R>
 where
-    for<'lua> R: 'lua + Read + Seek,
+    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
     reader: Arc<Mutex<BufReader<R>>>,
 }
@@ -17,7 +15,7 @@ where
 #[bon]
 impl<R> Binding<R>
 where
-    for<'lua> R: 'lua + Read + Seek,
+    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
     #[builder]
     pub fn new(#[builder(start_fn)] reader: Arc<Mutex<BufReader<R>>>) -> Self {
@@ -27,22 +25,22 @@ where
 
 impl<R> LuaUserData for Binding<R>
 where
-    for<'lua> R: 'lua + Read + Seek,
+    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("read_unicode", |vm, this, fmt: LuaValue| {
+        methods.add_async_method("read_unicode", async |vm, this, fmt: LuaValue| {
             let reader = &this.reader;
 
             if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
                 match &*f {
                     "*a" | "*all" => {
                         let mut buf = String::new();
-                        reader.lock().read_to_string(&mut buf)?;
+                        reader.lock().read_to_string(&mut buf).await?;
                         return Ok(vm.to_value(&buf)?);
                     }
                     "*l" | "*line" => {
                         let mut line = String::new();
-                        if reader.lock().read_line(&mut line)? == 0 {
+                        if reader.lock().read_line(&mut line).await? == 0 {
                             return Ok(LuaNil);
                         }
                         return Ok(vm.to_value(&line.trim_end())?);
@@ -63,7 +61,7 @@ where
                 let mut buf = vec![];
                 let mut single = [0u8; 1];
                 while remaining > 0 {
-                    let count = reader.lock().read(&mut single)?;
+                    let count = reader.lock().read(&mut single).await?;
                     if count == 0 {
                         break;
                     }
@@ -109,7 +107,9 @@ mod tests {
     #[test_case("Привет, мир"; "Russian")]
     #[test_case("مرحبا بالعالم"; "Arabic")]
     #[test_case("😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"; "Emoji")]
-    fn test_read_unicode(text: &'static str) {
+    #[tokio::test]
+
+    async fn test_read_unicode(text: &'static str) {
         let source = include_str!("fixtures/read-unicode.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(&source, input).build().unwrap();
@@ -118,6 +118,7 @@ mod tests {
         while let Some(s) = runner
             .invoke()
             .call()
+            .await
             .unwrap()
             .result
             .unwrap()
