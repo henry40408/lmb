@@ -35,7 +35,13 @@ unsafe_code = "deny"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
-await_holding_lock = "warn"
+
+# mlua allows Arc on non-Send/Sync types
+arc_with_non_send_sync = "allow"
+
+# Performance of tokio::sync::Mutex is way worse than parking_lot::Mutex
+await_holding_lock = "allow"
+
 char_lit_as_u8 = "warn"
 checked_conversions = "warn"
 dbg_macro = "warn"

@@ -149,10 +149,10 @@ mod tests {
         assert_eq!(json!(expected), result.result.unwrap());
     }
 
-    #[test_case("42", json!(42); "valid number")]
-    #[test_case("42\n", json!(42); "valid number with newline")]
-    #[test_case("42\n3.14", json!(42); "multiple lines with valid number")]
-    #[test_case("3.14", json!(3.14); "valid float")]
+    #[test_case("1", json!(1); "valid number")]
+    #[test_case("1\n", json!(1); "valid number with newline")]
+    #[test_case("1\n2.34", json!(1); "multiple lines with valid number")]
+    #[test_case("2.34", json!(2.34); "valid float")]
     #[test_case("not a number", json!(null); "invalid number")]
     #[tokio::test]
 
