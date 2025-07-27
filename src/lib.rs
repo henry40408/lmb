@@ -17,10 +17,9 @@ use serde_json::Value;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, BufReader};
 
-use crate::lua_binding::Binding;
+use crate::bindings::Binding;
 
-mod lua_binding;
-mod lua_io;
+mod bindings;
 
 /// Lua VM error handling
 #[derive(Debug, Error)]
@@ -115,7 +114,7 @@ where
             vm, // otherwise the Lua VM would be destroyed
         };
 
-        lua_io::bind(&mut runner)?;
+        bindings::io::bind(&mut runner)?;
 
         Ok(runner)
     }

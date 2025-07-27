@@ -5,6 +5,8 @@ use mlua::prelude::*;
 use parking_lot::Mutex;
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek, BufReader};
 
+pub mod io;
+
 pub(crate) struct Binding<R>
 where
     for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
@@ -110,7 +112,7 @@ mod tests {
     #[tokio::test]
 
     async fn test_read_unicode(text: &'static str) {
-        let source = include_str!("fixtures/read-unicode.lua");
+        let source = include_str!("../fixtures/read-unicode.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(&source, input).build().unwrap();
 
