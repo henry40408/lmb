@@ -1,3 +1,7 @@
+#![deny(missing_debug_implementations, missing_docs)]
+
+//! A library for running Lua scripts.
+
 use std::{
     sync::{
         Arc,
@@ -18,30 +22,45 @@ use crate::lua_binding::Binding;
 mod lua_binding;
 mod lua_io;
 
+/// Lua VM error handling
 #[derive(Debug, Error)]
 pub enum LmbError {
+    /// Error thrown by the Lua VM
     #[error("Lua error: {0}")]
     LuaError(#[from] mlua::Error),
+    /// Error converting a Lua value to a Rust type
     #[error("Expected a Lua function, but got {actual} instead")]
-    FromLuaConversionError { actual: Box<str> },
+    FromLuaConversionError {
+        /// The actual type of the Lua value
+        actual: Box<str>,
+    },
+    /// Error reading from the input stream
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// Error when the Lua script times out
     #[error("Timeout after {elapsed:?}, timeout was {timeout:?}")]
     Timeout {
+        /// The duration the script ran before timing out
         elapsed: Duration,
+        /// The timeout duration set for the script
         timeout: Duration,
     },
 }
 
 type LmbResult<T> = Result<T, LmbError>;
 
+/// Represents the result of invoking a Lua function
 #[derive(Builder, Debug)]
 pub struct Invoked {
+    /// The elapsed time since the invocation started
     pub elapsed: Duration,
+    /// The result of the Lua function invocation
     pub result: LmbResult<Value>,
+    /// The amount of memory used in bytes by the Lua VM during the invocation
     pub used_memory: usize,
 }
 
+/// A runner for executing Lua scripts with an input stream
 #[derive(Debug)]
 pub struct Runner<R>
 where
@@ -60,6 +79,7 @@ impl<R> Runner<R>
 where
     for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
+    /// Creates a new Lua runner with the given source code and input reader.
     #[builder]
     pub fn new<S>(
         #[builder(start_fn)] source: S,
@@ -100,14 +120,17 @@ where
         Ok(runner)
     }
 
+    /// Returns the name of the Lua function being executed.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the source code of the Lua function being executed.
     pub fn source(&self) -> &str {
         &self.source
     }
 
+    /// Invokes the Lua function with the given state.
     #[builder]
     pub async fn invoke(&self, state: Option<Value>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
@@ -146,6 +169,8 @@ where
         Ok(invoked.result(Ok(value)).build())
     }
 
+    /// Rewinds the input stream to the beginning.
+    /// This function should be only called in tests or benchmarks to reset the input stream.
     pub async fn rewind_input(&self) -> LmbResult<()> {
         self.reader.lock().rewind().await?;
         Ok(())
