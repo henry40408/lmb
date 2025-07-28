@@ -109,6 +109,7 @@ where
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
         vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
+        vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
         vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
 
         let mut runner = Self {
@@ -162,7 +163,7 @@ where
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
-        let value = match self.func.call::<LuaValue>(ctx) {
+        let value = match self.func.call_async::<LuaValue>(ctx).await {
             Ok(value) => value,
             Err(LuaError::RuntimeError(msg)) if msg == "timeout" => {
                 let e = LmbError::Timeout {

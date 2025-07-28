@@ -97,6 +97,14 @@ fn lmb_call(c: &mut Criterion) {
                 .iter(async || runner.invoke().call().await.unwrap().result.unwrap());
         });
     }
+    {
+        let source = include_str!("fixtures/crypto.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        c.bench_function("crypto", |b| {
+            b.to_async(&rt)
+                .iter(async || runner.invoke().call().await.unwrap().result.unwrap());
+        });
+    }
 }
 
 criterion_group!(lmb, lmb_call);

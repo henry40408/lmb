@@ -6,6 +6,7 @@ use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek};
 
 use crate::LmbInput;
 
+pub mod crypto;
 pub mod io;
 pub mod json;
 pub mod store;
