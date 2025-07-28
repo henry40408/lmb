@@ -1,5 +1,5 @@
-function add(a)
-  return a + a
+function add(ctx)
+  return ctx.state + ctx.state
 end
 
 return add

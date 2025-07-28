@@ -8,6 +8,7 @@ use crate::LmbInput;
 
 pub mod io;
 pub mod json;
+pub mod store;
 
 pub(crate) struct Binding<R>
 where

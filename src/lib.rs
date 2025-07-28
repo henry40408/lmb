@@ -13,11 +13,12 @@ use std::{
 use bon::{Builder, bon};
 use mlua::prelude::*;
 use parking_lot::Mutex;
+use rusqlite::Connection;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, BufReader};
 
-use crate::bindings::Binding;
+use crate::bindings::{Binding, store::StoreBinding};
 
 mod bindings;
 
@@ -48,6 +49,7 @@ pub enum LmbError {
 
 type LmbInput<R> = Arc<Mutex<BufReader<R>>>;
 type LmbResult<T> = Result<T, LmbError>;
+type LmbStore = Arc<Mutex<Connection>>;
 
 /// Represents the result of invoking a Lua function
 #[derive(Builder, Debug)]
@@ -70,6 +72,7 @@ where
     name: Box<str>,
     reader: LmbInput<R>,
     source: Box<str>,
+    store: Option<LmbStore>,
     timeout: Option<Duration>,
     vm: Lua,
 }
@@ -85,6 +88,7 @@ where
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
         #[builder(into)] name: Option<Box<str>>,
+        store: Option<Connection>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
@@ -112,6 +116,7 @@ where
             reader,
             name,
             source: source.into(),
+            store: store.map(|conn| Arc::new(Mutex::new(conn))),
             timeout,
             vm, // otherwise the Lua VM would be destroyed
         };
@@ -152,6 +157,7 @@ where
 
         let ctx = self.vm.create_table()?;
         ctx.set("state", self.vm.to_value(&state)?)?;
+        ctx.set("store", StoreBinding::builder(self.store.clone()).build()?)?;
 
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
