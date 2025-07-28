@@ -101,9 +101,61 @@ where
 mod tests {
     use std::io::Cursor;
 
+    use serde_json::json;
     use test_case::test_case;
 
     use crate::Runner;
+
+    #[tokio::test]
+    async fn test_read_unicode_all() {
+        let text = "Hello, 世界! こんにちは世界! 안녕하세요 세계! Привет, мир! مرحبا بالعالم! 😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚";
+        let source = include_str!("fixtures/read-unicode-all.lua");
+        let input = Cursor::new(text);
+        let runner = Runner::builder(&source, input).build().unwrap();
+        let result = runner.invoke().call().await.unwrap();
+        assert_eq!(result.result.unwrap().as_str().unwrap(), text);
+    }
+
+    #[tokio::test]
+    async fn test_read_unicode_line() {
+        let text = r#"Hello, 世界!
+こんにちは世界!
+안녕하세요 세계!
+Привет, мир!
+مرحبا بالعالم!
+😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"#;
+        let source = include_str!("fixtures/read-unicode-line.lua");
+        let input = Cursor::new(text);
+        let runner = Runner::builder(&source, input).build().unwrap();
+        assert_eq!(
+            json!("Hello, 世界!"),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+        assert_eq!(
+            json!("こんにちは世界!"),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+        assert_eq!(
+            json!("안녕하세요 세계!"),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+        assert_eq!(
+            json!("Привет, мир!"),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+        assert_eq!(
+            json!("مرحبا بالعالم!"),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+        assert_eq!(
+            json!("😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+        assert_eq!(
+            json!(null),
+            runner.invoke().call().await.unwrap().result.unwrap()
+        );
+    }
 
     #[test_case("Hello, world!"; "English")]
     #[test_case("你好，世界"; "Chinese")]
@@ -114,7 +166,7 @@ mod tests {
     #[test_case("😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"; "Emoji")]
     #[tokio::test]
 
-    async fn test_read_unicode(text: &'static str) {
+    async fn test_read_unicode_count(text: &'static str) {
         let source = include_str!("fixtures/read-unicode.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(&source, input).build().unwrap();
