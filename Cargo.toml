@@ -6,6 +6,7 @@ rust-version = "1.85.0"
 
 [dependencies]
 bon = "3.6.5"
+dashmap = "6.1.0"
 futures = "0.3.31"
 mlua = { version = "0.11.1", features = ["async", "luau", "serde"] }
 parking_lot = "0.12.4"

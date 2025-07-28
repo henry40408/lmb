@@ -85,6 +85,18 @@ fn lmb_call(c: &mut Criterion) {
                 .iter(async || runner.invoke().call().await.unwrap().result.unwrap());
         });
     }
+    {
+        let source = include_str!("fixtures/store-update.lua");
+        let conn = Connection::open_in_memory().unwrap();
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        c.bench_function("store update", |b| {
+            b.to_async(&rt)
+                .iter(async || runner.invoke().call().await.unwrap().result.unwrap());
+        });
+    }
 }
 
 criterion_group!(lmb, lmb_call);
