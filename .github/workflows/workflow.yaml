@@ -1,0 +1,86 @@
+on: [pull_request, push]
+
+name: CI
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        toolchain: [1.85.0, 1.88.0]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy,rustfmt
+      - name: Cache Cargo
+        uses: actions/cache@v4.2.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check code formatting
+        run: cargo fmt --check
+      - name: Check code linting
+        run: cargo clippy
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2.48.0
+        with:
+          tool: cargo-deny@0.16.4
+      - name: Check dependencies and licenses
+        run: cargo deny check
+  bench:
+    needs: [check]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+      - name: Cache Cargo
+        uses: actions/cache@v4.2.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run benchmarks
+        run: cargo bench --bench bench -- --output-format bencher | tee output.txt
+      - name: Download previous benchmark data
+        uses: actions/cache@v4.2.0
+        with:
+          path: ./cache-criterion
+          key: ${{ runner.os }}-benchmark
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1.20.4
+        with:
+          tool: cargo
+          output-file-path: output.txt
+          external-data-json-path: ./cache-criterion/benchmark-data.json
+          fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          summary-always: true
+  msrv:
+    needs: [check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.1.1
+      - uses: taiki-e/install-action@v2.48.0
+        with:
+          tool: cargo-hack@0.6.28
+      - name: Check MSRV
+        run: cargo hack check --rust-version --workspace --all-targets --ignore-private
