@@ -75,6 +75,34 @@ jobs:
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summary-always: true
+  coverage:
+    needs: [check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+      - name: Cache Cargo
+        uses: actions/cache@v4.2.0
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install coverage tools
+        uses: taiki-e/install-action@v2.48.0
+        with:
+          tool: cargo-llvm-cov@0.6.14,cargo-nextest@0.9.87
+      - name: Run tests with coverage
+        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4.4.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
   msrv:
     needs: [check]
     runs-on: ubuntu-latest
