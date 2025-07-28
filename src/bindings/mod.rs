@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use bon::bon;
 use mlua::prelude::*;
-use parking_lot::Mutex;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek, BufReader};
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek};
+
+use crate::LmbInput;
 
 pub mod io;
 pub mod json;
@@ -12,7 +13,7 @@ pub(crate) struct Binding<R>
 where
     for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
-    reader: Arc<Mutex<BufReader<R>>>,
+    reader: LmbInput<R>,
 }
 
 #[bon]
@@ -21,7 +22,7 @@ where
     for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
 {
     #[builder]
-    pub fn new(#[builder(start_fn)] reader: Arc<Mutex<BufReader<R>>>) -> Self {
+    pub fn new(#[builder(start_fn)] reader: LmbInput<R>) -> Self {
         Self { reader }
     }
 }

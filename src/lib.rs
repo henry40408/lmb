@@ -46,6 +46,7 @@ pub enum LmbError {
     },
 }
 
+type LmbInput<R> = Arc<Mutex<BufReader<R>>>;
 type LmbResult<T> = Result<T, LmbError>;
 
 /// Represents the result of invoking a Lua function
@@ -67,7 +68,7 @@ where
 {
     func: LuaFunction,
     name: Box<str>,
-    reader: Arc<Mutex<BufReader<R>>>,
+    reader: LmbInput<R>,
     source: Box<str>,
     timeout: Option<Duration>,
     vm: Lua,
