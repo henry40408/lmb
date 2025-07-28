@@ -5,11 +5,11 @@ pub(crate) struct JsonBinding;
 
 impl LuaUserData for JsonBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_async_function("decode", async |vm, json_str: String| {
+        methods.add_function("decode", |vm, json_str: String| {
             let parsed = serde_json::from_str::<Value>(&json_str).into_lua_err()?;
             vm.to_value(&parsed)
         });
-        methods.add_async_function("encode", async |vm, value: LuaValue| {
+        methods.add_function("encode", |vm, value: LuaValue| {
             let json_str = serde_json::to_string(&value).into_lua_err()?;
             vm.to_value(&json_str)
         });

@@ -13,7 +13,7 @@ fn lmb_call(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     {
         let runner = Runner::builder(SOURCE, empty()).build().unwrap();
-        c.bench_function("true", |b| {
+        c.bench_function("return true", |b| {
             b.to_async(&rt)
                 .iter(async || runner.invoke().call().await.unwrap());
         });
@@ -54,6 +54,14 @@ fn lmb_call(c: &mut Criterion) {
                 async |_| runner.invoke().call().await.unwrap(),
                 BatchSize::SmallInput,
             );
+        });
+    }
+    {
+        let source = include_str!("fixtures/json.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        c.bench_function("json encode decode", |b| {
+            b.to_async(&rt)
+                .iter(async || runner.invoke().call().await.unwrap());
         });
     }
 }
