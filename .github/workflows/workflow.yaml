@@ -13,7 +13,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.1.1
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        # Use a specific commit to install the toolchain with "toolchain" parameter
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
         with:
           toolchain: ${{ matrix.toolchain }}
           components: clippy,rustfmt
