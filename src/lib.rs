@@ -149,10 +149,14 @@ where
                 Ok(LuaVmState::Continue)
             }
         });
+
+        let ctx = self.vm.create_table()?;
+        ctx.set("state", self.vm.to_value(&state)?)?;
+
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
-        let value = match self.func.call::<LuaValue>(self.vm.to_value(&state)) {
+        let value = match self.func.call::<LuaValue>(ctx) {
             Ok(value) => value,
             Err(LuaError::RuntimeError(msg)) if msg == "timeout" => {
                 let e = LmbError::Timeout {
