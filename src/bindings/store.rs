@@ -87,7 +87,7 @@ impl LuaUserData for StoreBinding {
         });
         methods.add_method(
             "update",
-            |vm, this, (keys, f, defaults): (Vec<String>, LuaFunction, Vec<LuaValue>)| {
+            |vm, this, (keys_defaults, f): (LuaTable, LuaFunction)| {
                 let Some(store) = &this.store else {
                     return Ok(LuaNil);
                 };
@@ -95,7 +95,8 @@ impl LuaUserData for StoreBinding {
                     let mut conn = store.lock();
                     let tx = conn.transaction().into_lua_err()?;
                     let m = DashMap::new();
-                    for (i, key) in keys.iter().enumerate() {
+                    for pair in keys_defaults.pairs::<String, LuaValue>() {
+                        let (key, default_value) = pair?;
                         let key = key.clone().into_boxed_str();
                         let mut stmt = tx.prepare(SQL_GET).into_lua_err()?;
                         let mut rows = stmt.query(params![key]).into_lua_err()?;
@@ -104,12 +105,7 @@ impl LuaUserData for StoreBinding {
                             let value: Value = rmp_serde::from_slice(&value).into_lua_err()?;
                             m.insert(key, value);
                         } else {
-                            let default_value = if i < defaults.len() {
-                                vm.from_value::<Value>(defaults[i].clone()).into_lua_err()?
-                            } else {
-                                Value::Null
-                            };
-                            m.insert(key, default_value);
+                            m.insert(key, vm.from_value(default_value)?);
                         }
                     }
                     m
@@ -122,7 +118,8 @@ impl LuaUserData for StoreBinding {
                 {
                     let mut conn = store.lock();
                     let tx = conn.transaction().into_lua_err()?;
-                    for key in keys {
+                    for pair in keys_defaults.pairs::<String, LuaValue>() {
+                        let (key, _) = pair?;
                         if let Some(pair) = inner.get(key.as_str()) {
                             let serialized = rmp_serde::to_vec(pair.value()).into_lua_err()?;
                             tx.execute(SQL_PUT, params![key, serialized])
