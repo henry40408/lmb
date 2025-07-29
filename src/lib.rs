@@ -37,6 +37,9 @@ pub enum LmbError {
     /// Error reading from the input stream
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// Error from reqwest crate
+    #[error("reqwest error: {0}")]
+    ReqwestError(#[from] reqwest::Error),
     /// Error when the Lua script times out
     #[error("Timeout after {elapsed:?}, timeout was {timeout:?}")]
     Timeout {
@@ -109,6 +112,7 @@ where
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
         vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
+        vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
         vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
         vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
 

@@ -25,7 +25,7 @@ fn hmac_hash<T: Mac + KeyInit>(secret: &str, payload: &str) -> mlua::Result<Box<
     Ok(base16ct::lower::encode_string(&hash).into_boxed_str())
 }
 
-pub(crate) struct CryptoBinding {}
+pub(crate) struct CryptoBinding;
 
 impl LuaUserData for CryptoBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
