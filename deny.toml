@@ -1,5 +1,14 @@
 [licenses]
-allow = ["Apache-2.0", "BSD-3-Clause", "LGPL-3.0", "MIT", "Unicode-3.0", "Zlib"]
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "LGPL-3.0",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
 
 [advisories]
 ignore = [{ id = "RUSTSEC-2024-0436", reason = "paste is unmaintained" }]
