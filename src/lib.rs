@@ -27,10 +27,10 @@ mod bindings;
 pub enum LmbError {
     /// Error thrown by the Lua VM
     #[error("Lua error: {0}")]
-    LuaError(#[from] mlua::Error),
+    Lua(#[from] mlua::Error),
     /// Error converting a Lua value to a Rust type
     #[error("Expected a Lua function, but got {actual} instead")]
-    FromLuaConversionError {
+    FromLuaConversion {
         /// The actual type of the Lua value
         actual: Box<str>,
     },
@@ -39,7 +39,7 @@ pub enum LmbError {
     Io(#[from] std::io::Error),
     /// Error from reqwest crate
     #[error("reqwest error: {0}")]
-    ReqwestError(#[from] reqwest::Error),
+    Reqwest(#[from] reqwest::Error),
     /// Error when the Lua script times out
     #[error("Timeout after {elapsed:?}, timeout was {timeout:?}")]
     Timeout {
@@ -99,7 +99,7 @@ where
 
         let func: LuaValue = vm.load(source).eval()?;
         let LuaValue::Function(func) = func else {
-            return Err(LmbError::FromLuaConversionError {
+            return Err(LmbError::FromLuaConversion {
                 actual: func.type_name().into(),
             });
         };
@@ -159,7 +159,7 @@ where
                 return Ok(invoked.result(Err(e)).build());
             }
             Err(e) => {
-                return Ok(invoked.result(Err(LmbError::LuaError(e))).build());
+                return Ok(invoked.result(Err(LmbError::Lua(e))).build());
             }
         };
 
@@ -224,12 +224,24 @@ mod tests {
         let source = include_str!("fixtures/error.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let Some(Invoked {
-            result: Err(LmbError::LuaError(LuaError::RuntimeError(msg))),
+            result: Err(LmbError::Lua(LuaError::RuntimeError(msg))),
             ..
         }) = runner.invoke().call().await.ok()
         else {
             panic!("Expected a Lua runtime error");
         };
         assert!(msg.contains(":3: An error occurred"));
+    }
+
+    #[tokio::test]
+    async fn test_syntax_error() {
+        let source = include_str!("fixtures/syntax-error.lua");
+        let err = Runner::builder(source, empty()).build().unwrap_err();
+        let LmbError::Lua(LuaError::SyntaxError { message, .. }) = err else {
+            panic!("Expected a Lua syntax error");
+        };
+        assert!(
+            message.contains(":2: Incomplete statement: expected assignment or a function call")
+        );
     }
 }
