@@ -14,7 +14,7 @@ fn lmb_call(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     {
         let runner = Runner::builder(SOURCE, empty()).build().unwrap();
-        c.bench_function("return true", |b| {
+        c.bench_function("baseline", |b| {
             b.to_async(&rt)
                 .iter(async || runner.invoke().call().await.unwrap().result.unwrap());
         });
