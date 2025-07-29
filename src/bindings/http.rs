@@ -8,14 +8,36 @@ use reqwest::{
     Method,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
-use serde_json::Value;
+use serde_json::{Map, Value};
 use url::Url;
 
 use crate::LmbResult;
 
 pub(crate) struct ResponseBinding(Arc<Mutex<reqwest::Response>>);
 
+impl ResponseBinding {
+    pub(crate) fn headers(&self) -> Value {
+        let locked = self.0.lock();
+        let headers = locked.headers();
+        let mut map = Map::new();
+        for (k, v) in headers.iter() {
+            map.insert(
+                k.as_str().to_string(),
+                v.to_str().unwrap_or("").to_string().into(),
+            );
+        }
+        Value::Object(map)
+    }
+}
+
 impl LuaUserData for ResponseBinding {
+    fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("headers", |vm, this| {
+            vm.to_value(&this.headers()).into_lua_err()
+        });
+        fields.add_field_method_get("ok", |_, this| Ok(this.0.lock().status().is_success()));
+        fields.add_field_method_get("status", |_, this| Ok(this.0.lock().status().as_u16()));
+    }
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_async_method("json", |vm, this, ()| async move {
             let mut buf = BytesMut::new();
@@ -36,7 +58,7 @@ impl LuaUserData for ResponseBinding {
 }
 
 pub(crate) struct HttpBinding {
-    pub(crate) client: reqwest::Client,
+    client: reqwest::Client,
 }
 
 #[bon]
@@ -139,8 +161,9 @@ mod tests {
             .mock(Method::POST.as_str(), "/")
             .match_header("x-api-key", "api-key")
             .match_body("a")
-            .with_status(200)
+            .with_status(201)
             .with_body(r#"{"a":1}"#)
+            .with_header("mocked", "1")
             .create_async()
             .await;
 

@@ -15,7 +15,7 @@ static SQL_PUT: &str = "INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)"
 static SQL_GET: &str = "SELECT value FROM store WHERE key = ?";
 
 pub(crate) struct StoreSnapshotBinding {
-    pub(crate) inner: Arc<DashMap<Box<str>, Value>>,
+    inner: Arc<DashMap<Box<str>, Value>>,
 }
 
 impl LuaUserData for StoreSnapshotBinding {
@@ -38,7 +38,7 @@ impl LuaUserData for StoreSnapshotBinding {
 }
 
 pub(crate) struct StoreBinding {
-    pub(crate) store: Option<LmbStore>,
+    store: Option<LmbStore>,
 }
 
 #[bon]
