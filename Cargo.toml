@@ -59,6 +59,17 @@ criterion = { version = "0.7.0", features = ["async_tokio"] }
 mockito = "1.7.0"
 test-case = "3.3.1"
 
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+# Panic unwinding is needed in release mode to trace errors
+# other than runtime errors from the Lua virtual machine,
+# so it is intentional not to enable abort mode on panic.
+# https://github.com/mlua-rs/mlua/issues/350#issuecomment-1870522709
+#panic = "abort"
+strip = true
+
 [[bench]]
 name = "bench"
 harness = false
