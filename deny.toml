@@ -11,4 +11,7 @@ allow = [
 ]
 
 [advisories]
-ignore = [{ id = "RUSTSEC-2024-0436", reason = "paste is unmaintained" }]
+ignore = [
+    { id = "RUSTSEC-2024-0320", reason = "unmaintained yaml-rust is not critical" },
+    { id = "RUSTSEC-2024-0436", reason = "unmaintained paste is not critical" },
+]
