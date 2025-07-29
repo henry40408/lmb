@@ -22,6 +22,9 @@ use crate::bindings::{Binding, store::StoreBinding};
 
 mod bindings;
 
+/// Error handling module
+pub mod error;
+
 /// Lua VM error handling
 #[derive(Debug, Error)]
 pub enum LmbError {
@@ -51,8 +54,10 @@ pub enum LmbError {
 }
 
 type LmbInput<R> = Arc<Mutex<BufReader<R>>>;
-type LmbResult<T> = Result<T, LmbError>;
 type LmbStore = Arc<Mutex<Connection>>;
+
+/// Result type for the library
+pub type LmbResult<T> = Result<T, LmbError>;
 
 /// Represents the result of invoking a Lua function
 #[derive(Builder, Debug)]

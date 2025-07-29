@@ -21,7 +21,9 @@ ecb = "0.1.2"
 futures = "0.3.31"
 hex = "0.4.3"
 hmac = "0.12.1"
+lazy-regex = "3.4.1"
 md-5 = "0.10.6"
+miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
 mlua = { version = "0.11.1", features = [
     "async",
     "luau",
@@ -41,6 +43,7 @@ serde = "1.0.219"
 serde_json = "1.0.141"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
+string-offsets = "0.2.0"
 thiserror = "2.0.12"
 tokio = { version = "1.47.0", default-features = false, features = [
     "fs",

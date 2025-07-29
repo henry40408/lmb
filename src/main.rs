@@ -1,9 +1,12 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use lmb::Runner;
+use lmb::{
+    Runner,
+    error::{ErrorReport, build_report, render_report},
+};
 use serde_json::Value;
-use tokio::io;
+use tokio::io::{self, AsyncWriteExt as _};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -22,30 +25,53 @@ enum Command {
     },
 }
 
-async fn try_main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
 
     match opts.command {
         Command::Eval { file } => {
             let reader = io::stdin();
             let path = file.as_path();
-            let runner = Runner::builder(path, reader).build()?;
+
+            let runner = match Runner::builder(path, reader).build() {
+                Ok(runner) => runner,
+                Err(e) => {
+                    match build_report(path, &e)? {
+                        ErrorReport::Report(report) => {
+                            let mut s = String::new();
+                            render_report(&mut s, &report);
+                            io::stderr().write_all(s.as_bytes()).await?;
+                        }
+                        ErrorReport::String(msg) => eprintln!("{msg}"),
+                    }
+                    return Err(e.into());
+                }
+            };
+
             let result = runner.invoke().call().await?;
-            let value = result.result?;
-            if let Value::String(s) = &value {
-                println!("{s}");
-            } else {
-                println!("{value}");
+            match result.result {
+                Ok(value) => {
+                    if let Value::String(s) = &value {
+                        println!("{s}");
+                    } else {
+                        println!("{value}");
+                    }
+                }
+                Err(e) => {
+                    match build_report(path, &e)? {
+                        ErrorReport::Report(report) => {
+                            let mut s = String::new();
+                            render_report(&mut s, &report);
+                            io::stderr().write_all(s.as_bytes()).await?;
+                        }
+                        ErrorReport::String(msg) => eprintln!("{msg}"),
+                    }
+                    return Err(e.into());
+                }
             }
         }
     }
 
     Ok(())
-}
-
-#[tokio::main]
-async fn main() {
-    if let Err(e) = try_main().await {
-        eprintln!("{e}");
-    }
 }
