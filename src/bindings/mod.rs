@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bon::bon;
 use mlua::prelude::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek};
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
 
 use crate::LmbInput;
 
@@ -14,7 +14,7 @@ pub mod store;
 
 pub(crate) struct Binding<R>
 where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     reader: LmbInput<R>,
 }
@@ -22,7 +22,7 @@ where
 #[bon]
 impl<R> Binding<R>
 where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     #[builder]
     pub fn new(#[builder(start_fn)] reader: LmbInput<R>) -> Self {
@@ -32,7 +32,7 @@ where
 
 impl<R> LuaUserData for Binding<R>
 where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_async_method("read_unicode", async |vm, this, fmt: LuaValue| {

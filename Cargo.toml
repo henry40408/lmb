@@ -6,11 +6,13 @@ rust-version = "1.85.0"
 
 [dependencies]
 aes = "0.8.4"
+anyhow = "1.0.98"
 base16ct = { version = "0.2.0", features = ["alloc"] }
 base64 = "0.22.1"
 bon = "3.6.5"
 bytes = "1.10.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
+clap = { version = "4.5.41", features = ["derive", "env"] }
 crc32fast = "1.5.0"
 crypto-common = "0.1.6"
 dashmap = "6.1.0"
@@ -20,7 +22,12 @@ futures = "0.3.31"
 hex = "0.4.3"
 hmac = "0.12.1"
 md-5 = "0.10.6"
-mlua = { version = "0.11.1", features = ["async", "luau", "serde"] }
+mlua = { version = "0.11.1", features = [
+    "async",
+    "luau",
+    "error-send",
+    "serde",
+] }
 parking_lot = "0.12.4"
 reqwest = { version = "0.12.22", default-features = false, features = [
     "charset",
@@ -36,6 +43,8 @@ sha1 = "0.10.6"
 sha2 = "0.10.9"
 thiserror = "2.0.12"
 tokio = { version = "1.47.0", default-features = false, features = [
+    "fs",
+    "io-std",
     "io-util",
     "macros",
     "rt-multi-thread",

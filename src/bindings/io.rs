@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use mlua::prelude::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncSeek};
+use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
 
 use crate::{LmbResult, Runner};
 
 pub(crate) fn bind<R>(runner: &mut Runner<R>) -> LmbResult<()>
 where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     let globals = runner.vm.globals();
 

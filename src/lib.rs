@@ -16,7 +16,7 @@ use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::Value;
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, BufReader};
+use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader};
 
 use crate::bindings::{Binding, store::StoreBinding};
 
@@ -69,7 +69,7 @@ pub struct Invoked {
 #[derive(Debug)]
 pub struct Runner<R>
 where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     func: LuaFunction,
     name: Box<str>,
@@ -83,7 +83,7 @@ where
 #[bon]
 impl<R> Runner<R>
 where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     /// Creates a new Lua runner with the given source code and input reader.
     #[builder]
@@ -184,7 +184,12 @@ where
         let value = self.vm.from_value::<Value>(value)?;
         Ok(invoked.result(Ok(value)).build())
     }
+}
 
+impl<R> Runner<R>
+where
+    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
+{
     /// Rewinds the input stream to the beginning.
     /// This function should be only called in tests or benchmarks to reset the input stream.
     pub async fn rewind_input(&self) -> LmbResult<()> {
