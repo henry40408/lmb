@@ -11,7 +11,7 @@ use std::{
 };
 
 use bon::{Builder, bon};
-use mlua::prelude::*;
+use mlua::{AsChunk, prelude::*};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::Value;
@@ -72,9 +72,7 @@ where
     for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     func: LuaFunction,
-    name: Box<str>,
     reader: LmbInput<R>,
-    source: Box<str>,
     store: Option<LmbStore>,
     timeout: Option<Duration>,
     vm: Lua,
@@ -90,20 +88,16 @@ where
     pub fn new<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
-        #[builder(into)] name: Option<Box<str>>,
         store: Option<Connection>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
-        S: AsRef<str>,
+        S: AsChunk,
     {
-        let source = source.as_ref();
-
         let vm = Lua::new();
         vm.sandbox(true)?;
 
-        let name = name.unwrap_or_else(|| "(unnamed)".into());
-        let func: LuaValue = vm.load(source).set_name(&*name).eval()?;
+        let func: LuaValue = vm.load(source).eval()?;
         let LuaValue::Function(func) = func else {
             return Err(LmbError::FromLuaConversionError {
                 actual: func.type_name().into(),
@@ -119,8 +113,6 @@ where
         let mut runner = Self {
             func,
             reader,
-            name,
-            source: source.into(),
             store: store.map(|conn| Arc::new(Mutex::new(conn))),
             timeout,
             vm, // otherwise the Lua VM would be destroyed
@@ -129,16 +121,6 @@ where
         bindings::io::bind(&mut runner)?;
 
         Ok(runner)
-    }
-
-    /// Returns the name of the Lua function being executed.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Returns the source code of the Lua function being executed.
-    pub fn source(&self) -> &str {
-        &self.source
     }
 
     /// Invokes the Lua function with the given state.
@@ -218,7 +200,7 @@ mod tests {
     #[tokio::test]
     async fn test_invoke_closure() {
         let source = include_str!("fixtures/closure.lua");
-        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty()).build().unwrap();
         for i in 1..=10 {
             let result = runner.invoke().call().await.unwrap();
             assert_eq!(json!(i), result.result.unwrap());
@@ -228,7 +210,7 @@ mod tests {
     #[tokio::test]
     async fn test_invoke_timeout() {
         let source = include_str!("fixtures/infinite.lua");
-        let runner = Runner::builder(&source, empty())
+        let runner = Runner::builder(source, empty())
             .timeout(Duration::from_millis(10))
             .build()
             .unwrap();
@@ -240,7 +222,7 @@ mod tests {
     #[tokio::test]
     async fn test_error_handling() {
         let source = include_str!("fixtures/error.lua");
-        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty()).build().unwrap();
         let Some(Invoked {
             result: Err(LmbError::LuaError(LuaError::RuntimeError(msg))),
             ..
@@ -248,8 +230,6 @@ mod tests {
         else {
             panic!("Expected a Lua runtime error");
         };
-        let name = runner.name();
-        let expected = format!("[string \"{name}\"]:3: An error occurred");
-        assert!(msg.starts_with(&expected));
+        assert!(msg.contains(":3: An error occurred"));
     }
 }

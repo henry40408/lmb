@@ -99,7 +99,7 @@ mod tests {
     async fn test_read_all(text: &'static str) {
         let source = include_str!("fixtures/read-all.lua");
         let input = Cursor::new(text);
-        let runner = Runner::builder(&source, input).build().unwrap();
+        let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         assert_eq!(json!(text), result.result.unwrap());
     }
@@ -113,7 +113,7 @@ mod tests {
     async fn test_read_count(bytes: &'static [u8], expected: Value) {
         let source = include_str!("fixtures/read-count.lua");
         let input = Cursor::new(bytes);
-        let runner = Runner::builder(&source, input).build().unwrap();
+        let runner = Runner::builder(source, input).build().unwrap();
         assert_eq!(
             expected,
             runner.invoke().call().await.unwrap().result.unwrap()
@@ -125,7 +125,7 @@ mod tests {
         let source = include_str!("fixtures/invalid-format.lua");
         let text = "";
         let input = Cursor::new(text);
-        let runner = Runner::builder(&source, input).build().unwrap();
+        let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         let err = result.result.err().unwrap();
         assert!(
@@ -144,7 +144,7 @@ mod tests {
     async fn test_read_line(text: &'static str, expected: &'static str) {
         let source = include_str!("fixtures/read-line.lua");
         let input = Cursor::new(text);
-        let runner = Runner::builder(&source, input).build().unwrap();
+        let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         assert_eq!(json!(expected), result.result.unwrap());
     }
@@ -159,7 +159,7 @@ mod tests {
     async fn test_read_number(text: &'static str, expected: Value) {
         let source = include_str!("fixtures/read-number.lua");
         let input = Cursor::new(text);
-        let runner = Runner::builder(&source, input).build().unwrap();
+        let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         assert_eq!(json!(expected), result.result.unwrap());
     }

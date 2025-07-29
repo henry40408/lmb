@@ -139,7 +139,7 @@ mod tests {
             .await;
 
         let source = include_str!("fixtures/http-get.lua");
-        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner
             .invoke()
             .state(Value::String(url))
@@ -168,7 +168,7 @@ mod tests {
             .await;
 
         let source = include_str!("fixtures/http-post.lua");
-        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner
             .invoke()
             .state(Value::String(url))

@@ -25,7 +25,7 @@ mod tests {
     #[tokio::test]
     async fn test_json_binding() {
         let source = include_str!("fixtures/json.lua");
-        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
     }
 }

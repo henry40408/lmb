@@ -123,7 +123,7 @@ mod tests {
     #[tokio::test]
     async fn test_crypto() {
         let source = include_str!("fixtures/crypto.lua");
-        let runner = Runner::builder(&source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
     }
 }
