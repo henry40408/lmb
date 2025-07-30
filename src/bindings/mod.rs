@@ -6,11 +6,13 @@ use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
 
 use crate::LmbInput;
 
-pub mod crypto;
-pub mod http;
-pub mod io;
-pub mod json;
-pub mod store;
+pub(crate) mod coroutine;
+pub(crate) mod crypto;
+pub(crate) mod globals;
+pub(crate) mod http;
+pub(crate) mod io;
+pub(crate) mod json;
+pub(crate) mod store;
 
 pub(crate) struct Binding<R>
 where

@@ -111,8 +111,9 @@ where
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
         vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
-        vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
+        vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
         vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
+        vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
         vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
 
         let mut runner = Self {
@@ -123,6 +124,7 @@ where
             vm, // otherwise the Lua VM would be destroyed
         };
 
+        bindings::globals::bind(&mut runner)?;
         bindings::io::bind(&mut runner)?;
 
         Ok(runner)
