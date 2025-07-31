@@ -150,8 +150,12 @@ where
         });
 
         let ctx = self.vm.create_table()?;
-        ctx.set("state", self.vm.to_value(&state)?)?;
-        ctx.set("store", StoreBinding::builder(self.store.clone()).build()?)?;
+        if state.is_some() {
+            ctx.set("state", self.vm.to_value(&state)?)?;
+        }
+        if self.store.is_some() {
+            ctx.set("store", StoreBinding::builder(self.store.clone()).build()?)?;
+        }
 
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
