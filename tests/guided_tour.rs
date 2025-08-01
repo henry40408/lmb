@@ -3,12 +3,14 @@ use std::io::Cursor;
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
 use lmb::Runner;
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use rusqlite::Connection;
 use serde_json::Value;
 use toml::Table;
 
 struct CommentVisitor {
     name: String,
     input: String,
+    store: bool,
     state: Option<Value>,
     assert_return: Option<Value>,
 }
@@ -18,6 +20,7 @@ impl CommentVisitor {
         Self {
             name: String::new(),
             input: String::new(),
+            store: false,
             state: None,
             assert_return: None,
         }
@@ -45,6 +48,9 @@ impl Visitor for CommentVisitor {
             .to_string();
         if let Some(toml::Value::String(input)) = parsed.get("input") {
             self.input.push_str(input);
+        }
+        if let Some(toml::Value::Boolean(store)) = parsed.get("store") {
+            self.store = *store;
         }
         if let Some(state) = parsed.get("state") {
             let state = serde_json::to_string(state).expect("failed to serialize state");
@@ -101,7 +107,15 @@ async fn test_guided_tour() {
         visitor.visit_ast(&parsed);
 
         let input = Cursor::new(visitor.input);
-        let runner = Runner::builder(&source, input).build().unwrap();
+        let conn = if visitor.store {
+            Some(Connection::open_in_memory().unwrap())
+        } else {
+            None
+        };
+        let runner = Runner::builder(&source, input)
+            .maybe_store(conn)
+            .build()
+            .unwrap();
         let value = runner
             .invoke()
             .maybe_state(visitor.state)
