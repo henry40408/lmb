@@ -11,10 +11,10 @@ Lmb currently uses Luau from Roblox.
 ```lua
 --[[
 --name = "Luau Version"
---assert_return = "Luau 0.682"
 --]]
 function luau_version()
-  return _G._VERSION
+  local version = "0.682"
+  assert(_G._VERSION == "Luau " .. version, "Expected Luau version " .. version .. ", but got " .. _G._VERSION)
 end
 
 return luau_version
@@ -45,7 +45,7 @@ In Lua, closures are a powerful feature that allows functions to capture their s
 ```lua
 --[[
 --name = "Closure"
---assert_return = "2"
+--assert_return = 2
 --]]
 function make_counter()
   local count = 1
@@ -128,7 +128,20 @@ return read_utf8_char
 
 ## State
 
-> TODO
+In Lua, you can maintain state using tables. Here's an example of how to create a simple state management system:
+
+```lua
+--[[
+--name = "State"
+--state = { a = 1, b = 2 }
+--assert_return = 3
+--]]
+function state(ctx)
+  return ctx.state.a + ctx.state.b
+end
+
+return state
+```
 
 ## Store
 

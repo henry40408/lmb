@@ -3,12 +3,14 @@ use std::io::Cursor;
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
 use lmb::Runner;
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+use serde_json::Value;
 use toml::Table;
 
 struct CommentVisitor {
     name: String,
     input: String,
-    assert_return: String,
+    state: Option<Value>,
+    assert_return: Option<Value>,
 }
 
 impl CommentVisitor {
@@ -16,7 +18,8 @@ impl CommentVisitor {
         Self {
             name: String::new(),
             input: String::new(),
-            assert_return: String::new(),
+            state: None,
+            assert_return: None,
         }
     }
 }
@@ -43,8 +46,15 @@ impl Visitor for CommentVisitor {
         if let Some(toml::Value::String(input)) = parsed.get("input") {
             self.input.push_str(input);
         }
-        if let Some(toml::Value::String(assert_return)) = parsed.get("assert_return") {
-            self.assert_return.push_str(assert_return);
+        if let Some(state) = parsed.get("state") {
+            let state = serde_json::to_string(state).expect("failed to serialize state");
+            self.state = Some(serde_json::from_str(&state).expect("failed to parse state"));
+        }
+        if let Some(assert_return) = parsed.get("assert_return") {
+            let assert_return =
+                serde_json::to_string(assert_return).expect("failed to serialize assert_return");
+            self.assert_return =
+                Some(serde_json::from_str(&assert_return).expect("failed to parse assert_return"));
         }
     }
 }
@@ -92,16 +102,18 @@ async fn test_guided_tour() {
 
         let input = Cursor::new(visitor.input);
         let runner = Runner::builder(&source, input).build().unwrap();
-        let value = runner.invoke().call().await.unwrap().result.unwrap();
-        if visitor.assert_return.is_empty() {
-            continue;
-        }
+        let value = runner
+            .invoke()
+            .maybe_state(visitor.state)
+            .call()
+            .await
+            .unwrap()
+            .result
+            .unwrap();
 
         let name = visitor.name.trim();
-        if let serde_json::Value::String(value) = &value {
-            assert_eq!(&visitor.assert_return, value, "name: {name}");
-        } else {
-            assert_eq!(visitor.assert_return, value.to_string(), "name: {source}");
+        if let Some(assert_return) = visitor.assert_return {
+            assert_eq!(assert_return, value, "name: {name}");
         }
     }
 }
