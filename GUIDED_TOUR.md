@@ -67,7 +67,9 @@ return make_counter()
 
 ## Reading
 
-To read input from the user, you can use the `io.read` function. Here's an example that reads all input and prints it:
+According to [Luau documentation](https://luau.org/sandbox#library), `io` library is removed entirely from the sandbox. However, it's common to read input from the user in Lua scripts so we implement a custom input function. In this section, we will demonstrate how to read input using the `io.read` function.
+
+Read all input and return it:
 
 ```lua
 --[[
@@ -83,7 +85,7 @@ end
 return read_all
 ```
 
-Read a line of input and print it to the console:
+Read a line of input and return it:
 
 ```lua
 --[[
@@ -117,7 +119,7 @@ return read_byte
 
 ### Reading UTF-8 Characters
 
-Though Luau supports UTF-8, it doesn't provide a built-in way to read UTF-8 characters directly. Thus, we provide a simple function to read a UTF-8 character from the input. This function reads a byte and decodes it as a UTF-8 character.
+Though [Luau supports UTF-8](https://luau.org/library#utf8-library), it doesn't provide a built-in way to read UTF-8 characters from the input. Thus, we provide a simple function to read a UTF-8 character from the input. This function reads a byte and decodes it as a UTF-8 character.
 
 ```lua
 --[[
@@ -134,7 +136,7 @@ end
 return read_utf8_char
 ```
 
-The function also accepts "*a" or "*l" as the first argument to read all characters or a line of characters, respectively.
+The function also accepts "*a" or "*l" as the first argument to read all characters or a line of characters, respectively, like the `io.read` function.
 
 ## State
 
