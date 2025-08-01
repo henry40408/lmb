@@ -74,8 +74,8 @@ Read all input and return it:
 ```lua
 --[[
 --name = "Read all input"
---input = "Hello, Lua!\n你好, Lua!"
 --assert_return = "Hello, Lua!\n你好, Lua!"
+--input = "Hello, Lua!\n你好, Lua!"
 --]]
 function read_all()
   local input = io.read("*a")
@@ -90,8 +90,8 @@ Read a line of input and return it:
 ```lua
 --[[
 --name = "Read line"
---input = "first line\nsecond line"
 --assert_return = "first line"
+--input = "first line\nsecond line"
 --]]
 function read_line()
   local input = io.read("*l")
@@ -106,8 +106,8 @@ Read a byte from the input and return it. This example shows how to read a singl
 ```lua
 --[[
 --name = "Read byte"
---input = "Hello, Lua!"
 --assert_return = "H"
+--input = "Hello, Lua!"
 --]]
 function read_byte()
   local input = io.read(1)
@@ -124,8 +124,8 @@ Though [Luau supports UTF-8](https://luau.org/library#utf8-library), it doesn't 
 ```lua
 --[[
 --name = "Read UTF-8 character"
---input = "你好, Lua!"
 --assert_return = "你"
+--input = "你好, Lua!"
 --]]
 function read_utf8_char()
   local m = require('@lmb')
@@ -145,8 +145,8 @@ In Lua, you can maintain state using tables. Here's an example of how to create 
 ```lua
 --[[
 --name = "State"
---state = { a = 1, b = 2 }
 --assert_return = 3
+--state = { a = 1, b = 2 }
 --]]
 function state(ctx)
   return ctx.state.a + ctx.state.b
@@ -205,7 +205,55 @@ The main difference between state and store is that state should be considered e
 
 ### Coroutines
 
-> TODO
+Coroutines are a powerful feature in Lua that allows you to pause and resume functions, enabling cooperative multitasking.
+
+#### join_all
+
+Here's an example of how to use coroutines to join multiple coroutines together:
+
+```lua
+--[[
+--name = "Coroutines - join all"
+--timeout = 210
+--]]
+function join_all()
+  local m = require('@lmb/coroutine')
+  local a = coroutine.create(function()
+    sleep_ms(100)
+  end)
+  local b = coroutine.create(function()
+    sleep_ms(200)
+  end)
+  m.join_all({ a, b })
+end
+
+return join_all
+```
+
+#### race
+
+In this example, we demonstrate how to use coroutines to race multiple coroutines against each other and return the result of the first one that finishes.
+
+```lua
+--[[
+--name = "Coroutines - race"
+--]]
+function race()
+  local m = require('@lmb/coroutine')
+  local a = coroutine.create(function()
+    sleep_ms(1)
+    return 100
+  end)
+  local b = coroutine.create(function()
+    sleep_ms(2)
+    return 200
+  end)
+  local actual = m.race({ a, b })
+  assert(100 == actual, "Expected the first coroutine to finish first, got " .. actual)
+end
+
+return race
+```
 
 ### Cryptography
 

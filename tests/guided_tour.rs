@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{io::Cursor, time::Duration};
 
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
 use lmb::Runner;
@@ -9,20 +9,22 @@ use toml::Table;
 
 struct CommentVisitor {
     name: String,
-    input: String,
-    store: bool,
-    state: Option<Value>,
     assert_return: Option<Value>,
+    input: String,
+    state: Option<Value>,
+    store: bool,
+    timeout: Option<Duration>,
 }
 
 impl CommentVisitor {
     fn new() -> Self {
         Self {
             name: String::new(),
-            input: String::new(),
-            store: false,
-            state: None,
             assert_return: None,
+            input: String::new(),
+            state: None,
+            store: false,
+            timeout: None,
         }
     }
 }
@@ -46,21 +48,24 @@ impl Visitor for CommentVisitor {
             .as_str()
             .expect("expect a string")
             .to_string();
-        if let Some(toml::Value::String(input)) = parsed.get("input") {
-            self.input.push_str(input);
-        }
-        if let Some(toml::Value::Boolean(store)) = parsed.get("store") {
-            self.store = *store;
-        }
-        if let Some(state) = parsed.get("state") {
-            let state = serde_json::to_string(state).expect("failed to serialize state");
-            self.state = Some(serde_json::from_str(&state).expect("failed to parse state"));
-        }
         if let Some(assert_return) = parsed.get("assert_return") {
             let assert_return =
                 serde_json::to_string(assert_return).expect("failed to serialize assert_return");
             self.assert_return =
                 Some(serde_json::from_str(&assert_return).expect("failed to parse assert_return"));
+        }
+        if let Some(toml::Value::String(input)) = parsed.get("input") {
+            self.input.push_str(input);
+        }
+        if let Some(state) = parsed.get("state") {
+            let state = serde_json::to_string(state).expect("failed to serialize state");
+            self.state = Some(serde_json::from_str(&state).expect("failed to parse state"));
+        }
+        if let Some(toml::Value::Boolean(store)) = parsed.get("store") {
+            self.store = *store;
+        }
+        if let Some(toml::Value::Integer(timeout)) = parsed.get("timeout") {
+            self.timeout = Some(Duration::from_millis(*timeout as u64));
         }
     }
 }
@@ -114,6 +119,7 @@ async fn test_guided_tour() {
         };
         let runner = Runner::builder(&source, input)
             .maybe_store(conn)
+            .maybe_timeout(visitor.timeout)
             .build()
             .unwrap();
         let value = runner
