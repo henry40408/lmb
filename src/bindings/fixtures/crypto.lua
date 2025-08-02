@@ -8,16 +8,16 @@ function base64()
   assert(expected == encoded, "Expected '" .. expected .. "' but got '" .. encoded .. "'")
   local decoded = crypto.base64_decode(encoded)
   assert(text == decoded, "Expected '" .. text .. "' but got '" .. decoded .. "'")
-
-  local crc32 = crypto.crc32(text)
-  local expected = "e96ccf45"
-  assert(expected == crc32, "Expected '" .. expected .. "' but got '" .. crc32 .. "'")
 end
 
 function hash()
   local crypto = require("@lmb/crypto")
 
   local text = " "
+
+  local crc32 = crypto.crc32(text)
+  local expected = "e96ccf45"
+  assert(expected == crc32, "Expected '" .. expected .. "' but got '" .. crc32 .. "'")
 
   local md5 = crypto.md5(text)
   local expected = "7215ee9c7d9dc229d2921a40e899ec5f"
@@ -65,7 +65,7 @@ function hmac_hash()
   assert(expected == hmac_sha512, "Expected '" .. expected .. "' but got '" .. hmac_sha512 .. "'")
 end
 
-function encrpyt_decrypt()
+function encrypt_decrypt()
   local crypto = require("@lmb/crypto")
 
   local text = " "
@@ -100,7 +100,7 @@ function crypto()
   base64()
   hash()
   hmac_hash()
-  encrpyt_decrypt()
+  encrypt_decrypt()
 end
 
 return crypto

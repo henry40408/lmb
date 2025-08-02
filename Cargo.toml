@@ -56,8 +56,11 @@ url = "2.5.4"
 
 [dev-dependencies]
 criterion = { version = "0.7.0", features = ["async_tokio"] }
+full_moon = "2.0.0"
 mockito = "1.7.0"
+pulldown-cmark = "0.13.0"
 test-case = "3.3.1"
+toml = "0.9.4"
 
 [profile.release]
 codegen-units = 1
