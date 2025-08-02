@@ -412,4 +412,20 @@ return http_get
 
 ### JSON
 
-> TODO
+In this section, we demonstrate how to work with JSON data in Lua using the `@lmb/json` module. This module provides functions for encoding and decoding JSON data, making it easy to work with structured data.
+
+```lua
+--[[
+--name = "JSON"
+--assert_return = "{\"a\":2}"
+--input = "{\"a\":1}"
+--]]
+function json_decode()
+  local json = require("@lmb/json")
+  local decoded = json.decode(io.read("*a"))
+  decoded.a = decoded.a + 1
+  return json.encode(decoded)
+end
+
+return json_decode
+```
