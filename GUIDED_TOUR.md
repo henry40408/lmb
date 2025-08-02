@@ -390,7 +390,25 @@ return crypto
 
 ### HTTP
 
-> TODO
+In this section, we demonstrate how to make HTTP requests using the `@lmb/http` module. This module provides a simple interface for making GET and POST requests, handling responses, and parsing JSON data. The API is similar to the [`fetch` API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch) in JavaScript.
+
+```lua
+--[[
+--name = "HTTP"
+--state = {}
+--]]
+function http_get(ctx)
+  local http = require("@lmb/http")
+
+  local res = http:fetch(ctx.state.url .. "/get")
+  assert(200 == res.status, "Expected status 200, got " .. res.status)
+
+  local body = res:json()
+  assert(1 == body.a, "Expected body.a to be 1, got " .. body.a)
+end
+
+return http_get
+```
 
 ### JSON
 

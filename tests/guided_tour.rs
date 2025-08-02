@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 use toml::Table;
 
+#[derive(Default)]
 struct CommentVisitor {
     name: String,
     assert_return: Option<Value>,
@@ -14,19 +15,6 @@ struct CommentVisitor {
     state: Option<Value>,
     store: bool,
     timeout: Option<Duration>,
-}
-
-impl CommentVisitor {
-    fn new() -> Self {
-        Self {
-            name: String::new(),
-            assert_return: None,
-            input: String::new(),
-            state: None,
-            store: false,
-            timeout: None,
-        }
-    }
 }
 
 impl Visitor for CommentVisitor {
@@ -108,8 +96,22 @@ async fn test_guided_tour() {
     for source in sources {
         let parsed = full_moon::parse(&source).unwrap();
 
-        let mut visitor = CommentVisitor::new();
+        let mut visitor = CommentVisitor::default();
         visitor.visit_ast(&parsed);
+
+        let mut server = mockito::Server::new_async().await;
+        let _ = server
+            .mock("GET", "/get")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(r#"{"a":1}"#)
+            .create_async()
+            .await;
+        if let Some(ref mut state) = visitor.state {
+            if let Some(state) = state.as_object_mut() {
+                state.insert("url".to_string(), Value::String(server.url()));
+            }
+        }
 
         let input = Cursor::new(visitor.input);
         let conn = if visitor.store {
