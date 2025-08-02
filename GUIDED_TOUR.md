@@ -136,7 +136,7 @@ end
 return read_utf8_char
 ```
 
-The function also accepts "*a" or "*l" as the first argument to read all characters or a line of characters, respectively, like the `io.read` function.
+The function also accepts `*a` or `*l` as the first argument to read all characters or a line of characters, respectively, like the `io.read` function.
 
 ## State
 
@@ -170,7 +170,7 @@ In this section, we demonstrate how to use a store to manage state across differ
 function store(ctx)
   assert(not ctx.store.a, "Expected ctx.store.a to be nil")
   ctx.store.a = 20
-  assert(20 == ctx.store.a, "Expected ctx.store.a to be 20, got " .. ctx.store.a)
+  assert(20 == ctx.store.a, "Expected ctx.store.a to be 20, got " .. tostring(ctx.store.a))
 
   ctx.store:update({ "a", b = 0 }, function(values)
     assert(values.a == 20, "Expected values.a to be 20, got " .. values.a)
@@ -180,8 +180,8 @@ function store(ctx)
     values.b = values.b + 10
   end)
 
-  assert(ctx.store.a == 10, "Expected ctx.store.a to be 10, got " .. ctx.store.a)
-  assert(ctx.store.b == 10, "Expected ctx.store.b to be 10, got " .. ctx.store.b)
+  assert(ctx.store.a == 10, "Expected ctx.store.a to be 10, got " .. tostring(ctx.store.a))
+  assert(ctx.store.b == 10, "Expected ctx.store.b to be 10, got " .. tostring(ctx.store.b))
 
   local ok, err = pcall(function()
     ctx.store:update({ "a", "b" }, function(values)
@@ -220,11 +220,15 @@ function join_all()
   local m = require('@lmb/coroutine')
   local a = coroutine.create(function()
     sleep_ms(100)
+    return 100
   end)
   local b = coroutine.create(function()
     sleep_ms(200)
+    return 200
   end)
-  m.join_all({ a, b })
+  local values = m.join_all({ a, b })
+  assert(values[1] == 100, "Expected first coroutine to return 100")
+  assert(values[2] == 200, "Expected second coroutine to return 200")
 end
 
 return join_all
