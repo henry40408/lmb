@@ -1,6 +1,7 @@
 use lazy_regex::*;
 use miette::{GraphicalReportHandler, GraphicalTheme, LabeledSpan, NamedSource, Report, miette};
 use mlua::{AsChunk, prelude::*};
+use no_color::is_no_color;
 use string_offsets::StringOffsets;
 
 use crate::{LmbError, LmbResult};
@@ -65,7 +66,12 @@ pub fn render_report<W>(writer: &mut W, report: &Report)
 where
     W: std::fmt::Write,
 {
-    GraphicalReportHandler::new_themed(GraphicalTheme::ascii())
+    let theme = if is_no_color() {
+        GraphicalTheme::none()
+    } else {
+        GraphicalTheme::ascii()
+    };
+    GraphicalReportHandler::new_themed(theme)
         .render_report(writer, report.as_ref())
         .expect("Failed to render report");
 }

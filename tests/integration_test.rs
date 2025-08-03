@@ -1,0 +1,114 @@
+use snapbox::{
+    cmd::{Command, cargo_bin},
+    str,
+};
+
+#[test]
+fn eval_add() {
+    Command::new(cargo_bin("lmb"))
+        .args(["eval", "--file", "src/fixtures/add.lua", "--state", "1"])
+        .assert()
+        .success()
+        .stdout_eq(str![[r#"
+2
+
+"#]])
+        .stderr_eq(str![]);
+}
+
+#[test]
+fn eval_error() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "1")
+        .args(["eval", "--file", "src/fixtures/error.lua"])
+        .assert()
+        .failure()
+        .stdout_eq(str![])
+        .stderr_eq(str![[r#"
+  x An error occurred
+   ,-[@src/fixtures/error.lua:3:1]
+ 2 |   local a = 1
+ 3 |   error("An error occurred")
+   : ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
+   :               `-- An error occurred
+ 4 |   a = a + 1
+ 5 |   return a
+   `----
+Error: Lua error: runtime error: src/fixtures/error.lua:3: An error occurred
+stack traceback:
+	[C]: in function 'error'
+	src/fixtures/error.lua:3: in function 'f'
+
+"#]]);
+}
+
+#[test]
+fn eval_hello() {
+    Command::new(cargo_bin("lmb"))
+        .args(["eval", "--file", "src/fixtures/hello.lua"])
+        .assert()
+        .success()
+        .stdout_eq(str![[r#"
+true
+Hello, World!
+
+"#]])
+        .stderr_eq(str![]);
+}
+
+#[test]
+fn eval_infinite() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "1")
+        .args([
+            "eval",
+            "--file",
+            "src/fixtures/infinite.lua",
+            "--timeout-ms",
+            "100",
+        ])
+        .assert()
+        .failure()
+        .stdout_eq(str![])
+        .stderr_eq(str![[r#"
+Timeout after 100[..]ms, timeout was 100ms
+Error: Timeout after 100[..]ms, timeout was 100ms
+
+"#]]);
+}
+
+#[test]
+fn eval_no_export() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "1")
+        .args(["eval", "--file", "src/fixtures/no-export.lua"])
+        .assert()
+        .failure()
+        .stdout_eq(str![[r#"
+A Lua function is expected to be exported at the end of the file.
+
+Good:
+
+```lua
+local function my_function()
+  -- function implementation
+end
+
+return my_function
+```
+
+Bad:
+
+```lua
+local function my_function()
+  -- function implementation
+end -- missing return statement
+```
+
+Ensure that the function is returned at the end of the file to make it accessible when the script is evaluated.
+
+"#]]).stderr_eq(str![[r#"
+Error: Expected a Lua function, but got nil instead
+
+"#]]);
+}

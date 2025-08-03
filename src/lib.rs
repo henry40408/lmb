@@ -33,7 +33,7 @@ pub enum LmbError {
     Lua(#[from] mlua::Error),
     /// Error converting a Lua value to a Rust type
     #[error("Expected a Lua function, but got {actual} instead")]
-    FromLuaConversion {
+    ExpectedLuaFunction {
         /// The actual type of the Lua value
         actual: Box<str>,
     },
@@ -104,7 +104,7 @@ where
 
         let func: LuaValue = vm.load(source).eval()?;
         let LuaValue::Function(func) = func else {
-            return Err(LmbError::FromLuaConversion {
+            return Err(LmbError::ExpectedLuaFunction {
                 actual: func.type_name().into(),
             });
         };
