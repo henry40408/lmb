@@ -9,6 +9,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde_json::{Map, Value};
+use tracing::debug_span;
 use url::Url;
 
 use crate::LmbResult;
@@ -102,7 +103,7 @@ impl LuaUserData for HttpBinding {
                 let body = options.pointer("/body").and_then(|v| v.as_str());
 
                 let url = Url::parse(&url).into_lua_err()?;
-                let mut built = this.client.request(method, url);
+                let mut built = this.client.request(method.clone(), url.clone());
                 if let Some(headers) = headers {
                     built = built.headers(headers);
                 }
@@ -111,7 +112,11 @@ impl LuaUserData for HttpBinding {
                 }
 
                 let request = built.build().into_lua_err()?;
-                let response = this.client.execute(request).await.into_lua_err()?;
+                let response = {
+                    let _ =
+                        debug_span!("send HTTP request", method = %method, url = %url).entered();
+                    this.client.execute(request).await.into_lua_err()?
+                };
                 Ok(ResponseBinding(Arc::new(Mutex::new(response))))
             },
         );

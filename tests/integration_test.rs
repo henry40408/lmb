@@ -147,10 +147,10 @@ fn eval_stdin_error() {
  4 |   a = a + 1
  5 |   return a
    `----
-Error: Lua error: runtime error: [..]:105:3: An error occurred
+Error: Lua error: runtime error: [..]: An error occurred
 stack traceback:
 	[C]: in function 'error'
-	[..]:105:3: in function 'f'
+	[..]: in function 'f'
 
 "#]]);
 }

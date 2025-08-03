@@ -17,6 +17,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader};
+use tracing::debug_span;
 
 use crate::bindings::{Binding, store::StoreBinding};
 
@@ -102,7 +103,11 @@ where
         let vm = Lua::new();
         vm.sandbox(true)?;
 
-        let func: LuaValue = vm.load(source).eval()?;
+        let func: LuaValue = {
+            let name = source.name().unwrap_or_else(|| "-".to_string());
+            let _ = debug_span!("loading Lua source code", name = %name).entered();
+            vm.load(source).eval()?
+        };
         let LuaValue::Function(func) = func else {
             return Err(LmbError::ExpectedLuaFunction {
                 actual: func.type_name().into(),
@@ -110,11 +115,14 @@ where
         };
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
-        vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
-        vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
-        vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
-        vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
-        vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
+        {
+            let _ = debug_span!("registering Lua modules").entered();
+            vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
+            vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
+            vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
+            vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
+            vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
+        }
 
         let mut runner = Self {
             func,
@@ -124,8 +132,11 @@ where
             vm, // otherwise the Lua VM would be destroyed
         };
 
-        bindings::globals::bind(&mut runner)?;
-        bindings::io::bind(&mut runner)?;
+        {
+            let _ = debug_span!("binding Lua globals").entered();
+            bindings::globals::bind(&mut runner)?;
+            bindings::io::bind(&mut runner)?;
+        }
 
         Ok(runner)
     }
@@ -160,17 +171,21 @@ where
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
-        let value = match self.func.call_async::<LuaValue>(ctx).await {
-            Ok(value) => value,
-            Err(LuaError::RuntimeError(msg)) if msg == "timeout" => {
-                let e = LmbError::Timeout {
-                    elapsed: start.elapsed(),
-                    timeout: self.timeout.unwrap_or_default(),
-                };
-                return Ok(invoked.result(Err(e)).build());
-            }
-            Err(e) => {
-                return Ok(invoked.result(Err(LmbError::Lua(e))).build());
+
+        let value = {
+            let _ = debug_span!("invoking Lua function").entered();
+            match self.func.call_async::<LuaValue>(ctx).await {
+                Ok(value) => value,
+                Err(LuaError::RuntimeError(msg)) if msg == "timeout" => {
+                    let e = LmbError::Timeout {
+                        elapsed: start.elapsed(),
+                        timeout: self.timeout.unwrap_or_default(),
+                    };
+                    return Ok(invoked.result(Err(e)).build());
+                }
+                Err(e) => {
+                    return Ok(invoked.result(Err(LmbError::Lua(e))).build());
+                }
             }
         };
 

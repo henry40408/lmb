@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use mlua::prelude::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
+use tracing::debug_span;
 
 use crate::{LmbResult, Runner};
 
@@ -21,11 +22,13 @@ where
                 if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
                     match &*f {
                         "*a" | "*all" => {
+                            let _ = debug_span!("read all").entered();
                             let mut buf = vec![];
                             reader.lock().read_to_end(&mut buf).await?;
                             return Ok(LuaValue::String(vm.create_string(buf)?));
                         }
                         "*l" | "*line" => {
+                            let _ = debug_span!("read line").entered();
                             let mut line = String::new();
                             if reader.lock().read_line(&mut line).await? == 0 {
                                 return Ok(LuaValue::String(vm.create_string("")?));
@@ -33,6 +36,7 @@ where
                             return Ok(LuaValue::String(vm.create_string(line.trim_end())?));
                         }
                         "*n" | "*number" => {
+                            let _ = debug_span!("read number").entered();
                             let mut buf = String::new();
                             if reader.lock().read_line(&mut buf).await? == 0 {
                                 return Ok(LuaNil);
@@ -53,13 +57,14 @@ where
                     }
                 }
 
-                if let Some(i) = fmt.as_usize() {
-                    let mut buf = vec![0; i];
-                    let count = reader.lock().read(&mut buf).await?;
-                    if count == 0 {
+                if let Some(n) = fmt.as_usize() {
+                    let _ = debug_span!("read bytes", %n).entered();
+                    let mut buf = vec![0; n];
+                    let read = reader.lock().read(&mut buf).await?;
+                    if read == 0 {
                         return Ok(LuaNil);
                     }
-                    buf.truncate(count);
+                    buf.truncate(read);
                     // Unlike Rust strings, Lua strings may not be valid UTF-8.
                     // We leverage this trait to give Lua the power to handle binary.
                     return Ok(LuaValue::String(vm.create_string(&buf)?));

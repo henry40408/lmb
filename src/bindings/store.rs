@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use mlua::prelude::*;
 use rusqlite::params;
 use serde_json::Value;
+use tracing::debug_span;
 
 use crate::{LmbResult, LmbStore};
 
@@ -29,6 +30,7 @@ impl StoreSnapshotBinding {
 impl LuaUserData for StoreSnapshotBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
+            let _ = debug_span!("store snapshot index", %key).entered();
             if let Some(tuple) = this.inner.get(&key.into_boxed_str()) {
                 return vm.to_value(tuple.value()).into_lua_err();
             }
@@ -37,6 +39,7 @@ impl LuaUserData for StoreSnapshotBinding {
         methods.add_meta_method(
             LuaMetaMethod::NewIndex,
             |vm, this, (key, value): (String, LuaValue)| {
+                let _ = debug_span!("store snapshot new index", %key).entered();
                 let value = vm.from_value::<Value>(value).into_lua_err()?;
                 this.inner.insert(key.into_boxed_str(), value);
                 Ok(LuaNil)
@@ -54,8 +57,10 @@ impl StoreBinding {
     #[builder]
     pub(crate) fn new(#[builder(start_fn)] store: Option<LmbStore>) -> LmbResult<Self> {
         if let Some(store) = &store {
+            let _ = debug_span!("run migrations", count = MIGRATIONS.len()).entered();
             let conn = store.lock();
             for migration in MIGRATIONS.iter() {
+                let _ = debug_span!("run migration", migration).entered();
                 conn.execute_batch(migration).into_lua_err()?;
             }
         }
@@ -68,6 +73,7 @@ impl LuaUserData for StoreBinding {
         methods.add_meta_method(
             LuaMetaMethod::NewIndex,
             |vm, this, (key, value): (String, LuaValue)| {
+                let _ = debug_span!("store new index", %key).entered();
                 let Some(store) = &this.store else {
                     return Ok(LuaNil);
                 };
@@ -80,6 +86,7 @@ impl LuaUserData for StoreBinding {
             },
         );
         methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
+            let _ = debug_span!("store index", %key).entered();
             let Some(store) = &this.store else {
                 return Ok(LuaNil);
             };
@@ -96,6 +103,7 @@ impl LuaUserData for StoreBinding {
         methods.add_method(
             "update",
             |vm, this, (keys_defaults, f): (LuaTable, LuaFunction)| {
+                let span = debug_span!("store update").entered();
                 let Some(store) = &this.store else {
                     return Ok(LuaNil);
                 };
@@ -120,6 +128,7 @@ impl LuaUserData for StoreBinding {
 
                 let snapshot = DashMap::new();
                 {
+                    let _ = debug_span!(parent: &span, "create snapshot from store").entered();
                     let mut stmt = tx.prepare(SQL_GET).into_lua_err()?;
                     for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
                         let (k, v) = pair.into_lua_err()?;
@@ -137,20 +146,27 @@ impl LuaUserData for StoreBinding {
 
                 let snapshot = Arc::new(snapshot);
                 let snapshot_binding = StoreSnapshotBinding::builder(snapshot.clone()).build();
-                f.call::<LuaValue>(snapshot_binding).into_lua_err()?;
 
-                for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
-                    let (k, v) = pair?;
-                    let (key, _) = parse_key_default(k, v)?;
-                    if let Some(pair) = snapshot.get(&key) {
-                        let serialized = rmp_serde::to_vec(pair.value()).into_lua_err()?;
-                        tx.execute(SQL_PUT, params![&key, serialized])
-                            .into_lua_err()?;
+                let returned = {
+                    let _ = debug_span!(parent: &span, "call update function").entered();
+                    f.call::<LuaValue>(snapshot_binding).into_lua_err()?
+                };
+
+                {
+                    let _ = debug_span!(parent: &span, "write snapshot to store").entered();
+                    for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
+                        let (k, v) = pair?;
+                        let (key, _) = parse_key_default(k, v)?;
+                        if let Some(pair) = snapshot.get(&key) {
+                            let serialized = rmp_serde::to_vec(pair.value()).into_lua_err()?;
+                            tx.execute(SQL_PUT, params![&key, serialized])
+                                .into_lua_err()?;
+                        }
                     }
                 }
                 tx.commit().into_lua_err()?;
 
-                Ok(LuaNil)
+                Ok(returned)
             },
         );
     }
