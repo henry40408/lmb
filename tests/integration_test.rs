@@ -112,3 +112,45 @@ Error: Expected a Lua function, but got nil instead
 
 "#]]);
 }
+
+#[test]
+fn eval_stdin() {
+    Command::new(cargo_bin("lmb"))
+        .stdin(include_str!("../src/fixtures/hello.lua"))
+        .args(["eval", "--file", "-"])
+        .assert()
+        .success()
+        .stdout_eq(str![[r#"
+true
+Hello, World!
+
+"#]])
+        .stderr_eq(str![]);
+}
+
+#[test]
+fn eval_stdin_error() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "1")
+        .stdin(include_str!("../src/fixtures/error.lua"))
+        .args(["eval", "--file", "-"])
+        .assert()
+        .failure()
+        .stdout_eq(str![])
+        .stderr_eq(str![[r#"
+  x An error occurred
+   ,-[-:3:1]
+ 2 |   local a = 1
+ 3 |   error("An error occurred")
+   : ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
+   :               `-- An error occurred
+ 4 |   a = a + 1
+ 5 |   return a
+   `----
+Error: Lua error: runtime error: [..]:105:3: An error occurred
+stack traceback:
+	[C]: in function 'error'
+	[..]:105:3: in function 'f'
+
+"#]]);
+}

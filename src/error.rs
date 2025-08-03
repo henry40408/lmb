@@ -22,7 +22,7 @@ pub fn build_report<S>(source: S, error: &LmbError) -> LmbResult<ErrorReport>
 where
     S: AsChunk,
 {
-    let name = source.name().unwrap_or_default();
+    let name = source.name().unwrap_or_else(|| "-".to_string());
     let source = source.source()?;
     let Some(source) = std::str::from_utf8(&source).ok().map(|s| s.to_string()) else {
         return Ok(ErrorReport::String(error.to_string()));
