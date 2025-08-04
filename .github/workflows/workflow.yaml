@@ -100,7 +100,7 @@ jobs:
       - name: Run tests with coverage
         run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info
       - name: Upload coverage report
-        uses: codecov/codecov-action@v4.4.0
+        uses: codecov/codecov-action@v5.4.3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
   msrv:
