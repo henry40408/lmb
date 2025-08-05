@@ -18,6 +18,9 @@ use tracing_subscriber::fmt::format::FmtSpan;
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Opts {
+    /// Optional HTTP timeout in seconds
+    #[clap(long)]
+    http_timeout: Option<jiff::Span>,
     /// Optional path to the store file
     #[clap(long, value_parser, group = "store")]
     store_path: Option<PathBuf>,
@@ -40,7 +43,7 @@ enum Command {
         state: Option<Value>,
         /// Timeout. Default is 30 seconds, set to 0 for no timeout
         #[clap(long)]
-        timeout_ms: Option<u64>,
+        timeout: Option<jiff::Span>,
     },
 }
 
@@ -59,7 +62,7 @@ async fn try_main() -> anyhow::Result<()> {
         Command::Eval {
             mut file,
             state,
-            timeout_ms,
+            timeout,
         } => {
             let reader = io::stdin();
             let source = if file.is_local() {
@@ -72,10 +75,17 @@ async fn try_main() -> anyhow::Result<()> {
                 bail!("Expected a local file or a stdin input, but got: {file}");
             };
 
-            let timeout = match timeout_ms {
+            let http_timeout = match opts.http_timeout {
                 None => Some(Duration::from_secs(30)),
-                Some(0) => None,
-                Some(t) => Some(Duration::from_millis(t)),
+                Some(t) if t.is_zero() => None,
+                Some(t) => Some(Duration::try_from(t)?),
+            };
+            info!("Using HTTP timeout: {:?}", http_timeout);
+
+            let timeout = match timeout {
+                None => Some(Duration::from_secs(30)),
+                Some(t) if t.is_zero() => None,
+                Some(t) => Some(Duration::try_from(t)?),
             };
             info!("Using timeout: {:?}", timeout);
 
@@ -88,12 +98,14 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = if let Some(source) = &source {
                 info!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
+                    .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
                     .build()
             } else {
                 info!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
+                    .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
                     .build()

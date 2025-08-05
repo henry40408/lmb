@@ -108,6 +108,7 @@ where
     pub fn new<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
+        http_timeout: Option<Duration>,
         store: Option<Connection>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
@@ -134,7 +135,12 @@ where
             vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
             vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
             vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
-            vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
+            vm.register_module(
+                "@lmb/http",
+                bindings::http::HttpBinding::builder()
+                    .maybe_timeout(http_timeout)
+                    .build()?,
+            )?;
             vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
             vm.register_module("@lmb/toml", bindings::toml::TomlBinding {})?;
             vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
