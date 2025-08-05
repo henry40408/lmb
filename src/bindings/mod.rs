@@ -38,7 +38,7 @@ where
     for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_async_method("read_unicode", async |vm, this, fmt: LuaValue| {
+        methods.add_async_method("read_unicode", |vm, this, fmt: LuaValue| async move {
             let reader = &this.reader;
 
             if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
