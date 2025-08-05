@@ -114,7 +114,7 @@ impl LuaUserData for HttpBinding {
                 let request = built.build().into_lua_err()?;
                 let response = {
                     let _ =
-                        debug_span!("send HTTP request", method = %method, url = %url).entered();
+                        debug_span!("send_http_request", method = %method, url = %url).entered();
                     this.client.execute(request).await.into_lua_err()?
                 };
                 Ok(ResponseBinding(Arc::new(Mutex::new(response))))

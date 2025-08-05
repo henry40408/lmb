@@ -12,7 +12,7 @@ use no_color::is_no_color;
 use rusqlite::Connection;
 use serde_json::Value;
 use tokio::io::{self, AsyncWriteExt as _};
-use tracing::{debug_span, info};
+use tracing::{Instrument, debug_span, info};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 #[derive(Debug, Parser)]
@@ -64,6 +64,10 @@ async fn try_main() -> anyhow::Result<()> {
             state,
             timeout,
         } => {
+            let span = debug_span!("eval").entered();
+            info!("Evaluate Lua script: {file:?}");
+            info!("State: {state:?}");
+
             let reader = io::stdin();
             let source = if file.is_local() {
                 None
@@ -140,8 +144,13 @@ async fn try_main() -> anyhow::Result<()> {
             };
 
             let result = {
-                let _ = debug_span!("lua evaluation").entered();
-                runner.invoke().maybe_state(state).call().await?
+                let span2 = debug_span!(parent: &span, "invoke");
+                runner
+                    .invoke()
+                    .maybe_state(state)
+                    .call()
+                    .instrument(span2)
+                    .await?
             };
             info!("Lua evaluated");
 

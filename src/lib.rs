@@ -120,7 +120,7 @@ where
 
         let func: LuaValue = {
             let name = source.name().unwrap_or_else(|| "-".to_string());
-            let _ = debug_span!("loading Lua source code", name = %name).entered();
+            let _ = debug_span!("load_source", name = %name).entered();
             vm.load(source).eval()?
         };
         let LuaValue::Function(func) = func else {
@@ -131,7 +131,7 @@ where
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
         {
-            let _ = debug_span!("registering Lua modules").entered();
+            let _ = debug_span!("register_modules").entered();
             vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
             vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
             vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
@@ -155,7 +155,7 @@ where
         };
 
         {
-            let _ = debug_span!("binding Lua globals").entered();
+            let _ = debug_span!("binding_globals").entered();
             bindings::globals::bind(&mut runner)?;
             bindings::io::bind(&mut runner)?;
         }
@@ -198,7 +198,7 @@ where
             .used_memory(used_memory.load(Ordering::Relaxed));
 
         let value = {
-            let _ = debug_span!("invoking Lua function").entered();
+            let _ = debug_span!("call").entered();
             match self.func.call_async::<LuaValue>(ctx).await {
                 Ok(value) => value,
                 Err(e) => match &e {
