@@ -136,6 +136,8 @@ where
             vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
             vm.register_module("@lmb/http", bindings::http::HttpBinding::builder().build()?)?;
             vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
+            vm.register_module("@lmb/toml", bindings::toml::TomlBinding {})?;
+            vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
         }
 
         let mut runner = Self {
