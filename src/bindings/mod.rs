@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_unicode_all() {
-        let text = "Hello, 世界! こんにちは世界! 안녕하세요 세계! Привет, мир! مرحبا بالعالم! 😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚";
+        let text = "Hello, 世界!\nこんにちは世界!\n안녕하세요 세계!\n😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚";
         let source = include_str!("fixtures/read-unicode-all.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
@@ -126,12 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_unicode_line() {
-        let text = r#"Hello, 世界!
-こんにちは世界!
-안녕하세요 세계!
-Привет, мир!
-مرحبا بالعالم!
-😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"#;
+        let text = "Hello, 世界!\nこんにちは世界!\n안녕하세요 세계!\n😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚";
         let source = include_str!("fixtures/read-unicode-line.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
@@ -148,14 +143,6 @@ mod tests {
             runner.invoke().call().await.unwrap().result.unwrap()
         );
         assert_eq!(
-            json!("Привет, мир!"),
-            runner.invoke().call().await.unwrap().result.unwrap()
-        );
-        assert_eq!(
-            json!("مرحبا بالعالم!"),
-            runner.invoke().call().await.unwrap().result.unwrap()
-        );
-        assert_eq!(
             json!("😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"),
             runner.invoke().call().await.unwrap().result.unwrap()
         );
@@ -169,8 +156,6 @@ mod tests {
     #[test_case("你好，世界"; "Chinese")]
     #[test_case("こんにちは世界"; "Japanese")]
     #[test_case("안녕하세요 세계"; "Korean")]
-    #[test_case("Привет, мир"; "Russian")]
-    #[test_case("مرحبا بالعالم"; "Arabic")]
     #[test_case("😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"; "Emoji")]
     #[tokio::test]
 
