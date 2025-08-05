@@ -63,6 +63,11 @@ function hmac_hash()
   local expected =
     "750198b84504923b67e3774963773255f4300aa7b3eaddd6a2eabb837d04c7f2e949d68faf22861fd1b560e66f7513eda5a47139a990f1ff5df90aac167fe4ca"
   assert(expected == hmac_sha512, "Expected '" .. expected .. "' but got '" .. hmac_sha512 .. "'")
+
+  local ok, err = pcall(function()
+    return crypto.hmac("?", text, key)
+  end)
+  assert(not ok and string.find(tostring(err), "unsupported hash ?"), "Expected error for unsupported hash")
 end
 
 function encrypt_decrypt()
@@ -71,6 +76,15 @@ function encrypt_decrypt()
   local text = " "
   local key = "0123456701234567"
   local iv = "0123456701234567"
+
+  local ok, err = pcall(function()
+    return crypto.encrypt("aes-cbc", text, key)
+  end)
+  assert(not ok and string.find(tostring(err), "expect IV"), "Expected error for missing IV")
+  local ok, err = pcall(function()
+    return crypto.decrypt("aes-cbc", text, key)
+  end)
+  assert(not ok and string.find(tostring(err), "expect IV"), "Expected error for missing IV")
 
   local encrypted = crypto.encrypt("aes-cbc", text, key, iv)
   local expected = "b019fc0029f1ae88e96597dc0667e7c8"
@@ -81,6 +95,16 @@ function encrypt_decrypt()
 
   local key = "01234567"
   local iv = "01234567"
+
+  ok, err = pcall(function()
+    return crypto.encrypt("des-cbc", text, key)
+  end)
+  assert(not ok and string.find(tostring(err), "expect IV"), "Expected error for missing IV")
+  ok, err = pcall(function()
+    return crypto.decrypt("des-cbc", text, key)
+  end)
+  assert(not ok and string.find(tostring(err), "expect IV"), "Expected error for missing IV")
+
   local encrypted = crypto.encrypt("des-cbc", text, key, iv)
   local expected = "b865f90e7600d7ec"
   assert(expected == encrypted, "Expected '" .. expected .. "' but got '" .. encrypted .. "'")
@@ -94,6 +118,15 @@ function encrypt_decrypt()
 
   local decrypted = crypto.decrypt("des-ecb", encrypted, key)
   assert(text == decrypted, "Expected '" .. text .. "' but got '" .. decrypted .. "'")
+
+  local ok, err = pcall(function()
+    return crypto.encrypt("?", text, key)
+  end)
+  assert(not ok and string.find(tostring(err), "unsupported cipher ?"), "Expected error for unsupported cipher")
+  local ok, err = pcall(function()
+    return crypto.decrypt("?", encrypted, key)
+  end)
+  assert(not ok and string.find(tostring(err), "unsupported cipher ?"), "Expected error for unsupported cipher")
 end
 
 function crypto()

@@ -48,7 +48,7 @@ impl LuaUserData for CryptoBinding {
         methods.add_function("sha512", |_, data: String| Ok(hash::<Sha512>(&data)));
         methods.add_function(
             "hmac",
-            |_, (alg, data, secret): (String, String, String)| match alg.as_str() {
+            |_, (hash, data, secret): (String, String, String)| match hash.as_str() {
                 "sha1" => hmac_hash::<Hmac<Sha1>>(&secret, &data),
                 "sha256" => hmac_hash::<Hmac<Sha256>>(&secret, &data),
                 "sha384" => hmac_hash::<Hmac<Sha384>>(&secret, &data),
@@ -57,14 +57,14 @@ impl LuaUserData for CryptoBinding {
                     to: Some("hmac".to_string()),
                     pos: 1,
                     name: None,
-                    cause: Arc::new(LuaError::external(format!("unsupported algorithm {alg}"))),
+                    cause: Arc::new(LuaError::external(format!("unsupported hash {hash}"))),
                 }),
             },
         );
 
         methods.add_function(
             "encrypt",
-            |_, (method, data, key, iv): (String, String, String, Option<String>)| match method
+            |_, (cipher, data, key, iv): (String, String, String, Option<String>)| match cipher
                 .as_str()
             {
                 "aes-cbc" => {
@@ -98,13 +98,13 @@ impl LuaUserData for CryptoBinding {
                     to: Some("encrypt".to_string()),
                     pos: 1,
                     name: None,
-                    cause: Arc::new(LuaError::external(format!("unsupported method {method}"))),
+                    cause: Arc::new(LuaError::external(format!("unsupported cipher {cipher}"))),
                 }),
             },
         );
         methods.add_function(
             "decrypt",
-            |_, (method, encrypted, key, iv): (String, String, String, Option<String>)| match method
+            |_, (cipher, encrypted, key, iv): (String, String, String, Option<String>)| match cipher
                 .as_str()
             {
                 "aes-cbc" => {
@@ -144,7 +144,7 @@ impl LuaUserData for CryptoBinding {
                     to: Some("decrypt".to_string()),
                     pos: 1,
                     name: None,
-                    cause: Arc::new(LuaError::external(format!("unsupported method {method}"))),
+                    cause: Arc::new(LuaError::external(format!("unsupported cipher {cipher}"))),
                 }),
             },
         );
