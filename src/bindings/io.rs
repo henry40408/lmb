@@ -51,7 +51,7 @@ where
                                 to: Some("read".to_string()),
                                 pos: 1,
                                 name: None,
-                                cause: Arc::new(LuaError::runtime("invalid format")),
+                                cause: Arc::new(LuaError::external("invalid format")),
                             });
                         }
                     }
@@ -74,7 +74,7 @@ where
                     to: Some("read".to_string()),
                     pos: 1,
                     name: None,
-                    cause: Arc::new(LuaError::runtime("invalid option")),
+                    cause: Arc::new(LuaError::external("invalid option")),
                 })
             }
         })?,
