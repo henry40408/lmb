@@ -14,6 +14,8 @@ pub(crate) mod http;
 pub(crate) mod io;
 pub(crate) mod json;
 pub(crate) mod store;
+pub(crate) mod toml;
+pub(crate) mod yaml;
 
 pub(crate) struct Binding<R>
 where
@@ -44,13 +46,13 @@ where
             if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
                 match &*f {
                     "*a" | "*all" => {
-                        let _ = debug_span!("read unicode all").entered();
+                        let _ = debug_span!("read_unicode_all").entered();
                         let mut buf = String::new();
                         reader.lock().read_to_string(&mut buf).await?;
                         return vm.to_value(&buf);
                     }
                     "*l" | "*line" => {
-                        let _ = debug_span!("read unicode line").entered();
+                        let _ = debug_span!("read_unicode_line").entered();
                         let mut line = String::new();
                         if reader.lock().read_line(&mut line).await? == 0 {
                             return Ok(LuaNil);
@@ -69,7 +71,7 @@ where
             }
 
             if let Some(n) = fmt.as_usize() {
-                let _ = debug_span!("read unicode", %n).entered();
+                let _ = debug_span!("read_unicode_bytes", %n).entered();
                 let mut remaining = n;
                 let mut buf = vec![];
                 let mut single = [0u8; 1];

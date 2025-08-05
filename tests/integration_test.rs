@@ -1,3 +1,4 @@
+use reqwest::Method;
 use snapbox::{
     cmd::{Command, cargo_bin},
     str,
@@ -56,6 +57,40 @@ Hello, World!
         .stderr_eq(str![]);
 }
 
+#[tokio::test]
+async fn eval_http_get() {
+    let mut server = mockito::Server::new_async().await;
+
+    let url = server.url();
+
+    let mock = server
+        .mock(Method::GET.as_str(), "/")
+        .with_status(200)
+        .with_body("Hello, world!")
+        .create_async()
+        .await;
+
+    Command::new(cargo_bin("lmb"))
+        .args([
+            "--http-timeout",
+            "1s",
+            "eval",
+            "--file",
+            "src/fixtures/http-get.lua",
+            "--state",
+            &url,
+        ])
+        .assert()
+        .success()
+        .stdout_eq(str![[r#"
+null
+
+"#]])
+        .stderr_eq(str![]);
+
+    mock.assert_async().await;
+}
+
 #[test]
 fn eval_infinite() {
     Command::new(cargo_bin("lmb"))
@@ -64,8 +99,8 @@ fn eval_infinite() {
             "eval",
             "--file",
             "src/fixtures/infinite.lua",
-            "--timeout-ms",
-            "100",
+            "--timeout",
+            "100ms",
         ])
         .assert()
         .failure()

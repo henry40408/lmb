@@ -12,12 +12,15 @@ use no_color::is_no_color;
 use rusqlite::Connection;
 use serde_json::Value;
 use tokio::io::{self, AsyncWriteExt as _};
-use tracing::{debug_span, info};
+use tracing::{Instrument, debug_span, info};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Opts {
+    /// Optional HTTP timeout in seconds
+    #[clap(long)]
+    http_timeout: Option<jiff::Span>,
     /// Optional path to the store file
     #[clap(long, value_parser, group = "store")]
     store_path: Option<PathBuf>,
@@ -40,7 +43,7 @@ enum Command {
         state: Option<Value>,
         /// Timeout. Default is 30 seconds, set to 0 for no timeout
         #[clap(long)]
-        timeout_ms: Option<u64>,
+        timeout: Option<jiff::Span>,
     },
 }
 
@@ -59,8 +62,12 @@ async fn try_main() -> anyhow::Result<()> {
         Command::Eval {
             mut file,
             state,
-            timeout_ms,
+            timeout,
         } => {
+            let span = debug_span!("eval").entered();
+            info!("Evaluate Lua script: {file:?}");
+            info!("State: {state:?}");
+
             let reader = io::stdin();
             let source = if file.is_local() {
                 None
@@ -72,10 +79,17 @@ async fn try_main() -> anyhow::Result<()> {
                 bail!("Expected a local file or a stdin input, but got: {file}");
             };
 
-            let timeout = match timeout_ms {
+            let http_timeout = match opts.http_timeout {
                 None => Some(Duration::from_secs(30)),
-                Some(0) => None,
-                Some(t) => Some(Duration::from_millis(t)),
+                Some(t) if t.is_zero() => None,
+                Some(t) => Some(Duration::try_from(t)?),
+            };
+            info!("Using HTTP timeout: {:?}", http_timeout);
+
+            let timeout = match timeout {
+                None => Some(Duration::from_secs(30)),
+                Some(t) if t.is_zero() => None,
+                Some(t) => Some(Duration::try_from(t)?),
             };
             info!("Using timeout: {:?}", timeout);
 
@@ -88,12 +102,14 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = if let Some(source) = &source {
                 info!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
+                    .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
                     .build()
             } else {
                 info!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
+                    .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
                     .build()
@@ -128,8 +144,13 @@ async fn try_main() -> anyhow::Result<()> {
             };
 
             let result = {
-                let _ = debug_span!("lua evaluation").entered();
-                runner.invoke().maybe_state(state).call().await?
+                let span2 = debug_span!(parent: &span, "invoke");
+                runner
+                    .invoke()
+                    .maybe_state(state)
+                    .call()
+                    .instrument(span2)
+                    .await?
             };
             info!("Lua evaluated");
 

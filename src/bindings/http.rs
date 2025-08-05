@@ -79,7 +79,7 @@ impl LuaUserData for HttpBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_async_method(
             "fetch",
-            async move |_, this, (url, options): (String, Option<LuaTable>)| {
+            |_, this, (url, options): (String, Option<LuaTable>)| async move {
                 let options = serde_json::to_value(&options).into_lua_err()?;
                 let method = options
                     .pointer("/method")
@@ -114,7 +114,7 @@ impl LuaUserData for HttpBinding {
                 let request = built.build().into_lua_err()?;
                 let response = {
                     let _ =
-                        debug_span!("send HTTP request", method = %method, url = %url).entered();
+                        debug_span!("send_http_request", method = %method, url = %url).entered();
                     this.client.execute(request).await.into_lua_err()?
                 };
                 Ok(ResponseBinding(Arc::new(Mutex::new(response))))
