@@ -119,7 +119,12 @@ impl LuaUserData for StoreBinding {
                             k.to_str().into_lua_err()?.to_string().into_boxed_str(),
                             LuaNil,
                         )),
-                        _ => Err(LuaError::external("Key is either a number or a string")),
+                        _ => {
+                            let k_type = k.type_name();
+                            Err(LuaError::external(format!(
+                                "Key is either a number or a string, got {k_type}"
+                            )))
+                        }
                     }
                 }
 

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use aes::cipher::{BlockDecryptMut as _, BlockEncryptMut as _, block_padding::Pkcs7};
 use base64::prelude::*;
 use crypto_common::{KeyInit, KeyIvInit as _};
@@ -51,7 +53,12 @@ impl LuaUserData for CryptoBinding {
                 "sha256" => hmac_hash::<Hmac<Sha256>>(&secret, &data),
                 "sha384" => hmac_hash::<Hmac<Sha384>>(&secret, &data),
                 "sha512" => hmac_hash::<Hmac<Sha512>>(&secret, &data),
-                _ => Err(LuaError::external(format!("unsupported algorithm {alg}"))),
+                _ => Err(LuaError::BadArgument {
+                    to: Some("hmac".to_string()),
+                    pos: 1,
+                    name: None,
+                    cause: Arc::new(LuaError::external(format!("unsupported algorithm {alg}"))),
+                }),
             },
         );
 
@@ -61,13 +68,23 @@ impl LuaUserData for CryptoBinding {
                 .as_str()
             {
                 "aes-cbc" => {
-                    let iv = iv.ok_or_else(|| LuaError::external("expect IV as 4th argument"))?;
+                    let iv = iv.ok_or_else(|| LuaError::BadArgument {
+                        to: Some("encrypt".to_string()),
+                        pos: 4,
+                        name: None,
+                        cause: Arc::new(LuaError::external("expect IV")),
+                    })?;
                     let encrypted = Aes128CbcEnc::new(key.as_bytes().into(), iv.as_bytes().into())
                         .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
                 "des-cbc" => {
-                    let iv = iv.ok_or_else(|| LuaError::external("expect IV as 4th argument"))?;
+                    let iv = iv.ok_or_else(|| LuaError::BadArgument {
+                        to: Some("encrypt".to_string()),
+                        pos: 4,
+                        name: None,
+                        cause: Arc::new(LuaError::external("expect IV")),
+                    })?;
                     let encrypted = DesCbcEnc::new(key.as_bytes().into(), iv.as_bytes().into())
                         .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
@@ -77,7 +94,12 @@ impl LuaUserData for CryptoBinding {
                         .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
-                _ => Err(LuaError::external(format!("unsupported method {method}"))),
+                _ => Err(LuaError::BadArgument {
+                    to: Some("encrypt".to_string()),
+                    pos: 1,
+                    name: None,
+                    cause: Arc::new(LuaError::external(format!("unsupported method {method}"))),
+                }),
             },
         );
         methods.add_function(
@@ -86,7 +108,12 @@ impl LuaUserData for CryptoBinding {
                 .as_str()
             {
                 "aes-cbc" => {
-                    let iv = iv.ok_or_else(|| LuaError::external("expect IV as 4th argument"))?;
+                    let iv = iv.ok_or_else(|| LuaError::BadArgument {
+                        to: Some("decrypt".to_string()),
+                        pos: 4,
+                        name: None,
+                        cause: Arc::new(LuaError::external("expect IV")),
+                    })?;
                     let data = hex::decode(&encrypted).into_lua_err()?;
                     let decrypted = Aes128CbcDec::new(key.as_bytes().into(), iv.as_bytes().into())
                         .decrypt_padded_vec_mut::<Pkcs7>(&data)
@@ -94,7 +121,12 @@ impl LuaUserData for CryptoBinding {
                     Ok(String::from_utf8(decrypted).into_lua_err()?)
                 }
                 "des-cbc" => {
-                    let iv = iv.ok_or_else(|| LuaError::external("expect IV as 4th argument"))?;
+                    let iv = iv.ok_or_else(|| LuaError::BadArgument {
+                        to: Some("decrypt".to_string()),
+                        pos: 4,
+                        name: None,
+                        cause: Arc::new(LuaError::external("expect IV")),
+                    })?;
                     let data = hex::decode(&encrypted).into_lua_err()?;
                     let decrypted = DesCbcDec::new(key.as_bytes().into(), iv.as_bytes().into())
                         .decrypt_padded_vec_mut::<Pkcs7>(&data)
@@ -108,7 +140,12 @@ impl LuaUserData for CryptoBinding {
                         .map_err(|e| LuaError::external(e.to_string()))?;
                     Ok(String::from_utf8(decrypted).into_lua_err()?)
                 }
-                _ => Err(LuaError::external(format!("unsupported method {method}"))),
+                _ => Err(LuaError::BadArgument {
+                    to: Some("decrypt".to_string()),
+                    pos: 1,
+                    name: None,
+                    cause: Arc::new(LuaError::external(format!("unsupported method {method}"))),
+                }),
             },
         );
     }

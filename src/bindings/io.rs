@@ -51,7 +51,7 @@ where
                                 to: Some("read".to_string()),
                                 pos: 1,
                                 name: None,
-                                cause: Arc::new(LuaError::external("invalid format")),
+                                cause: Arc::new(LuaError::external(format!("invalid format {f}"))),
                             });
                         }
                     }
@@ -74,7 +74,7 @@ where
                     to: Some("read".to_string()),
                     pos: 1,
                     name: None,
-                    cause: Arc::new(LuaError::external("invalid option")),
+                    cause: Arc::new(LuaError::external(format!("invalid option {fmt:?}"))),
                 })
             }
         })?,
@@ -135,7 +135,7 @@ mod tests {
         let err = result.result.err().unwrap();
         assert!(
             err.to_string()
-                .contains("bad argument #1 to `read`: runtime error: invalid format")
+                .contains("bad argument #1 to `read`: invalid format")
         );
     }
 
