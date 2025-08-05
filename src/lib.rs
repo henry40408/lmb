@@ -26,6 +26,25 @@ mod bindings;
 /// Error handling module
 pub mod error;
 
+/// Represents a timeout error when executing a Lua script
+#[derive(Clone, Debug)]
+pub struct Timeout {
+    elapsed: Duration,
+    timeout: Duration,
+}
+
+impl std::fmt::Display for Timeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Lua script execution timed out after {:?}, timeout was {:?}",
+            self.elapsed, self.timeout
+        )
+    }
+}
+
+impl std::error::Error for Timeout {}
+
 /// Lua VM error handling
 #[derive(Debug, Error)]
 pub enum LmbError {
@@ -45,13 +64,8 @@ pub enum LmbError {
     #[error("reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
     /// Error when the Lua script times out
-    #[error("Timeout after {elapsed:?}, timeout was {timeout:?}")]
-    Timeout {
-        /// The duration the script ran before timing out
-        elapsed: Duration,
-        /// The timeout duration set for the script
-        timeout: Duration,
-    },
+    #[error("Timeout: {0}")]
+    Timeout(#[from] Timeout),
 }
 
 type LmbInput<R> = Arc<Mutex<BufReader<R>>>;
@@ -153,7 +167,10 @@ where
                 used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
                 if let Some(t) = timeout {
                     if start.elapsed() > t {
-                        return Err(LuaError::runtime("timeout"));
+                        return Err(LuaError::external(Timeout {
+                            elapsed: start.elapsed(),
+                            timeout: t,
+                        }));
                     }
                 }
                 Ok(LuaVmState::Continue)
@@ -176,16 +193,18 @@ where
             let _ = debug_span!("invoking Lua function").entered();
             match self.func.call_async::<LuaValue>(ctx).await {
                 Ok(value) => value,
-                Err(LuaError::RuntimeError(msg)) if msg == "timeout" => {
-                    let e = LmbError::Timeout {
-                        elapsed: start.elapsed(),
-                        timeout: self.timeout.unwrap_or_default(),
-                    };
-                    return Ok(invoked.result(Err(e)).build());
-                }
-                Err(e) => {
-                    return Ok(invoked.result(Err(LmbError::Lua(e))).build());
-                }
+                Err(e) => match &e {
+                    LuaError::ExternalError(ee) => {
+                        if let Some(timeout) = ee.downcast_ref::<Timeout>() {
+                            return Ok(invoked
+                                .result(Err(LmbError::Timeout(timeout.clone())))
+                                .build());
+                        } else {
+                            return Ok(invoked.result(Err(LmbError::Lua(e))).build());
+                        }
+                    }
+                    _ => return Ok(invoked.result(Err(LmbError::Lua(e))).build()),
+                },
             }
         };
 

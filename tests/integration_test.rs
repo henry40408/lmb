@@ -71,8 +71,8 @@ fn eval_infinite() {
         .failure()
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
-Timeout after 100[..]ms, timeout was 100ms
-Error: Timeout after 100[..]ms, timeout was 100ms
+Timeout: Lua script execution timed out after 100[..]ms, timeout was 100ms
+Error: Timeout: Lua script execution timed out after 100[..]ms, timeout was 100ms
 
 "#]]);
 }
