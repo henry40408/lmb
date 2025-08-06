@@ -55,7 +55,7 @@ pub enum LmbError {
     #[error("Expected a Lua function, but got {actual} instead")]
     ExpectedLuaFunction {
         /// The actual type of the Lua value
-        actual: Box<str>,
+        actual: String,
     },
     /// Error reading from the input stream
     #[error("IO error: {0}")]
