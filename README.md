@@ -17,7 +17,7 @@ $ cat > hello.lua <<EOF
 >     print("Hello, world!")
 > end
 > return hello
-> EOF
+EOF
 
 $ lmb eval --file hello.lua
 Hello, world!
