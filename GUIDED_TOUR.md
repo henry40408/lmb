@@ -414,6 +414,8 @@ end
 return http_get
 ```
 
+## Encoding and Decoding
+
 ### JSON
 
 In this section, we demonstrate how to work with JSON data in Lua using the `@lmb/json` module. This module provides functions for encoding and decoding JSON data, making it easy to work with structured data.
@@ -451,4 +453,46 @@ function json_path()
 end
 
 return json_path
+```
+
+### TOML
+
+[TOML](https://toml.io/en/) (Tom's Obvious, Minimal Language) is a data serialization format that is easy to read and write. In this section, we demonstrate how to work with TOML data in Lua using the `@lmb/toml` module.
+
+```lua
+--[[
+--name = "TOML"
+--assert_return = "a = 2\nb = 3\n"
+--input = "a = 1\nb = 2\n"
+--]]
+function toml_decode()
+  local toml = require("@lmb/toml")
+  local decoded = toml.decode(io.read("*a"))
+  decoded.a = decoded.a + 1
+  decoded.b = decoded.b + 1
+  return toml.encode(decoded)
+end
+
+return toml_decode
+```
+
+### YAML
+
+[YAML](https://yaml.org) (YAML Ain't Markup Language) is a human-readable data serialization format. In this section, we demonstrate how to work with YAML data in Lua using the `@lmb/yaml` module.
+
+```lua
+--[[
+--name = "YAML"
+--assert_return = "a: 2\nb: 3\n"
+--input = "a: 1\nb: 2\n"
+--]]
+function yaml_decode()
+  local yaml = require("@lmb/yaml")
+  local decoded = yaml.decode(io.read("*a"))
+  decoded.a = decoded.a + 1
+  decoded.b = decoded.b + 1
+  return yaml.encode(decoded)
+end
+
+return yaml_decode
 ```
