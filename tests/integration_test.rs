@@ -127,6 +127,21 @@ null
 }
 
 #[test]
+fn eval_stdin_expression() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "1")
+        .stdin("return 'Hello, world!'")
+        .args(["eval", "--file", "-"])
+        .assert()
+        .success()
+        .stdout_eq(str![[r#"
+Hello, world!
+
+"#]])
+        .stderr_eq(str![]);
+}
+
+#[test]
 fn eval_stdin_error() {
     Command::new(cargo_bin("lmb"))
         .env("NO_COLOR", "1")
