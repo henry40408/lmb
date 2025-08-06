@@ -104,34 +104,14 @@ async fn try_main() -> anyhow::Result<()> {
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
-                    .build()
+                    .build()?
             } else {
                 info!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
-                    .build()
-            };
-
-            let runner = match runner {
-                Ok(runner) => runner,
-                Err(e) => {
-                    let source = if let Some(source) = &source {
-                        build_report(source, &e)?
-                    } else {
-                        build_report(file.path().path(), &e)?
-                    };
-                    match source {
-                        ErrorReport::Report(report) => {
-                            let mut s = String::new();
-                            render_report(&mut s, &report);
-                            io::stderr().write_all(s.as_bytes()).await?;
-                        }
-                        ErrorReport::String(msg) => eprintln!("{msg}"),
-                    }
-                    return Err(e.into());
-                }
+                    .build()?
             };
 
             let result = {
