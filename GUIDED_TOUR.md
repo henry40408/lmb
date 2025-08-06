@@ -433,3 +433,22 @@ end
 
 return json_decode
 ```
+
+#### JSON path
+
+[JSON path](https://goessner.net/articles/JsonPath/) is a powerful way to query and manipulate JSON data. In this section, we demonstrate how to use JSON path to extract values from a JSON object.
+
+```lua
+--[[
+--name = "JSON Path"
+--assert_return = "[\"foo\",\"bar\",\"baz\"]"
+--input = "[{\"value\":1,\"name\":\"foo\"},{\"value\":2,\"name\":\"bar\"},{\"value\":3,\"name\":\"baz\"}]"
+--]]
+function json_path()
+  local json = require('@lmb/json')
+  local json_path = require('@lmb/json-path')
+  return json.encode(json_path.query('$[*].name', json.decode(io.read("*a"))))
+end
+
+return json_path
+```
