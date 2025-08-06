@@ -1,5 +1,5 @@
-function true_()
+function return_true()
   return true
 end
 
-return true_
+return return_true

@@ -112,11 +112,20 @@ where
         let vm = Lua::new();
         vm.sandbox(true)?;
 
-        let func = {
+        let (vm, func) = {
             let _ = debug_span!("load_source").entered();
-            match vm.load(source.clone()).eval()? {
-                LuaValue::Function(func) => func,
-                _ => vm.load(source).into_function()?,
+            // First, we try to evaluate the source code as an expression.
+            if let Ok(LuaValue::Function(func)) = vm.load(source.clone()).eval() {
+                // If it evaluates to a function, the function will be extracted.
+                (vm, func)
+            } else {
+                // Otherwise, we assume it is a chunk of script and load it as a function.
+                // Expressions will fail to load as a function if they call functions,
+                // since modules are not registered yet.
+                let vm = Lua::new();
+                vm.sandbox(true)?;
+                let func = vm.load(source).into_function()?;
+                (vm, func)
             }
         };
 

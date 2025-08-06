@@ -8,13 +8,20 @@ use rusqlite::Connection;
 use serde_json::json;
 use tokio::io::empty;
 
-const SOURCE: &str = include_str!("fixtures/true.lua");
-
 fn lmb_call(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     {
-        let runner = Runner::builder(SOURCE, empty()).build().unwrap();
+        let source = include_str!("fixtures/true.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("baseline", |b| {
+            b.to_async(&rt)
+                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+        });
+    }
+    {
+        let source = include_str!("fixtures/true-expr.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        c.bench_function("baseline expr", |b| {
             b.to_async(&rt)
                 .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
         });
