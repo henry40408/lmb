@@ -1,5 +1,5 @@
 function hello()
-  print("Hello, World!")
+  print("Hello, world!")
   return true
 end
 

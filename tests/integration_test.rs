@@ -51,7 +51,7 @@ fn eval_hello() {
         .success()
         .stdout_eq(str![[r#"
 true
-Hello, World!
+Hello, world!
 
 "#]])
         .stderr_eq(str![]);
@@ -157,7 +157,7 @@ fn eval_stdin() {
         .success()
         .stdout_eq(str![[r#"
 true
-Hello, World!
+Hello, world!
 
 "#]])
         .stderr_eq(str![]);

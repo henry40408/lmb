@@ -24,16 +24,16 @@ return luau_version
 
 Luau is a Lua 5.1 language with gradual typing and ergonomic additions. Sandbox is enabled for better security. For all packages and functions provided by Luau, please refer to the [Luau documentation](https://luau-lang.org/library).
 
-## Hello, World!
+## Hello, world!
 
-First thing first, let's start with a simple "Hello, World!" example. This will demonstrate the basic structure of a Lua module and how to execute it.
+First thing first, let's start with a simple "Hello, world!" example. This will demonstrate the basic structure of a Lua module and how to execute it.
 
 ```lua
 --[[
---name = "Hello World"
+--name = "Hello, world"
 --]]
 function hello()
-  print("Hello, World!")
+  print("Hello, world!")
 end
 
 -- This returns the function so it can be called by the runner
