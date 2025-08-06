@@ -1,11 +1,10 @@
 use std::{io::Read, path::PathBuf, process::ExitCode, time::Duration};
 
 use anyhow::bail;
-use bat::PrettyPrinter;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
-    LmbError, Runner,
+    Runner,
     error::{ErrorReport, build_report, render_report},
 };
 use no_color::is_no_color;
@@ -118,26 +117,18 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = match runner {
                 Ok(runner) => runner,
                 Err(e) => {
-                    if let LmbError::ExpectedLuaFunction { .. } = e {
-                        PrettyPrinter::new()
-                            .input_from_bytes(include_bytes!("expect_lua_function.md"))
-                            .colored_output(!is_no_color())
-                            .language("markdown")
-                            .print()?;
+                    let source = if let Some(source) = &source {
+                        build_report(source, &e)?
                     } else {
-                        let source = if let Some(source) = &source {
-                            build_report(source, &e)?
-                        } else {
-                            build_report(file.path().path(), &e)?
-                        };
-                        match source {
-                            ErrorReport::Report(report) => {
-                                let mut s = String::new();
-                                render_report(&mut s, &report);
-                                io::stderr().write_all(s.as_bytes()).await?;
-                            }
-                            ErrorReport::String(msg) => eprintln!("{msg}"),
+                        build_report(file.path().path(), &e)?
+                    };
+                    match source {
+                        ErrorReport::Report(report) => {
+                            let mut s = String::new();
+                            render_report(&mut s, &report);
+                            io::stderr().write_all(s.as_bytes()).await?;
                         }
+                        ErrorReport::String(msg) => eprintln!("{msg}"),
                     }
                     return Err(e.into());
                 }

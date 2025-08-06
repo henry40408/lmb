@@ -51,12 +51,6 @@ pub enum LmbError {
     /// Error thrown by the Lua VM
     #[error("Lua error: {0}")]
     Lua(#[from] mlua::Error),
-    /// Error converting a Lua value to a Rust type
-    #[error("Expected a Lua function, but got {actual} instead")]
-    ExpectedLuaFunction {
-        /// The actual type of the Lua value
-        actual: String,
-    },
     /// Error reading from the input stream
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -113,20 +107,17 @@ where
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
-        S: AsChunk,
+        S: AsChunk + Clone,
     {
         let vm = Lua::new();
         vm.sandbox(true)?;
 
-        let func: LuaValue = {
-            let name = source.name().unwrap_or_else(|| "-".to_string());
-            let _ = debug_span!("load_source", name = %name).entered();
-            vm.load(source).eval()?
-        };
-        let LuaValue::Function(func) = func else {
-            return Err(LmbError::ExpectedLuaFunction {
-                actual: func.type_name().into(),
-            });
+        let func = {
+            let _ = debug_span!("load_source").entered();
+            match vm.load(source.clone()).eval()? {
+                LuaValue::Function(func) => func,
+                _ => vm.load(source).into_function()?,
+            }
         };
 
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
