@@ -1,4 +1,4 @@
-# Guided Tour
+# Guided tour
 
 This document provides a guided tour of the features and functionalities available in the project.
 
@@ -6,7 +6,7 @@ The following code blocks are examples of Lua code that can be executed within t
 
 They are also tested to ensure correctness.
 
-## Language Variant and Version
+## Language variant and version
 
 Lmb currently uses Luau from Roblox.
 
@@ -38,6 +38,18 @@ end
 
 -- This returns the function so it can be called by the runner
 return hello
+```
+
+## Expression
+
+To reduce boilerplate, an expression can be evaluated for its result. This is useful for quick calculations or testing small snippets of code.
+
+```lua
+--[[
+--name = "Shortcut"
+--assert_return = "Hello, world!"
+--]]
+return "Hello, world!"
 ```
 
 ## Closure
@@ -117,7 +129,7 @@ end
 return read_byte
 ```
 
-### Reading UTF-8 Characters
+### Reading UTF-8 characters
 
 Though [Luau supports UTF-8](https://luau.org/library#utf8-library), it doesn't provide a built-in way to read UTF-8 characters from the input. Thus, we provide a simple function to read a UTF-8 character from the input. This function reads a byte and decodes it as a UTF-8 character.
 
@@ -414,7 +426,7 @@ end
 return http_get
 ```
 
-## Encoding and Decoding
+## Encoding and decoding
 
 ### JSON
 

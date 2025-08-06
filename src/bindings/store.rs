@@ -16,13 +16,13 @@ static SQL_PUT: &str = "INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)"
 static SQL_GET: &str = "SELECT value FROM store WHERE key = ?";
 
 pub(crate) struct StoreSnapshotBinding {
-    inner: Arc<DashMap<Box<str>, Value>>,
+    inner: Arc<DashMap<String, Value>>,
 }
 
 #[bon]
 impl StoreSnapshotBinding {
     #[builder]
-    pub(crate) fn new(#[builder(start_fn)] inner: Arc<DashMap<Box<str>, Value>>) -> Self {
+    pub(crate) fn new(#[builder(start_fn)] inner: Arc<DashMap<String, Value>>) -> Self {
         Self { inner }
     }
 }
@@ -31,7 +31,7 @@ impl LuaUserData for StoreSnapshotBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
             let _ = debug_span!("store_snapshot_index", %key).entered();
-            if let Some(tuple) = this.inner.get(&key.into_boxed_str()) {
+            if let Some(tuple) = this.inner.get(&key) {
                 return vm.to_value(tuple.value()).into_lua_err();
             }
             Ok(LuaNil)
@@ -41,7 +41,7 @@ impl LuaUserData for StoreSnapshotBinding {
             |vm, this, (key, value): (String, LuaValue)| {
                 let _ = debug_span!("store_snapshot_new_index", %key).entered();
                 let value = vm.from_value::<Value>(value).into_lua_err()?;
-                this.inner.insert(key.into_boxed_str(), value);
+                this.inner.insert(key, value);
                 Ok(LuaNil)
             },
         );
@@ -108,17 +108,12 @@ impl LuaUserData for StoreBinding {
                     return Ok(LuaNil);
                 };
 
-                fn parse_key_default(k: LuaValue, v: LuaValue) -> LuaResult<(Box<str>, LuaValue)> {
+                fn parse_key_default(k: LuaValue, v: LuaValue) -> LuaResult<(String, LuaValue)> {
                     match (k.is_integer(), k.as_string(), v.as_string()) {
                         // key is string, value is default value e.g. { a = 1 }
-                        (false, Some(k), _) => {
-                            Ok((k.to_str().into_lua_err()?.to_string().into_boxed_str(), v))
-                        }
+                        (false, Some(k), _) => Ok((k.to_str().into_lua_err()?.to_string(), v)),
                         // key is integer (unused), value is key e.g. { "a" }
-                        (true, _, Some(k)) => Ok((
-                            k.to_str().into_lua_err()?.to_string().into_boxed_str(),
-                            LuaNil,
-                        )),
+                        (true, _, Some(k)) => Ok((k.to_str().into_lua_err()?.to_string(), LuaNil)),
                         _ => {
                             let k_type = k.type_name();
                             Err(LuaError::external(format!(

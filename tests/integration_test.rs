@@ -118,45 +118,23 @@ fn eval_no_export() {
         .env("NO_COLOR", "1")
         .args(["eval", "--file", "src/fixtures/no-export.lua"])
         .assert()
-        .failure()
+        .success()
         .stdout_eq(str![[r#"
-A Lua function is expected to be exported at the end of the file.
+null
 
-Good:
-
-```lua
-local function my_function()
-  -- function implementation
-end
-
-return my_function
-```
-
-Bad:
-
-```lua
-local function my_function()
-  -- function implementation
-end -- missing return statement
-```
-
-Ensure that the function is returned at the end of the file to make it accessible when the script is evaluated.
-
-"#]]).stderr_eq(str![[r#"
-Error: Expected a Lua function, but got nil instead
-
-"#]]);
+"#]])
+        .stderr_eq(str![]);
 }
 
 #[test]
-fn eval_stdin() {
+fn eval_stdin_expression() {
     Command::new(cargo_bin("lmb"))
-        .stdin(include_str!("../src/fixtures/hello.lua"))
+        .env("NO_COLOR", "1")
+        .stdin("return 'Hello, world!'")
         .args(["eval", "--file", "-"])
         .assert()
         .success()
         .stdout_eq(str![[r#"
-true
 Hello, world!
 
 "#]])

@@ -16,15 +16,15 @@ type DesCbcDec = cbc::Decryptor<des::Des>;
 type DesEcbEnc = ecb::Encryptor<des::Des>;
 type DesEcbDec = ecb::Decryptor<des::Des>;
 
-fn hash<H: Digest>(payload: &str) -> Box<str> {
-    base16ct::lower::encode_string(&H::digest(payload)).into_boxed_str()
+fn hash<H: Digest>(payload: &str) -> String {
+    base16ct::lower::encode_string(&H::digest(payload))
 }
 
-fn hmac_hash<T: Mac + KeyInit>(secret: &str, payload: &str) -> mlua::Result<Box<str>> {
+fn hmac_hash<T: Mac + KeyInit>(secret: &str, payload: &str) -> mlua::Result<String> {
     let mut hasher = <T as KeyInit>::new_from_slice(secret.as_bytes()).into_lua_err()?;
     hasher.update(payload.as_bytes());
     let hash = hasher.finalize().into_bytes();
-    Ok(base16ct::lower::encode_string(&hash).into_boxed_str())
+    Ok(base16ct::lower::encode_string(&hash))
 }
 
 pub(crate) struct CryptoBinding;
