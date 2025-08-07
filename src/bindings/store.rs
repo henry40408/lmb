@@ -32,7 +32,7 @@ impl LuaUserData for StoreSnapshotBinding {
         methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
             let _ = debug_span!("store_snapshot_index", %key).entered();
             if let Some(tuple) = this.inner.get(&key) {
-                return vm.to_value(tuple.value()).into_lua_err();
+                return vm.to_value(tuple.value());
             }
             Ok(LuaNil)
         });
@@ -40,7 +40,7 @@ impl LuaUserData for StoreSnapshotBinding {
             LuaMetaMethod::NewIndex,
             |vm, this, (key, value): (String, LuaValue)| {
                 let _ = debug_span!("store_snapshot_new_index", %key).entered();
-                let value = vm.from_value::<Value>(value).into_lua_err()?;
+                let value = vm.from_value::<Value>(value)?;
                 this.inner.insert(key, value);
                 Ok(LuaNil)
             },
@@ -78,7 +78,7 @@ impl LuaUserData for StoreBinding {
                     return Ok(LuaNil);
                 };
                 let conn = store.lock();
-                let value = vm.from_value::<Value>(value).into_lua_err()?;
+                let value = vm.from_value::<Value>(value)?;
                 let serialized = rmp_serde::to_vec(&value).into_lua_err()?;
                 conn.execute(SQL_PUT, params![key, serialized])
                     .into_lua_err()?;
@@ -96,7 +96,7 @@ impl LuaUserData for StoreBinding {
             if let Some(row) = rows.next().into_lua_err()? {
                 let value: Vec<u8> = row.get(0).into_lua_err()?;
                 let value: Value = rmp_serde::from_slice(&value).into_lua_err()?;
-                return vm.to_value(&value).into_lua_err();
+                return vm.to_value(&value);
             }
             Ok(LuaNil)
         });
@@ -131,7 +131,7 @@ impl LuaUserData for StoreBinding {
                     let _ = debug_span!(parent: &span, "create_snapshot").entered();
                     let mut stmt = tx.prepare(SQL_GET).into_lua_err()?;
                     for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
-                        let (k, v) = pair.into_lua_err()?;
+                        let (k, v) = pair?;
                         let (key, default) = parse_key_default(k, v)?;
                         let mut rows = stmt.query(params![&key]).into_lua_err()?;
                         if let Some(row) = rows.next().into_lua_err()? {
@@ -149,7 +149,7 @@ impl LuaUserData for StoreBinding {
 
                 let returned = {
                     let _ = debug_span!(parent: &span, "call").entered();
-                    f.call::<LuaValue>(snapshot_binding).into_lua_err()?
+                    f.call::<LuaValue>(snapshot_binding)?
                 };
 
                 {
