@@ -215,17 +215,17 @@ The main difference between state and store is that state should be considered e
 
 ## Modules
 
-### Coroutines
+### Coroutine
 
-Coroutines are a powerful feature in Lua that allows you to pause and resume functions, enabling cooperative multitasking.
+Coroutine is a powerful feature in Lua that allows you to pause and resume functions, enabling cooperative multitasking.
 
 #### join_all
 
-Here's an example of how to use coroutines to join multiple coroutines together:
+Here's an example of how to join multiple coroutines together:
 
 ```lua
 --[[
---name = "Coroutines - join all"
+--name = "Coroutine - join all"
 --timeout = 210
 --]]
 function join_all()
@@ -248,11 +248,11 @@ return join_all
 
 #### race
 
-In this example, we demonstrate how to use coroutines to race multiple coroutines against each other and return the result of the first one that finishes.
+In this example, we demonstrate how to race multiple coroutines against each other and return the result of the first one that finishes.
 
 ```lua
 --[[
---name = "Coroutines - race"
+--name = "Coroutine - race"
 --]]
 function race()
   local m = require('@lmb/coroutine')
