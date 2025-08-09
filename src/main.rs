@@ -68,12 +68,12 @@ async fn try_main() -> anyhow::Result<()> {
             info!("State: {state:?}");
 
             let reader = io::stdin();
-            let (default_name, source) = if file.is_local() {
-                (format!("@{}", file.path().path().to_string_lossy()), None)
+            let source = if file.is_local() {
+                None
             } else if file.is_std() {
                 let mut buf = String::new();
                 file.read_to_string(&mut buf)?;
-                ("(stdin)".to_string(), Some(buf))
+                Some(buf)
             } else {
                 bail!("Expected a local file or a stdin input, but got: {file}");
             };
@@ -101,7 +101,7 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = if let Some(source) = &source {
                 info!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
-                    .default_name(&default_name)
+                    .default_name("(stdin)")
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
@@ -109,7 +109,6 @@ async fn try_main() -> anyhow::Result<()> {
             } else {
                 info!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
-                    .default_name(&default_name)
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
@@ -138,9 +137,9 @@ async fn try_main() -> anyhow::Result<()> {
                 }
                 Err(e) => {
                     let report = if let Some(source) = &source {
-                        build_report(&default_name, source, &e)?
+                        build_report(source, &e).default_name("(stdin)").call()?
                     } else {
-                        build_report(&default_name, file.path().path(), &e)?
+                        build_report(file.path().path(), &e).call()?
                     };
                     match report {
                         ErrorReport::Report(report) => {

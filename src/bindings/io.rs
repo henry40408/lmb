@@ -130,10 +130,7 @@ mod tests {
         let source = include_str!("fixtures/invalid-format.lua");
         let text = "";
         let input = Cursor::new(text);
-        let runner = Runner::builder(source, input)
-            .default_name("test")
-            .build()
-            .unwrap();
+        let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         let err = result.result.err().unwrap();
         assert_eq!(
