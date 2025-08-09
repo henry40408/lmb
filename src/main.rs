@@ -101,6 +101,7 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = if let Some(source) = &source {
                 info!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
+                    .default_name("(stdin)")
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
@@ -136,9 +137,9 @@ async fn try_main() -> anyhow::Result<()> {
                 }
                 Err(e) => {
                     let report = if let Some(source) = &source {
-                        build_report(source, &e)?
+                        build_report(source, &e).default_name("(stdin)").call()?
                     } else {
-                        build_report(file.path().path(), &e)?
+                        build_report(file.path().path(), &e).call()?
                     };
                     match report {
                         ErrorReport::Report(report) => {

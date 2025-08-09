@@ -33,9 +33,7 @@ impl ResponseBinding {
 
 impl LuaUserData for ResponseBinding {
     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("headers", |vm, this| {
-            vm.to_value(&this.headers()).into_lua_err()
-        });
+        fields.add_field_method_get("headers", |vm, this| vm.to_value(&this.headers()));
         fields.add_field_method_get("ok", |_, this| Ok(this.0.lock().status().is_success()));
         fields.add_field_method_get("status", |_, this| Ok(this.0.lock().status().as_u16()));
     }
@@ -46,7 +44,7 @@ impl LuaUserData for ResponseBinding {
                 buf.extend_from_slice(&chunk);
             }
             let value: Value = serde_json::from_slice(&buf).into_lua_err()?;
-            vm.to_value(&value).into_lua_err()
+            vm.to_value(&value)
         });
         methods.add_async_method("text", |_, this, ()| async move {
             let mut buf = BytesMut::new();

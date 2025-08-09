@@ -8,14 +8,14 @@ impl LuaUserData for CoroutineBinding {
         methods.add_async_function("join_all", |_, coroutines: LuaTable| async move {
             let mut tasks = vec![];
             for coroutine in coroutines.sequence_values::<LuaThread>() {
-                let coroutine = coroutine.into_lua_err()?;
-                let task = coroutine.into_async::<LuaValue>(()).into_lua_err()?;
+                let coroutine = coroutine?;
+                let task = coroutine.into_async::<LuaValue>(())?;
                 tasks.push(task);
             }
             let joined = futures::future::join_all(tasks).await;
             let mut results = vec![];
             for result in joined {
-                let result = result.into_lua_err()?;
+                let result = result?;
                 results.push(result);
             }
             Ok(results)
@@ -24,15 +24,14 @@ impl LuaUserData for CoroutineBinding {
         methods.add_async_function("race", |_, coroutines: LuaTable| async move {
             let mut tasks = FuturesUnordered::new();
             for coroutine in coroutines.sequence_values::<LuaThread>() {
-                let coroutine = coroutine.into_lua_err()?;
-                let task = coroutine.into_async::<LuaValue>(()).into_lua_err()?;
+                let coroutine = coroutine?;
+                let task = coroutine.into_async::<LuaValue>(())?;
                 tasks.push(task);
             }
             let Some(result) = tasks.next().await else {
                 return Ok(LuaNil);
             };
-            let value = result.into_lua_err()?;
-            Ok(value)
+            result
         });
     }
 }

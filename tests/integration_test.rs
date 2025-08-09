@@ -152,7 +152,7 @@ fn eval_stdin_error() {
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
   x An error occurred
-   ,-[-:3:1]
+   ,-[(stdin):3:1]
  2 |   local a = 1
  3 |   error("An error occurred")
    : ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^

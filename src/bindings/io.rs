@@ -133,9 +133,9 @@ mod tests {
         let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         let err = result.result.err().unwrap();
-        assert!(
-            err.to_string()
-                .contains("bad argument #1 to `read`: invalid format")
+        assert_eq!(
+            Some("Lua error: bad argument #1 to `read`: invalid format ?"),
+            err.to_string().lines().next()
         );
     }
 
