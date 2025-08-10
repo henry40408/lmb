@@ -35,10 +35,7 @@ fn eval_error() {
  4 |   a = a + 1
  5 |   return a
    `----
-Error: Lua error: runtime error: src/fixtures/error.lua:3: An error occurred
-stack traceback:
-	[C]: in function 'error'
-	src/fixtures/error.lua:3: in function 'f'
+Error: Lua value as error: "src/fixtures/error.lua:3: An error occurred"
 
 "#]]);
 }
@@ -160,10 +157,7 @@ fn eval_stdin_error() {
  4 |   a = a + 1
  5 |   return a
    `----
-Error: Lua error: runtime error: [..]: An error occurred
-stack traceback:
-	[C]: in function 'error'
-	[..]: in function 'f'
+Error: Lua value as error: "(stdin):3: An error occurred"
 
 "#]]);
 }

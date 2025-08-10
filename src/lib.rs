@@ -48,12 +48,15 @@ impl std::error::Error for Timeout {}
 /// Lua VM error handling
 #[derive(Debug, Error)]
 pub enum LmbError {
-    /// Error thrown by the Lua VM
-    #[error("Lua error: {0}")]
-    Lua(#[from] mlua::Error),
     /// Error reading from the input stream
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// Error thrown by the Lua VM
+    #[error("Lua error: {0}")]
+    Lua(#[from] mlua::Error),
+    /// Error converting a Lua value to a Rust type
+    #[error("Lua value as error: {0}")]
+    LuaValue(Value),
     /// Error from reqwest crate
     #[error("reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
@@ -91,6 +94,8 @@ where
     timeout: Option<Duration>,
     vm: Lua,
 }
+
+static WRAP_FUNC: &str = r"return function(f, ctx) return pcall(f, ctx) end";
 
 #[bon]
 impl<R> Runner<R>
@@ -159,6 +164,7 @@ where
             vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
         }
 
+        let func = vm.load(WRAP_FUNC).eval::<LuaFunction>()?.bind(func)?;
         let mut runner = Self {
             func,
             reader,
@@ -210,10 +216,18 @@ where
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
 
-        let values = {
+        let (ok, values) = {
             let _ = debug_span!("call").entered();
             match self.func.call_async::<LuaMultiValue>(ctx).await {
-                Ok(values) => values,
+                Ok(values) => {
+                    let values = values.into_vec();
+                    let ok = values
+                        .first()
+                        .and_then(|b| b.as_boolean())
+                        .unwrap_or_default();
+                    let values = values[1..].to_vec();
+                    (ok, values)
+                }
                 Err(e) => match &e {
                     LuaError::ExternalError(ee) => {
                         if let Some(timeout) = ee.downcast_ref::<Timeout>() {
@@ -229,14 +243,27 @@ where
             }
         };
 
+        if !ok {
+            if let Some(value) = values.first() {
+                if let LuaValue::Error(e) = value {
+                    return Ok(invoked.result(Err(LmbError::Lua(*e.clone()))).build());
+                } else {
+                    let value = self.vm.from_value::<Value>(value.clone())?;
+                    return Ok(invoked.result(Err(LmbError::LuaValue(value))).build());
+                }
+            } else {
+                unreachable!()
+            }
+        }
+
         let value = if values.is_empty() {
             json!(null)
         } else if values.len() == 1 {
-            let value = values.front().expect("Expected at least one value");
+            let value = values.first().expect("expect a value");
             self.vm.from_value::<Value>(value.clone())?
         } else {
             let mut arr = json!([]);
-            let arr_mut = arr.as_array_mut().expect("Expected an array");
+            let arr_mut = arr.as_array_mut().expect("expect an array");
             for value in values {
                 arr_mut.push(self.vm.from_value::<Value>(value.clone())?);
             }
@@ -305,13 +332,13 @@ mod tests {
             .build()
             .unwrap();
         let Some(Invoked {
-            result: Err(LmbError::Lua(LuaError::RuntimeError(msg))),
+            result: Err(LmbError::LuaValue(value)),
             ..
         }) = runner.invoke().call().await.ok()
         else {
             panic!("Expected a Lua runtime error");
         };
-        assert_eq!(Some("test:3: An error occurred"), msg.lines().next());
+        assert_eq!(json!("test:3: An error occurred"), value);
     }
 
     #[tokio::test]
@@ -336,5 +363,22 @@ mod tests {
             Some("test:2: Incomplete statement: expected assignment or a function call"),
             message.lines().next()
         );
+    }
+
+    #[tokio::test]
+    async fn test_value_as_error() {
+        let source = include_str!("fixtures/value-as-error.lua");
+        let runner = Runner::builder(source, empty())
+            .default_name("test")
+            .build()
+            .unwrap();
+        let Some(Invoked {
+            result: Err(LmbError::LuaValue(value)),
+            ..
+        }) = runner.invoke().call().await.ok()
+        else {
+            panic!("Expected a Lua value error");
+        };
+        assert_eq!(json!({"a": 1}), value);
     }
 }
