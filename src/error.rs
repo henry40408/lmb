@@ -36,8 +36,14 @@ where
         return Ok(ErrorReport::String(error.to_string()));
     };
     let message = match &error {
-        LmbError::Lua(LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. }) => {
-            message
+        LmbError::Lua(e) => {
+            let e = e.chain().last().and_then(|e| e.downcast_ref::<LuaError>());
+            match e {
+                Some(LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. }) => {
+                    message
+                }
+                _ => return Ok(ErrorReport::String(error.to_string())),
+            }
         }
         _ => return Ok(ErrorReport::String(error.to_string())),
     };
