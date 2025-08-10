@@ -45,6 +45,13 @@ where
                 _ => return Ok(ErrorReport::String(error.to_string())),
             }
         }
+        LmbError::LuaValue(value) => {
+            if let Some(message) = value.as_str() {
+                &message.to_string()
+            } else {
+                return Ok(ErrorReport::String(error.to_string()));
+            }
+        }
         _ => return Ok(ErrorReport::String(error.to_string())),
     };
     let Some(first_line) = message.lines().next() else {
@@ -87,5 +94,5 @@ where
     };
     GraphicalReportHandler::new_themed(theme)
         .render_report(writer, report.as_ref())
-        .expect("Failed to render report");
+        .expect("failed to render report");
 }
