@@ -14,7 +14,7 @@ use bon::{Builder, bon};
 use mlua::{AsChunk, prelude::*};
 use parking_lot::Mutex;
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{Value, json};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader};
 use tracing::debug_span;
@@ -210,10 +210,10 @@ where
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
 
-        let value = {
+        let values = {
             let _ = debug_span!("call").entered();
-            match self.func.call_async::<LuaValue>(ctx).await {
-                Ok(value) => value,
+            match self.func.call_async::<LuaMultiValue>(ctx).await {
+                Ok(values) => values,
                 Err(e) => match &e {
                     LuaError::ExternalError(ee) => {
                         if let Some(timeout) = ee.downcast_ref::<Timeout>() {
@@ -229,7 +229,19 @@ where
             }
         };
 
-        let value = self.vm.from_value::<Value>(value)?;
+        let value = if values.is_empty() {
+            json!(null)
+        } else if values.len() == 1 {
+            let value = values.front().expect("Expected at least one value");
+            self.vm.from_value::<Value>(value.clone())?
+        } else {
+            let mut arr = json!([]);
+            let arr_mut = arr.as_array_mut().expect("Expected an array");
+            for value in values {
+                arr_mut.push(self.vm.from_value::<Value>(value.clone())?);
+            }
+            arr
+        };
         Ok(invoked.result(Ok(value)).build())
     }
 }
@@ -300,6 +312,14 @@ mod tests {
             panic!("Expected a Lua runtime error");
         };
         assert_eq!(Some("test:3: An error occurred"), msg.lines().next());
+    }
+
+    #[tokio::test]
+    async fn test_multi() {
+        let source = include_str!("fixtures/multi.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        let result = runner.invoke().call().await.unwrap();
+        assert_eq!(json!([true, 1]), result.result.unwrap());
     }
 
     #[tokio::test]
