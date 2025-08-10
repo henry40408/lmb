@@ -1,3 +1,4 @@
+use bon::builder;
 use lazy_regex::*;
 use miette::{GraphicalReportHandler, GraphicalTheme, LabeledSpan, NamedSource, Report, miette};
 use mlua::{AsChunk, prelude::*};
@@ -18,18 +19,31 @@ pub enum ErrorReport {
 }
 
 /// Writes an error message to a string, extracting the line number and message from the Lua source.
-pub fn build_report<S>(source: S, error: &LmbError) -> LmbResult<ErrorReport>
+#[builder]
+pub fn build_report<S>(
+    #[builder(start_fn)] source: S,
+    #[builder(start_fn)] error: &LmbError,
+    #[builder(into)] default_name: Option<String>,
+) -> LmbResult<ErrorReport>
 where
     S: AsChunk,
 {
-    let name = source.name().unwrap_or_else(|| "-".to_string());
+    let name = source
+        .name()
+        .unwrap_or_else(|| default_name.unwrap_or_else(|| "-".to_string()));
     let source = source.source()?;
     let Some(source) = std::str::from_utf8(&source).ok().map(|s| s.to_string()) else {
         return Ok(ErrorReport::String(error.to_string()));
     };
     let message = match &error {
-        LmbError::Lua(LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. }) => {
-            message
+        LmbError::Lua(e) => {
+            let e = e.chain().last().and_then(|e| e.downcast_ref::<LuaError>());
+            match e {
+                Some(LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. }) => {
+                    message
+                }
+                _ => return Ok(ErrorReport::String(error.to_string())),
+            }
         }
         _ => return Ok(ErrorReport::String(error.to_string())),
     };

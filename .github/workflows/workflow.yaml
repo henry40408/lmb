@@ -7,7 +7,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        toolchain: [1.85.0, 1.88.0]
+        toolchain: [1.85.0, 1.89.0]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -27,7 +27,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-check-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Check code formatting
         run: cargo fmt --check
       - name: Check code linting
@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.1.1
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.89.0
       - name: Cache Cargo
         uses: actions/cache@v4.2.0
         with:
@@ -82,7 +82,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.1.1
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@1.89.0
       - name: Cache Cargo
         uses: actions/cache@v4.2.0
         with:
@@ -92,7 +92,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Install coverage tools
         uses: taiki-e/install-action@v2.48.0
         with:

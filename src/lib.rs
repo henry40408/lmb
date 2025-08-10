@@ -14,7 +14,7 @@ use bon::{Builder, bon};
 use mlua::{AsChunk, prelude::*};
 use parking_lot::Mutex;
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{Value, json};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader};
 use tracing::debug_span;
@@ -102,6 +102,7 @@ where
     pub fn new<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
+        #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         store: Option<Connection>,
         timeout: Option<Duration>,
@@ -112,10 +113,17 @@ where
         let vm = Lua::new();
         vm.sandbox(true)?;
 
+        let default_name = default_name.unwrap_or_else(|| "-".to_string());
+        let default_name = format!("={default_name}");
+        let source_name = &source.name();
         let (vm, func) = {
             let _ = debug_span!("load_source").entered();
             // First, we try to evaluate the source code as an expression.
-            if let Ok(LuaValue::Function(func)) = vm.load(source.clone()).eval() {
+            let mut chunk = vm.load(source.clone());
+            if source_name.is_none() {
+                chunk = chunk.set_name(&default_name);
+            }
+            if let Ok(LuaValue::Function(func)) = chunk.eval() {
                 // If it evaluates to a function, the function will be extracted.
                 (vm, func)
             } else {
@@ -124,7 +132,11 @@ where
                 // since modules are not registered yet.
                 let vm = Lua::new();
                 vm.sandbox(true)?;
-                let func = vm.load(source).into_function()?;
+                let mut chunk = vm.load(source);
+                if source_name.is_none() {
+                    chunk = chunk.set_name(&default_name);
+                }
+                let func = chunk.into_function()?;
                 (vm, func)
             }
         };
@@ -198,10 +210,10 @@ where
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
 
-        let value = {
+        let values = {
             let _ = debug_span!("call").entered();
-            match self.func.call_async::<LuaValue>(ctx).await {
-                Ok(value) => value,
+            match self.func.call_async::<LuaMultiValue>(ctx).await {
+                Ok(values) => values,
                 Err(e) => match &e {
                     LuaError::ExternalError(ee) => {
                         if let Some(timeout) = ee.downcast_ref::<Timeout>() {
@@ -217,7 +229,19 @@ where
             }
         };
 
-        let value = self.vm.from_value::<Value>(value)?;
+        let value = if values.is_empty() {
+            json!(null)
+        } else if values.len() == 1 {
+            let value = values.front().expect("Expected at least one value");
+            self.vm.from_value::<Value>(value.clone())?
+        } else {
+            let mut arr = json!([]);
+            let arr_mut = arr.as_array_mut().expect("Expected an array");
+            for value in values {
+                arr_mut.push(self.vm.from_value::<Value>(value.clone())?);
+            }
+            arr
+        };
         Ok(invoked.result(Ok(value)).build())
     }
 }
@@ -276,7 +300,10 @@ mod tests {
     #[tokio::test]
     async fn test_error_handling() {
         let source = include_str!("fixtures/error.lua");
-        let runner = Runner::builder(source, empty()).build().unwrap();
+        let runner = Runner::builder(source, empty())
+            .default_name("test")
+            .build()
+            .unwrap();
         let Some(Invoked {
             result: Err(LmbError::Lua(LuaError::RuntimeError(msg))),
             ..
@@ -284,18 +311,30 @@ mod tests {
         else {
             panic!("Expected a Lua runtime error");
         };
-        assert!(msg.contains(":3: An error occurred"));
+        assert_eq!(Some("test:3: An error occurred"), msg.lines().next());
+    }
+
+    #[tokio::test]
+    async fn test_multi() {
+        let source = include_str!("fixtures/multi.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        let result = runner.invoke().call().await.unwrap();
+        assert_eq!(json!([true, 1]), result.result.unwrap());
     }
 
     #[tokio::test]
     async fn test_syntax_error() {
         let source = include_str!("fixtures/syntax-error.lua");
-        let err = Runner::builder(source, empty()).build().unwrap_err();
+        let err = Runner::builder(source, empty())
+            .default_name("test")
+            .build()
+            .unwrap_err();
         let LmbError::Lua(LuaError::SyntaxError { message, .. }) = err else {
             panic!("Expected a Lua syntax error");
         };
-        assert!(
-            message.contains(":2: Incomplete statement: expected assignment or a function call")
+        assert_eq!(
+            Some("test:2: Incomplete statement: expected assignment or a function call"),
+            message.lines().next()
         );
     }
 }
