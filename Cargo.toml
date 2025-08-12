@@ -6,7 +6,7 @@ rust-version = "1.85.0"
 
 [dependencies]
 aes = "0.8.4"
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 base16ct = { version = "0.2.0", features = ["alloc"] }
 base64 = "0.22.1"
 bat = { version = "0.25.0", default-features = false }
