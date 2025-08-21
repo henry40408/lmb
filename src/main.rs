@@ -14,8 +14,10 @@ use tokio::io::{self, AsyncWriteExt as _};
 use tracing::{Instrument, debug_span, info};
 use tracing_subscriber::fmt::format::FmtSpan;
 
+const VERSION: &str = env!("APP_VERSION");
+
 #[derive(Debug, Parser)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version=VERSION, about, long_about = None)]
 struct Opts {
     /// Optional HTTP timeout in seconds
     #[clap(long)]

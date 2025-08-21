@@ -72,6 +72,9 @@ pulldown-cmark = "0.13.0"
 snapbox = "0.6.21"
 test-case = "3.3.1"
 
+[build-dependencies]
+git2 = { version = "0.20.2", default-features = false }
+
 [profile.release]
 codegen-units = 1
 lto = true
