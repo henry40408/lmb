@@ -1,16 +1,40 @@
-FROM rust:1.89.0-alpine AS builder
+# syntax=docker/dockerfile:1.3-labs
+FROM rust:1.89.0-bookworm AS chef 
+RUN cargo install cargo-chef --locked
+WORKDIR app
 
-WORKDIR /usr/src/app
-RUN apk add --no-cache build-base git
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+
+ARG TARGETARCH
+RUN <<EOF
+set -ex
+case "${TARGETARCH}" in
+  amd64) target='x86_64-unknown-linux-gnu';;
+  arm64) target='aarch64-unknown-linux-gnu';;
+  *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1;;
+esac
+cargo chef cook --release --target "${target}" --recipe-path recipe.json
+EOF
+
 COPY . .
 COPY .git .git
 
-RUN cargo build --release
+RUN <<EOF
+set -ex
+case "${TARGETARCH}" in
+  amd64) target='x86_64-unknown-linux-gnu';;
+  arm64) target='aarch64-unknown-linux-gnu';;
+  *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1;;
+esac
+cargo build --release --target "${target}"
+mv /app/target/${target}/release/lmb /bin/lmb
+EOF
 
-FROM alpine:3.19.1
-
-RUN apk add --no-cache tini=0.19.0-r2
-COPY --from=builder /usr/src/app/target/release/lmb /bin/lmb
-
-ENTRYPOINT ["tini", "--"]
+FROM gcr.io/distroless/cc-debian12 AS runtime
+COPY --from=builder /bin/lmb /bin/lmb
 CMD ["/bin/lmb"]
