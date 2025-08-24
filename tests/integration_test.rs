@@ -18,6 +18,27 @@ fn eval_add() {
 }
 
 #[test]
+fn eval_env() {
+    Command::new(cargo_bin("lmb"))
+        .env("FOO", "bar")
+        .env("NO_COLOR", "1")
+        .args([
+            "--allow-env",
+            "FOO",
+            "eval",
+            "--file",
+            "src/fixtures/env.lua",
+        ])
+        .assert()
+        .success()
+        .stdout_eq(str![[r#"
+bar
+
+"#]])
+        .stderr_eq(str![]);
+}
+
+#[test]
 fn eval_error() {
     Command::new(cargo_bin("lmb"))
         .env("NO_COLOR", "1")

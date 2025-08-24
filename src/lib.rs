@@ -108,6 +108,7 @@ where
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
         #[builder(into)] default_name: Option<String>,
+        allow_env: Option<Vec<String>>,
         http_timeout: Option<Duration>,
         store: Option<Connection>,
         timeout: Option<Duration>,
@@ -149,7 +150,12 @@ where
         let reader = Arc::new(Mutex::new(BufReader::new(reader)));
         {
             let _ = debug_span!("register_modules").entered();
-            vm.register_module("@lmb", Binding::builder(reader.clone()).build())?;
+            vm.register_module(
+                "@lmb",
+                Binding::builder(reader.clone())
+                    .maybe_allow_env(allow_env)
+                    .build(),
+            )?;
             vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
             vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
             vm.register_module(

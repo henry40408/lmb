@@ -19,6 +19,9 @@ const VERSION: &str = env!("APP_VERSION");
 #[derive(Debug, Parser)]
 #[clap(author, version=VERSION, about, long_about = None)]
 struct Opts {
+    /// Allowed environment variables
+    #[clap(long, value_delimiter = ',')]
+    allow_env: Vec<String>,
     /// Optional HTTP timeout in seconds
     #[clap(long)]
     http_timeout: Option<jiff::Span>,
@@ -103,6 +106,7 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = if let Some(source) = &source {
                 info!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
+                    .allow_env(opts.allow_env)
                     .default_name("(stdin)")
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
@@ -111,6 +115,7 @@ async fn try_main() -> anyhow::Result<()> {
             } else {
                 info!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
+                    .allow_env(opts.allow_env)
                     .maybe_http_timeout(http_timeout)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)

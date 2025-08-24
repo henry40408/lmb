@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bon::bon;
 use mlua::prelude::*;
@@ -22,6 +22,7 @@ pub(crate) struct Binding<R>
 where
     for<'lua> R: 'lua + AsyncRead + Unpin,
 {
+    allow_env: Vec<String>,
     reader: LmbInput<R>,
 }
 
@@ -31,8 +32,11 @@ where
     for<'lua> R: 'lua + AsyncRead + Unpin,
 {
     #[builder]
-    pub fn new(#[builder(start_fn)] reader: LmbInput<R>) -> Self {
-        Self { reader }
+    pub fn new(#[builder(start_fn)] reader: LmbInput<R>, allow_env: Option<Vec<String>>) -> Self {
+        Self {
+            allow_env: allow_env.unwrap_or_default(),
+            reader,
+        }
     }
 }
 
@@ -40,6 +44,19 @@ impl<R> LuaUserData for Binding<R>
 where
     for<'lua> R: 'lua + AsyncRead + Unpin,
 {
+    fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
+        fields.add_field_method_get("env", |vm, this| {
+            let vars = std::env::vars()
+                .filter(|(k, _)| this.allow_env.iter().any(|p| k == p))
+                .collect::<HashMap<_, _>>();
+            let t = vm.create_table()?;
+            for (k, v) in vars {
+                t.set(k, v)?;
+            }
+            Ok(t)
+        });
+    }
+
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_async_method("read_unicode", |vm, this, fmt: LuaValue| async move {
             let reader = &this.reader;
