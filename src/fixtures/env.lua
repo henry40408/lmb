@@ -1,2 +1,2 @@
 local m = require("@lmb")
-return m.env.FOO
+return m:getenv("FOO")

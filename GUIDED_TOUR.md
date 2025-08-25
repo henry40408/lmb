@@ -213,6 +213,29 @@ return store
 
 The main difference between state and store is that state should be considered ephemeral and is not persisted across runs, while store is persistent and can be used to store values that need to be accessed in later runs.
 
+## Environment variables
+
+Traditionally, developers retrieve environment variables using the [`os.getenv` function](https://www.lua.org/pil/22.2.html). In Luau, this function is unavailable when the sandbox is enabled for security reasons. Because environment variables are still commonly needed, we provide a safe alternative: the user must explicitly request access to each variable:
+
+```bash
+$ echo 'return require("@lmb"):getenv("FOO")' | FOO=bar lmb --allow-env FOO eval --file -
+bar
+```
+
+```lua
+--[[
+--name = "Environment variable"
+--assert_return = null
+--]]
+function getenv()
+  local m = require("@lmb")
+  -- since FOO is not allowed, this will return null
+  return m:getenv("FOO")
+end
+
+return getenv
+```
+
 ## Modules
 
 ### Coroutines

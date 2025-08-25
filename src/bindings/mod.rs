@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use bon::bon;
 use mlua::prelude::*;
@@ -44,20 +44,15 @@ impl<R> LuaUserData for Binding<R>
 where
     for<'lua> R: 'lua + AsyncRead + Unpin,
 {
-    fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("env", |vm, this| {
-            let vars = std::env::vars()
-                .filter(|(k, _)| this.allow_env.iter().any(|p| k == p))
-                .collect::<HashMap<_, _>>();
-            let t = vm.create_table()?;
-            for (k, v) in vars {
-                t.set(k, v)?;
-            }
-            Ok(t)
-        });
-    }
-
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
+        methods.add_method("getenv", |vm, this, key: String| {
+            let Some(key) = this.allow_env.iter().find(|p| *p == &key) else {
+                return Ok(LuaNil);
+            };
+            let value = std::env::var(key).unwrap_or_default();
+            vm.to_value(&value)
+        });
+
         methods.add_async_method("read_unicode", |vm, this, fmt: LuaValue| async move {
             let reader = &this.reader;
 
