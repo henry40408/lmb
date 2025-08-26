@@ -108,6 +108,19 @@ impl LuaUserData for HttpBinding {
                 if let Some(body) = body {
                     built = built.body(body.to_string());
                 }
+                if let Some(timeout) = options.pointer("/timeout") {
+                    match timeout {
+                        Value::Number(n) if n.is_u64() => {
+                            let secs = n.as_u64().unwrap_or(0);
+                            built = built.timeout(Duration::from_secs(secs));
+                        }
+                        Value::String(s) => {
+                            let timeout = jiff::Span::from_str(s).into_lua_err()?;
+                            built = built.timeout(Duration::try_from(timeout).into_lua_err()?);
+                        }
+                        _ => return Err(LuaError::runtime("Invalid timeout value")),
+                    }
+                }
 
                 let request = built.build().into_lua_err()?;
                 let response = {
