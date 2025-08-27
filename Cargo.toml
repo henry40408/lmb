@@ -13,7 +13,7 @@ bat = { version = "0.25.0", default-features = false }
 bon = "3.6.5"
 bytes = "1.10.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
-clap = { version = "4.5.41", features = ["derive", "env"] }
+clap = { version = "4.5.46", features = ["derive", "env"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 crc32fast = "1.5.0"
 crypto-common = "0.1.6"
