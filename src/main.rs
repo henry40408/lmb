@@ -25,12 +25,15 @@ struct Opts {
     /// Optional HTTP timeout in seconds
     #[clap(long)]
     http_timeout: Option<jiff::Span>,
-    /// Optional path to the store file
-    #[clap(long, value_parser, group = "store")]
-    store_path: Option<PathBuf>,
     /// Disable store usage
     #[clap(long, action, group = "store")]
     no_store: bool,
+    /// Optional path to the store file
+    #[clap(long, value_parser, group = "store")]
+    store_path: Option<PathBuf>,
+    /// Timeout. Default is 30 seconds, set to 0 for no timeout
+    #[clap(long)]
+    timeout: Option<jiff::Span>,
     #[clap(subcommand)]
     command: Command,
 }
@@ -45,9 +48,6 @@ enum Command {
         /// Optional state to pass to the Lua script
         #[clap(long, value_parser)]
         state: Option<Value>,
-        /// Timeout. Default is 30 seconds, set to 0 for no timeout
-        #[clap(long)]
-        timeout: Option<jiff::Span>,
     },
 }
 
@@ -63,11 +63,7 @@ async fn try_main() -> anyhow::Result<()> {
     info!("Parsed options: {opts:?}");
 
     match opts.command {
-        Command::Eval {
-            mut file,
-            state,
-            timeout,
-        } => {
+        Command::Eval { mut file, state } => {
             let span = debug_span!("eval").entered();
             info!("Evaluate Lua script: {file:?}");
             info!("State: {state:?}");
@@ -90,7 +86,7 @@ async fn try_main() -> anyhow::Result<()> {
             };
             info!("Using HTTP timeout: {:?}", http_timeout);
 
-            let timeout = match timeout {
+            let timeout = match opts.timeout {
                 None => Some(Duration::from_secs(30)),
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
