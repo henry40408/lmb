@@ -17,6 +17,7 @@ use axum::{
     response::IntoResponse,
     routing::any,
 };
+use bon::Builder;
 use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
@@ -251,21 +252,20 @@ async fn try_main() -> anyhow::Result<()> {
                 bail!("Expected a local file or a stdin input, but got: {file}");
             };
 
-            let app_state = Arc::new(AppState {
-                allow_env: opts.allow_env.clone(),
-                http_timeout,
-                max_body_size,
-                name,
-                no_store: opts.no_store,
-                state,
-                store_path: opts.store_path.clone(),
-                source,
-                timeout,
-            });
-            let app = Router::new()
-                .route("/{*wildcard}", any(request_handler))
-                .route("/", any(request_handler))
-                .with_state(app_state);
+            let app_state = Arc::new(
+                AppState::builder()
+                    .source(source)
+                    .allow_env(opts.allow_env.clone())
+                    .maybe_http_timeout(http_timeout)
+                    .max_body_size(max_body_size)
+                    .name(name)
+                    .no_store(opts.no_store)
+                    .maybe_state(state)
+                    .maybe_store_path(opts.store_path)
+                    .maybe_timeout(timeout)
+                    .build(),
+            );
+            let app = build_router(app_state);
             let listener = tokio::net::TcpListener::bind(&bind).await?;
             debug!("Listening on {}", listener.local_addr()?);
             axum::serve(listener, app).await?;
@@ -275,16 +275,24 @@ async fn try_main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Clone)]
+fn build_router(app_state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/{*wildcard}", any(request_handler))
+        .route("/", any(request_handler))
+        .with_state(app_state)
+}
+
+#[derive(Builder, Clone)]
 struct AppState {
-    allow_env: Vec<String>,
+    #[builder(into)]
+    source: String,
+    allow_env: Option<Vec<String>>,
     http_timeout: Option<Duration>,
-    max_body_size: usize,
-    name: String,
-    no_store: bool,
+    max_body_size: Option<usize>,
+    name: Option<String>,
+    no_store: Option<bool>,
     state: Option<Value>,
     store_path: Option<PathBuf>,
-    source: String,
     timeout: Option<Duration>,
 }
 
@@ -325,19 +333,23 @@ async fn try_request_handler(
     };
     let query = json!(query);
 
-    let bytes = to_bytes(req.into_body(), app_state.max_body_size).await?;
+    let bytes = to_bytes(
+        req.into_body(),
+        app_state.max_body_size.unwrap_or(10 * 1_024 * 1_024),
+    )
+    .await?;
     let reader = Cursor::new(bytes);
 
     let conn = match (app_state.store_path.clone(), app_state.no_store) {
-        (None, false) => Some(Connection::open_in_memory()?),
-        (Some(path), false) => Some(Connection::open(path)?),
+        (None, None) => Some(Connection::open_in_memory()?),
+        (Some(path), None) => Some(Connection::open(path)?),
         _ => None,
     };
 
     debug!("Evaluating Lua code");
     let runner = Runner::builder(app_state.source.clone(), reader)
-        .allow_env(app_state.allow_env.clone())
-        .default_name(app_state.name.clone())
+        .maybe_allow_env(app_state.allow_env.clone())
+        .maybe_default_name(app_state.name.clone())
         .maybe_http_timeout(app_state.http_timeout)
         .maybe_store(conn)
         .maybe_timeout(app_state.timeout)
@@ -414,4 +426,39 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum_test::TestServer;
+    use serde_json::{Value, json};
+
+    use crate::{AppState, build_router};
+
+    #[tokio::test]
+    async fn test_serve() {
+        let source = include_str!("./fixtures/serve-echo.lua");
+        let app_state = Arc::new(AppState::builder().source(source).build());
+        let router = build_router(app_state);
+        let server = TestServer::new(router).unwrap();
+
+        let res = server
+            .post("/a/b/c?a=1&b=2")
+            .add_header("i-am", "teapot")
+            .json(&json!({ "foo": 1, "bar": 2 }))
+            .await;
+        assert_eq!(200, res.status_code());
+        assert_eq!(
+            json!({
+                "body": { "foo": 1, "bar": 2 },
+                "headers": { "content-type": "application/json", "i-am": "teapot" },
+                "method": "POST",
+                "path": "/a/b/c",
+                "query": { "a": "1", "b": "2" }
+            }),
+            res.json::<Value>()
+        );
+    }
 }
