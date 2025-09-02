@@ -20,7 +20,7 @@ pub(crate) mod yaml;
 
 pub(crate) struct Binding<R>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     allow_env: Vec<String>,
     reader: LmbInput<R>,
@@ -29,7 +29,7 @@ where
 #[bon]
 impl<R> Binding<R>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     #[builder]
     pub fn new(#[builder(start_fn)] reader: LmbInput<R>, allow_env: Option<Vec<String>>) -> Self {
@@ -42,7 +42,7 @@ where
 
 impl<R> LuaUserData for Binding<R>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("getenv", |vm, this, key: String| {
@@ -61,13 +61,13 @@ where
                     "*a" | "*all" => {
                         let _ = debug_span!("read_unicode_all").entered();
                         let mut buf = String::new();
-                        reader.lock().read_to_string(&mut buf).await?;
+                        reader.lock().await.read_to_string(&mut buf).await?;
                         return vm.to_value(&buf);
                     }
                     "*l" | "*line" => {
                         let _ = debug_span!("read_unicode_line").entered();
                         let mut line = String::new();
-                        if reader.lock().read_line(&mut line).await? == 0 {
+                        if reader.lock().await.read_line(&mut line).await? == 0 {
                             return Ok(LuaNil);
                         }
                         return vm.to_value(&line.trim_end());
@@ -89,7 +89,7 @@ where
                 let mut buf = vec![];
                 let mut single = [0u8; 1];
                 while remaining > 0 {
-                    let count = reader.lock().read(&mut single).await?;
+                    let count = reader.lock().await.read(&mut single).await?;
                     if count == 0 {
                         break;
                     }
