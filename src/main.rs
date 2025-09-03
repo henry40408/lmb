@@ -29,7 +29,7 @@ use no_color::is_no_color;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use tokio::io::{self, AsyncWriteExt as _};
-use tracing::{Instrument, Level, debug, debug_span, error};
+use tracing::{Instrument, Level, debug, debug_span, error, info};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 const VERSION: &str = env!("APP_VERSION");
@@ -267,7 +267,7 @@ async fn try_main() -> anyhow::Result<()> {
             );
             let app = build_router(app_state);
             let listener = tokio::net::TcpListener::bind(&bind).await?;
-            debug!("Listening on {}", listener.local_addr()?);
+            info!("Listening on {}", listener.local_addr()?);
             axum::serve(listener, app).await?;
         }
     }

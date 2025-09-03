@@ -1,3 +1,8 @@
+use std::{
+    net::{Ipv4Addr, SocketAddrV4},
+    time::Duration,
+};
+
 use reqwest::Method;
 use snapbox::{
     cmd::{Command, cargo_bin},
@@ -179,6 +184,27 @@ fn eval_stdin_error() {
  5 |   return a
    `----
 Error: Lua value as error: "(stdin):3: An error occurred"
+
+"#]]);
+}
+
+#[test]
+fn serve() {
+    let bind = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
+    Command::new(cargo_bin("lmb"))
+        .timeout(Duration::from_millis(100))
+        .env("RUST_LOG", "lmb=info")
+        .env("NO_COLOR", "true")
+        .args([
+            "serve",
+            "--file",
+            "src/fixtures/serve.lua",
+            "--bind",
+            &format!("{bind}"),
+        ])
+        .assert()
+        .stdout_eq(str![[r#"
+[..]  INFO lmb: Listening on 0.0.0.0:[..]
 
 "#]]);
 }
