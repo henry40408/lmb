@@ -104,11 +104,13 @@ async fn try_request_handler(
                     let headers = output.pointer("/headers").and_then(|v| v.as_object());
                     if let Some(m) = headers {
                         for (k, v) in m {
-                            if let Some(s) = v.as_str() {
-                                let k = HeaderName::from_str(k.as_str())?;
-                                let v = HeaderValue::from_str(s)?;
-                                res.headers_mut().insert(k, v);
-                            }
+                            let v = match v {
+                                Value::String(s) => s,
+                                _ => &v.to_string(),
+                            };
+                            let k = HeaderName::from_str(k.as_str())?;
+                            let v = HeaderValue::from_str(v)?;
+                            res.headers_mut().insert(k, v);
                         }
                     }
 
