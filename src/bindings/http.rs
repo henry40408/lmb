@@ -3,44 +3,33 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 use bon::bon;
 use bytes::BytesMut;
 use mlua::prelude::*;
-use parking_lot::Mutex;
 use reqwest::{
-    Method,
+    Method, StatusCode,
     header::{HeaderMap, HeaderName, HeaderValue},
 };
-use serde_json::{Map, Value};
-use tracing::debug_span;
+use serde_json::{Value, json};
+use tokio::sync::Mutex;
+use tracing::{Instrument, debug_span};
 use url::Url;
 
 use crate::LmbResult;
 
-pub(crate) struct ResponseBinding(Arc<Mutex<reqwest::Response>>);
-
-impl ResponseBinding {
-    pub(crate) fn headers(&self) -> Value {
-        let locked = self.0.lock();
-        let headers = locked.headers();
-        let mut map = Map::new();
-        for (k, v) in headers.iter() {
-            map.insert(
-                k.as_str().to_string(),
-                v.to_str().unwrap_or("").to_string().into(),
-            );
-        }
-        Value::Object(map)
-    }
+pub(crate) struct ResponseBinding {
+    headers: Value,
+    inner: Arc<Mutex<reqwest::Response>>,
+    status: StatusCode,
 }
 
 impl LuaUserData for ResponseBinding {
     fn add_fields<F: LuaUserDataFields<Self>>(fields: &mut F) {
-        fields.add_field_method_get("headers", |vm, this| vm.to_value(&this.headers()));
-        fields.add_field_method_get("ok", |_, this| Ok(this.0.lock().status().is_success()));
-        fields.add_field_method_get("status", |_, this| Ok(this.0.lock().status().as_u16()));
+        fields.add_field_method_get("headers", |vm, this| vm.to_value(&this.headers));
+        fields.add_field_method_get("ok", |_, this| Ok(this.status.is_success()));
+        fields.add_field_method_get("status", |_, this| Ok(this.status.as_u16()));
     }
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_async_method("json", |vm, this, ()| async move {
             let mut buf = BytesMut::new();
-            while let Some(chunk) = this.0.lock().chunk().await.into_lua_err()? {
+            while let Some(chunk) = this.inner.lock().await.chunk().await.into_lua_err()? {
                 buf.extend_from_slice(&chunk);
             }
             let value: Value = serde_json::from_slice(&buf).into_lua_err()?;
@@ -48,7 +37,7 @@ impl LuaUserData for ResponseBinding {
         });
         methods.add_async_method("text", |_, this, ()| async move {
             let mut buf = BytesMut::new();
-            while let Some(chunk) = this.0.lock().chunk().await.into_lua_err()? {
+            while let Some(chunk) = this.inner.lock().await.chunk().await.into_lua_err()? {
                 buf.extend_from_slice(&chunk);
             }
             String::from_utf8(buf.to_vec()).into_lua_err()
@@ -124,11 +113,32 @@ impl LuaUserData for HttpBinding {
 
                 let request = built.build().into_lua_err()?;
                 let response = {
-                    let _ =
-                        debug_span!("send_http_request", method = %method, url = %url).entered();
-                    this.client.execute(request).await.into_lua_err()?
+                    let span = debug_span!("send_http_request", method = %method, url = %url);
+                    this.client
+                        .execute(request)
+                        .instrument(span)
+                        .await
+                        .into_lua_err()?
                 };
-                Ok(ResponseBinding(Arc::new(Mutex::new(response))))
+                let headers = {
+                    let mut m = json!({});
+                    let headers = response.headers().clone();
+                    for (k, v) in headers {
+                        if let Some(k) = k {
+                            if let Ok(v) = v.to_str() {
+                                m[k.as_str()] = json!(v.to_string());
+                            }
+                        }
+                    }
+                    m
+                };
+                let status_code = response.status();
+                let inner = Arc::new(Mutex::new(response));
+                Ok(ResponseBinding {
+                    headers,
+                    inner,
+                    status: status_code,
+                })
             },
         );
     }
@@ -137,10 +147,10 @@ impl LuaUserData for HttpBinding {
 #[cfg(test)]
 mod tests {
     use reqwest::Method;
-    use serde_json::{Value, json};
+    use serde_json::json;
     use tokio::io::empty;
 
-    use crate::Runner;
+    use crate::{Runner, State};
 
     #[tokio::test]
     async fn test_http_get() {
@@ -156,12 +166,8 @@ mod tests {
 
         let source = include_str!("fixtures/http-get.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner
-            .invoke()
-            .state(Value::String(url))
-            .call()
-            .await
-            .unwrap();
+        let state = State::builder().state(json!(url)).build();
+        let result = runner.invoke().state(state).call().await.unwrap();
 
         assert_eq!(json!("Hello, world!"), result.result.unwrap());
 
@@ -185,12 +191,8 @@ mod tests {
 
         let source = include_str!("fixtures/http-post.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner
-            .invoke()
-            .state(Value::String(url))
-            .call()
-            .await
-            .unwrap();
+        let state = State::builder().state(json!(url)).build();
+        let result = runner.invoke().state(state).call().await.unwrap();
 
         assert_eq!(json!({"a":1}), result.result.unwrap());
 

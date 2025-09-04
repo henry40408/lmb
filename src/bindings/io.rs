@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use mlua::prelude::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
-use tracing::debug_span;
+use tracing::{Instrument, debug_span};
 
 use crate::{LmbResult, Runner};
 
 pub(crate) fn bind<R>(runner: &mut Runner<R>) -> LmbResult<()>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     let globals = runner.vm.globals();
 
@@ -18,27 +18,25 @@ where
         "read",
         runner.vm.create_async_function(move |vm, fmt: LuaValue| {
             let reader = reader.clone();
+            let span = debug_span!("read", fmt = ?fmt);
             async move {
                 if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
                     match &*f {
                         "*a" | "*all" => {
-                            let _ = debug_span!("read_all").entered();
                             let mut buf = vec![];
-                            reader.lock().read_to_end(&mut buf).await?;
+                            reader.lock().await.read_to_end(&mut buf).await?;
                             return Ok(LuaValue::String(vm.create_string(buf)?));
                         }
                         "*l" | "*line" => {
-                            let _ = debug_span!("read_line").entered();
                             let mut line = String::new();
-                            if reader.lock().read_line(&mut line).await? == 0 {
+                            if reader.lock().await.read_line(&mut line).await? == 0 {
                                 return Ok(LuaValue::String(vm.create_string("")?));
                             }
                             return Ok(LuaValue::String(vm.create_string(line.trim_end())?));
                         }
                         "*n" | "*number" => {
-                            let _ = debug_span!("read_number").entered();
                             let mut buf = String::new();
-                            if reader.lock().read_line(&mut buf).await? == 0 {
+                            if reader.lock().await.read_line(&mut buf).await? == 0 {
                                 return Ok(LuaNil);
                             }
                             match buf.trim().parse::<f64>() {
@@ -58,9 +56,8 @@ where
                 }
 
                 if let Some(n) = fmt.as_usize() {
-                    let _ = debug_span!("read_bytes", %n).entered();
                     let mut buf = vec![0; n];
-                    let read = reader.lock().read(&mut buf).await?;
+                    let read = reader.lock().await.read(&mut buf).await?;
                     if read == 0 {
                         return Ok(LuaNil);
                     }
@@ -77,6 +74,7 @@ where
                     cause: Arc::new(LuaError::external(format!("invalid option {fmt:?}"))),
                 })
             }
+            .instrument(span)
         })?,
     )?;
 

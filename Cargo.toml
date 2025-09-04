@@ -7,10 +7,12 @@ rust-version = "1.85.0"
 [dependencies]
 aes = "0.8.4"
 anyhow = "1.0.98"
+axum = { version = "0.8.4", features = ["http2"] }
 base16ct = { version = "0.3.0", features = ["alloc"] }
 base64 = "0.22.1"
 bat = { version = "0.25.0", default-features = false }
 bon = "3.6.5"
+byte-unit = "5.1.6"
 bytes = "1.10.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
 clap = { version = "4.5.41", features = ["derive", "env"] }
@@ -32,6 +34,7 @@ mlua = { version = "0.11.1", features = [
     "luau",
     "error-send",
     "serde",
+    "send",
     "vendored",
 ] }
 no_color = "0.2.0"
@@ -65,11 +68,12 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 url = "2.5.4"
 
 [dev-dependencies]
+axum-test = "18.0.2"
 criterion = { version = "0.7.0", features = ["async_tokio"] }
 full_moon = "2.0.0"
 mockito = "1.7.0"
 pulldown-cmark = "0.13.0"
-snapbox = "0.6.21"
+snapbox = { version = "0.6.21", features = ["cmd"] }
 test-case = "3.3.1"
 
 [profile.release]

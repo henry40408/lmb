@@ -12,7 +12,6 @@ use std::{
 
 use bon::{Builder, bon};
 use mlua::{AsChunk, prelude::*};
-use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -45,6 +44,13 @@ impl std::fmt::Display for Timeout {
 
 impl std::error::Error for Timeout {}
 
+/// Represents the state of the Lua script execution
+#[derive(Builder, Debug)]
+pub struct State {
+    request: Option<Value>,
+    state: Option<Value>,
+}
+
 /// Lua VM error handling
 #[derive(Debug, Error)]
 pub enum LmbError {
@@ -65,8 +71,8 @@ pub enum LmbError {
     Timeout(#[from] Timeout),
 }
 
-type LmbInput<R> = Arc<Mutex<BufReader<R>>>;
-type LmbStore = Arc<Mutex<Connection>>;
+type LmbInput<R> = Arc<tokio::sync::Mutex<BufReader<R>>>;
+type LmbStore = Arc<parking_lot::Mutex<Connection>>;
 
 /// Result type for the library
 pub type LmbResult<T> = Result<T, LmbError>;
@@ -100,7 +106,7 @@ static WRAP_FUNC: &str = r"return function(f, ctx) return pcall(f, ctx) end";
 #[bon]
 impl<R> Runner<R>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
+    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     /// Creates a new Lua runner with the given source code and input reader.
     #[builder]
@@ -147,7 +153,7 @@ where
             }
         };
 
-        let reader = Arc::new(Mutex::new(BufReader::new(reader)));
+        let reader = Arc::new(tokio::sync::Mutex::new(BufReader::new(reader)));
         {
             let _ = debug_span!("register_modules").entered();
             vm.register_module(
@@ -174,7 +180,7 @@ where
         let mut runner = Self {
             func,
             reader,
-            store: store.map(|conn| Arc::new(Mutex::new(conn))),
+            store: store.map(|conn| Arc::new(parking_lot::Mutex::new(conn))),
             timeout,
             vm, // otherwise the Lua VM would be destroyed
         };
@@ -190,7 +196,7 @@ where
 
     /// Invokes the Lua function with the given state.
     #[builder]
-    pub async fn invoke(&self, state: Option<Value>) -> LmbResult<Invoked> {
+    pub async fn invoke(&self, state: Option<State>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         self.vm.set_interrupt({
@@ -211,8 +217,13 @@ where
         });
 
         let ctx = self.vm.create_table()?;
-        if state.is_some() {
-            ctx.set("state", self.vm.to_value(&state)?)?;
+        if let Some(state) = &state {
+            if let Some(state) = &state.state {
+                ctx.set("state", self.vm.to_value(state)?)?;
+            }
+            if let Some(request) = &state.request {
+                ctx.set("request", self.vm.to_value(request)?)?;
+            }
         }
         if self.store.is_some() {
             ctx.set("store", StoreBinding::builder(self.store.clone()).build()?)?;
@@ -286,7 +297,7 @@ where
     /// Rewinds the input stream to the beginning.
     /// This function should be only called in tests or benchmarks to reset the input stream.
     pub async fn rewind_input(&self) -> LmbResult<()> {
-        self.reader.lock().rewind().await?;
+        self.reader.lock().await.rewind().await?;
         Ok(())
     }
 }
@@ -304,7 +315,8 @@ mod tests {
     #[tokio::test]
     async fn test_invoke(source: &'static str, state: Option<Value>, expected: Value) {
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner.invoke().maybe_state(state).call().await.unwrap();
+        let state = State::builder().maybe_state(state).build();
+        let result = runner.invoke().state(state).call().await.unwrap();
         assert_eq!(expected, result.result.unwrap());
     }
 

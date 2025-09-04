@@ -1,6 +1,9 @@
-use std::{io::Read, path::PathBuf, process::ExitCode, time::Duration};
+use std::{io::Read, path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
 
 use anyhow::bail;
+use axum::{Router, routing::any};
+use bon::Builder;
+use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
@@ -9,10 +12,12 @@ use lmb::{
 };
 use no_color::is_no_color;
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::io::{self, AsyncWriteExt as _};
-use tracing::{Instrument, debug_span, info};
-use tracing_subscriber::fmt::format::FmtSpan;
+use tracing::{Instrument, Level, debug, debug_span, info};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
+
+mod serve;
 
 const VERSION: &str = env!("APP_VERSION");
 
@@ -20,17 +25,26 @@ const VERSION: &str = env!("APP_VERSION");
 #[clap(author, version=VERSION, about, long_about = None)]
 struct Opts {
     /// Allowed environment variables
-    #[clap(long, value_delimiter = ',')]
+    #[clap(long, value_delimiter = ',', env = "ALLOW_ENV")]
     allow_env: Vec<String>,
+    /// Enable debug mode
+    #[clap(long, short = 'd', env = "DEBUG")]
+    debug: bool,
     /// Optional HTTP timeout in seconds
-    #[clap(long)]
+    #[clap(long, env = "HTTP_TIMEOUT")]
     http_timeout: Option<jiff::Span>,
-    /// Optional path to the store file
-    #[clap(long, value_parser, group = "store")]
-    store_path: Option<PathBuf>,
+    /// Disable colored output
+    #[clap(long, env = "NO_COLOR")]
+    no_color: bool,
     /// Disable store usage
-    #[clap(long, action, group = "store")]
+    #[clap(long, action, group = "store", env = "NO_STORE")]
     no_store: bool,
+    /// Optional path to the store file
+    #[clap(long, value_parser, group = "store", env = "STORE_PATH")]
+    store_path: Option<PathBuf>,
+    /// Timeout. Default is 30 seconds, set to 0 for no timeout
+    #[clap(long, env = "TIMEOUT")]
+    timeout: Option<jiff::Span>,
     #[clap(subcommand)]
     command: Command,
 }
@@ -40,37 +54,59 @@ enum Command {
     /// Evaluate a file
     Eval {
         /// Path to the file to evaluate
-        #[clap(long, value_parser)]
+        #[clap(long, value_parser, env = "FILE_PATH")]
         file: Input,
         /// Optional state to pass to the Lua script
-        #[clap(long, value_parser)]
-        state: Option<Value>,
-        /// Timeout. Default is 30 seconds, set to 0 for no timeout
-        #[clap(long)]
-        timeout: Option<jiff::Span>,
+        #[clap(long, env = "STATE")]
+        state: Option<String>,
+    },
+    /// Serve a file
+    Serve {
+        /// Bound address and port
+        #[clap(long, default_value = "127.0.0.1:3000", env = "BIND")]
+        bind: String,
+        /// Path to the file to serve
+        #[clap(long, value_parser, env = "FILE_PATH")]
+        file: Input,
+        /// Optional maximum body size
+        #[clap(long, default_value = "100M", env = "MAX_BODY_SIZE")]
+        max_body_size: String,
+        /// Optional state to pass to the Lua script
+        #[clap(long, env = "STATE")]
+        state: Option<String>,
     },
 }
 
 async fn try_main() -> anyhow::Result<()> {
+    let opts = Opts::parse();
+    debug!("Parsed options: {opts:?}");
+
+    let default_directive = if opts.debug {
+        Level::DEBUG
+    } else {
+        Level::WARN
+    };
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(default_directive.into())
+        .from_env_lossy();
+    let no_color = opts.no_color || is_no_color();
     tracing_subscriber::fmt()
-        .with_ansi(!is_no_color())
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_ansi(!no_color)
+        .with_env_filter(env_filter)
         .with_span_events(FmtSpan::CLOSE)
         .compact()
         .init();
 
-    let opts = Opts::parse();
-    info!("Parsed options: {opts:?}");
-
     match opts.command {
-        Command::Eval {
-            mut file,
-            state,
-            timeout,
-        } => {
+        Command::Eval { mut file, state } => {
             let span = debug_span!("eval").entered();
-            info!("Evaluate Lua script: {file:?}");
-            info!("State: {state:?}");
+            debug!("Evaluate Lua script: {file:?}");
+
+            let state = state.as_ref().map(|s| match serde_json::from_str(s) {
+                Ok(value) => value,
+                Err(_) => json!(s.clone()), // treat invalid value as string
+            });
+            debug!("State: {state:?}");
 
             let reader = io::stdin();
             let source = if file.is_local() {
@@ -88,14 +124,14 @@ async fn try_main() -> anyhow::Result<()> {
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
             };
-            info!("Using HTTP timeout: {:?}", http_timeout);
+            debug!("Using HTTP timeout: {:?}", http_timeout);
 
-            let timeout = match timeout {
+            let timeout = match opts.timeout {
                 None => Some(Duration::from_secs(30)),
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
             };
-            info!("Using timeout: {:?}", timeout);
+            debug!("Using timeout: {:?}", timeout);
 
             let conn = match (opts.store_path, opts.no_store) {
                 (None, false) => Some(Connection::open_in_memory()?),
@@ -104,7 +140,7 @@ async fn try_main() -> anyhow::Result<()> {
             };
 
             let runner = if let Some(source) = &source {
-                info!("Evaluating Lua code from stdin or a string input");
+                debug!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
                     .allow_env(opts.allow_env)
                     .default_name("(stdin)")
@@ -113,7 +149,7 @@ async fn try_main() -> anyhow::Result<()> {
                     .maybe_timeout(timeout)
                     .build()?
             } else {
-                info!("Evaluating Lua code from file: {:?}", file.path().path());
+                debug!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
                     .allow_env(opts.allow_env)
                     .maybe_http_timeout(http_timeout)
@@ -124,18 +160,19 @@ async fn try_main() -> anyhow::Result<()> {
 
             let result = {
                 let span2 = debug_span!(parent: &span, "invoke");
+                let state = lmb::State::builder().maybe_state(state).build();
                 runner
                     .invoke()
-                    .maybe_state(state)
+                    .state(state)
                     .call()
                     .instrument(span2)
                     .await?
             };
-            info!("Lua evaluated");
+            debug!("Lua evaluated");
 
             match result.result {
                 Ok(value) => {
-                    info!("Lua evaluation result: {value}");
+                    debug!("Lua evaluation result: {value}");
                     if let Value::String(s) = &value {
                         println!("{s}");
                     } else {
@@ -160,9 +197,90 @@ async fn try_main() -> anyhow::Result<()> {
                 }
             }
         }
+        Command::Serve {
+            bind,
+            mut file,
+            max_body_size,
+            state,
+        } => {
+            let state = state
+                .as_ref()
+                .map(|s| match serde_json::from_str::<Value>(s) {
+                    Ok(value) => value,
+                    Err(_) => json!(s.clone()), // treat invalid value as string
+                });
+            debug!("State: {state:?}");
+
+            let max_body_size = Byte::parse_str(max_body_size, true)?;
+            let max_body_size = usize::try_from(max_body_size.as_u64())?;
+
+            let http_timeout = match opts.http_timeout {
+                None => Some(Duration::from_secs(30)),
+                Some(t) if t.is_zero() => None,
+                Some(t) => Some(Duration::try_from(t)?),
+            };
+            debug!("Using HTTP timeout: {:?}", http_timeout);
+
+            let timeout = match opts.timeout {
+                None => Some(Duration::from_secs(30)),
+                Some(t) if t.is_zero() => None,
+                Some(t) => Some(Duration::try_from(t)?),
+            };
+            debug!("Using timeout: {:?}", timeout);
+
+            let mut source = String::new();
+            file.read_to_string(&mut source)?;
+
+            let name = if file.is_local() {
+                file.path().to_string_lossy().to_string()
+            } else if file.is_std() {
+                "(stdin)".to_string()
+            } else {
+                bail!("Expected a local file or a stdin input, but got: {file}");
+            };
+
+            let app_state = Arc::new(
+                AppState::builder()
+                    .source(source)
+                    .allow_env(opts.allow_env.clone())
+                    .maybe_http_timeout(http_timeout)
+                    .max_body_size(max_body_size)
+                    .name(name)
+                    .no_store(opts.no_store)
+                    .maybe_state(state)
+                    .maybe_store_path(opts.store_path)
+                    .maybe_timeout(timeout)
+                    .build(),
+            );
+            let app = build_router(app_state);
+            let listener = tokio::net::TcpListener::bind(&bind).await?;
+            info!("Listening on {}", listener.local_addr()?);
+            axum::serve(listener, app).await?;
+        }
     }
 
     Ok(())
+}
+
+fn build_router(app_state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/{*wildcard}", any(serve::request_handler))
+        .route("/", any(serve::request_handler))
+        .with_state(app_state)
+}
+
+#[derive(Builder, Clone)]
+struct AppState {
+    #[builder(into)]
+    source: String,
+    allow_env: Option<Vec<String>>,
+    http_timeout: Option<Duration>,
+    max_body_size: Option<usize>,
+    name: Option<String>,
+    no_store: Option<bool>,
+    state: Option<Value>,
+    store_path: Option<PathBuf>,
+    timeout: Option<Duration>,
 }
 
 #[tokio::main]

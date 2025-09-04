@@ -1,10 +1,10 @@
 use std::{io::Cursor, time::Duration};
 
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
-use lmb::Runner;
+use lmb::{Runner, State};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{Value, json};
 use toml::Table;
 
 #[derive(Default)]
@@ -109,7 +109,7 @@ async fn test_guided_tour() {
             .await;
         if let Some(ref mut state) = visitor.state {
             if let Some(state) = state.as_object_mut() {
-                state.insert("url".to_string(), Value::String(server.url()));
+                state.insert("url".to_string(), json!(server.url()));
             }
         }
 
@@ -124,9 +124,10 @@ async fn test_guided_tour() {
             .maybe_timeout(visitor.timeout)
             .build()
             .unwrap();
+        let state = State::builder().maybe_state(visitor.state).build();
         let value = runner
             .invoke()
-            .maybe_state(visitor.state)
+            .state(state)
             .call()
             .await
             .unwrap()

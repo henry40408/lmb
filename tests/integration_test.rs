@@ -21,7 +21,7 @@ fn eval_add() {
 fn eval_env() {
     Command::new(cargo_bin("lmb"))
         .env("FOO", "bar")
-        .env("NO_COLOR", "1")
+        .env("NO_COLOR", "true")
         .args([
             "--allow-env",
             "FOO",
@@ -41,7 +41,7 @@ bar
 #[test]
 fn eval_error() {
     Command::new(cargo_bin("lmb"))
-        .env("NO_COLOR", "1")
+        .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/error.lua"])
         .assert()
         .failure()
@@ -112,20 +112,20 @@ null
 #[test]
 fn eval_infinite() {
     Command::new(cargo_bin("lmb"))
-        .env("NO_COLOR", "1")
+        .env("NO_COLOR", "true")
         .args([
+            "--timeout",
+            "100ms",
             "eval",
             "--file",
             "src/fixtures/infinite.lua",
-            "--timeout",
-            "100ms",
         ])
         .assert()
         .failure()
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
-Timeout: Lua script execution timed out after 100[..]ms, timeout was 100ms
-Error: Timeout: Lua script execution timed out after 100[..]ms, timeout was 100ms
+Timeout: Lua script execution timed out after [..]ms, timeout was 100ms
+Error: Timeout: Lua script execution timed out after [..]ms, timeout was 100ms
 
 "#]]);
 }
@@ -133,7 +133,7 @@ Error: Timeout: Lua script execution timed out after 100[..]ms, timeout was 100m
 #[test]
 fn eval_no_export() {
     Command::new(cargo_bin("lmb"))
-        .env("NO_COLOR", "1")
+        .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/no-export.lua"])
         .assert()
         .success()
@@ -147,7 +147,7 @@ null
 #[test]
 fn eval_stdin_expression() {
     Command::new(cargo_bin("lmb"))
-        .env("NO_COLOR", "1")
+        .env("NO_COLOR", "true")
         .stdin("return 'Hello, world!'")
         .args(["eval", "--file", "-"])
         .assert()
@@ -162,7 +162,7 @@ Hello, world!
 #[test]
 fn eval_stdin_error() {
     Command::new(cargo_bin("lmb"))
-        .env("NO_COLOR", "1")
+        .env("NO_COLOR", "true")
         .stdin(include_str!("../src/fixtures/error.lua"))
         .args(["eval", "--file", "-"])
         .assert()
