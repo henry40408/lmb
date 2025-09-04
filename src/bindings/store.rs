@@ -57,10 +57,10 @@ impl StoreBinding {
     #[builder]
     pub(crate) fn new(#[builder(start_fn)] store: Option<LmbStore>) -> LmbResult<Self> {
         if let Some(store) = &store {
-            let _ = debug_span!("run_migrations", count = MIGRATIONS.len()).entered();
+            let span = debug_span!("run_migrations", count = MIGRATIONS.len()).entered();
             let conn = store.lock();
             for migration in MIGRATIONS.iter() {
-                let _ = debug_span!("run_migration", migration).entered();
+                let _ = debug_span!(parent: &span, "run_migration", migration).entered();
                 conn.execute_batch(migration).into_lua_err()?;
             }
         }

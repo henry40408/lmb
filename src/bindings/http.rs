@@ -9,7 +9,7 @@ use reqwest::{
 };
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
-use tracing::debug_span;
+use tracing::{Instrument, debug_span};
 use url::Url;
 
 use crate::LmbResult;
@@ -113,9 +113,12 @@ impl LuaUserData for HttpBinding {
 
                 let request = built.build().into_lua_err()?;
                 let response = {
-                    let _ =
-                        debug_span!("send_http_request", method = %method, url = %url).entered();
-                    this.client.execute(request).await.into_lua_err()?
+                    let span = debug_span!("send_http_request", method = %method, url = %url);
+                    this.client
+                        .execute(request)
+                        .instrument(span)
+                        .await
+                        .into_lua_err()?
                 };
                 let headers = {
                     let mut m = json!({});

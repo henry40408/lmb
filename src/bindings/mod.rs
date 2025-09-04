@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bon::bon;
 use mlua::prelude::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
-use tracing::debug_span;
+use tracing::{Instrument, debug_span};
 
 use crate::LmbInput;
 
@@ -53,69 +53,70 @@ where
             vm.to_value(&value)
         });
 
-        methods.add_async_method("read_unicode", |vm, this, fmt: LuaValue| async move {
-            let reader = &this.reader;
+        methods.add_async_method("read_unicode", |vm, this, fmt: LuaValue| {
+            let span = debug_span!("read_unicode", fmt = ?fmt);
+            async move {
+                let reader = &this.reader;
 
-            if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
-                match &*f {
-                    "*a" | "*all" => {
-                        let _ = debug_span!("read_unicode_all").entered();
-                        let mut buf = String::new();
-                        reader.lock().await.read_to_string(&mut buf).await?;
-                        return vm.to_value(&buf);
-                    }
-                    "*l" | "*line" => {
-                        let _ = debug_span!("read_unicode_line").entered();
-                        let mut line = String::new();
-                        if reader.lock().await.read_line(&mut line).await? == 0 {
-                            return Ok(LuaNil);
+                if let Some(f) = fmt.as_string().and_then(|s| s.to_str().ok()) {
+                    match &*f {
+                        "*a" | "*all" => {
+                            let mut buf = String::new();
+                            reader.lock().await.read_to_string(&mut buf).await?;
+                            return vm.to_value(&buf);
                         }
-                        return vm.to_value(&line.trim_end());
-                    }
-                    _ => {
-                        return Err(LuaError::BadArgument {
-                            to: Some("read".to_string()),
-                            pos: 1,
-                            name: None,
-                            cause: Arc::new(LuaError::external(format!("invalid format {f}"))),
-                        });
+                        "*l" | "*line" => {
+                            let mut line = String::new();
+                            if reader.lock().await.read_line(&mut line).await? == 0 {
+                                return Ok(LuaNil);
+                            }
+                            return vm.to_value(&line.trim_end());
+                        }
+                        _ => {
+                            return Err(LuaError::BadArgument {
+                                to: Some("read".to_string()),
+                                pos: 1,
+                                name: None,
+                                cause: Arc::new(LuaError::external(format!("invalid format {f}"))),
+                            });
+                        }
                     }
                 }
-            }
 
-            if let Some(n) = fmt.as_usize() {
-                let _ = debug_span!("read_unicode_bytes", %n).entered();
-                let mut remaining = n;
-                let mut buf = vec![];
-                let mut single = [0u8; 1];
-                while remaining > 0 {
-                    let count = reader.lock().await.read(&mut single).await?;
-                    if count == 0 {
-                        break;
+                if let Some(n) = fmt.as_usize() {
+                    let mut remaining = n;
+                    let mut buf = vec![];
+                    let mut single = [0u8; 1];
+                    while remaining > 0 {
+                        let count = reader.lock().await.read(&mut single).await?;
+                        if count == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&single);
+                        if std::str::from_utf8(&buf).is_ok() {
+                            remaining -= 1;
+                        }
                     }
-                    buf.extend_from_slice(&single);
-                    if std::str::from_utf8(&buf).is_ok() {
-                        remaining -= 1;
+                    if buf.is_empty() {
+                        return Ok(LuaNil);
                     }
+                    return Ok(std::str::from_utf8(&buf).ok().map_or_else(
+                        || LuaNil,
+                        |s| {
+                            vm.create_string(s)
+                                .map_or_else(|_| LuaNil, LuaValue::String)
+                        },
+                    ));
                 }
-                if buf.is_empty() {
-                    return Ok(LuaNil);
-                }
-                return Ok(std::str::from_utf8(&buf).ok().map_or_else(
-                    || LuaNil,
-                    |s| {
-                        vm.create_string(s)
-                            .map_or_else(|_| LuaNil, LuaValue::String)
-                    },
-                ));
-            }
 
-            Err(LuaError::BadArgument {
-                to: Some("read".to_string()),
-                pos: 1,
-                name: None,
-                cause: Arc::new(LuaError::external(format!("invalid option {fmt:?}"))),
-            })
+                Err(LuaError::BadArgument {
+                    to: Some("read".to_string()),
+                    pos: 1,
+                    name: None,
+                    cause: Arc::new(LuaError::external(format!("invalid option {fmt:?}"))),
+                })
+            }
+            .instrument(span)
         });
     }
 }
