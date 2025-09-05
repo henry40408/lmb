@@ -9,7 +9,7 @@ fn main() {
     match output {
         Ok(out) if out.status.success() => {
             let git_desc = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            println!("cargo:rustc-env=APP_VERSION={}", git_desc);
+            println!("cargo:rustc-env=APP_VERSION={git_desc}");
         }
         Ok(out) => {
             println!("cargo:rustc-env=APP_VERSION=unknown");
@@ -20,7 +20,7 @@ fn main() {
         }
         Err(e) => {
             println!("cargo:rustc-env=APP_VERSION=unknown");
-            println!("cargo:warning=failed to run git: {}", e);
+            println!("cargo:warning=failed to run git: {e:?}");
         }
     }
 }
