@@ -91,6 +91,7 @@ async fn eval_http_get() {
 
     Command::new(cargo_bin("lmb"))
         .args([
+            "--allow-all-net",
             "--http-timeout",
             "1s",
             "eval",

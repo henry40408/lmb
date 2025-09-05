@@ -7,7 +7,7 @@ use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
-    EnvPermissions, Permissions, Runner,
+    EnvPermissions, LmbError, Permissions, Runner,
     error::{ErrorReport, build_report, render_report},
 };
 use no_color::is_no_color;
@@ -30,6 +30,12 @@ struct Opts {
     /// Allowed environment variables
     #[clap(long, value_delimiter = ',', group = "env_group", env = "ALLOW_ENV")]
     allow_env: Vec<String>,
+    /// Allow all network addresses
+    #[clap(long, group = "net_group", env = "ALLOW_ALL_NET")]
+    allow_all_net: bool,
+    /// Allowed network addresses
+    #[clap(long, value_delimiter = ',', group = "net_group", env = "ALLOW_NET")]
+    allow_net: Vec<String>,
     /// Enable debug mode
     #[clap(long, short = 'd', env = "DEBUG")]
     debug: bool,
@@ -87,7 +93,29 @@ fn permissions_from_opts(opts: &Opts) -> Permissions {
         } else {
             EnvPermissions::Some(opts.allow_env.clone())
         },
+        net: if opts.allow_all_net {
+            lmb::NetPermissions::All
+        } else {
+            lmb::NetPermissions::Some(opts.allow_net.clone())
+        },
     }
+}
+
+async fn report_error(file: &Input, source: &Option<String>, e: &LmbError) -> anyhow::Result<()> {
+    let report = if let Some(source) = &source {
+        build_report(source, e).default_name("(stdin)").call()?
+    } else {
+        build_report(file.path().path(), e).call()?
+    };
+    match report {
+        ErrorReport::Report(report) => {
+            let mut s = String::new();
+            render_report(&mut s, &report);
+            io::stderr().write_all(s.as_bytes()).await?;
+        }
+        ErrorReport::String(msg) => eprintln!("{msg}"),
+    }
+    Ok(())
 }
 
 async fn try_main() -> anyhow::Result<()> {
@@ -196,19 +224,7 @@ async fn try_main() -> anyhow::Result<()> {
                     }
                 }
                 Err(e) => {
-                    let report = if let Some(source) = &source {
-                        build_report(source, &e).default_name("(stdin)").call()?
-                    } else {
-                        build_report(file.path().path(), &e).call()?
-                    };
-                    match report {
-                        ErrorReport::Report(report) => {
-                            let mut s = String::new();
-                            render_report(&mut s, &report);
-                            io::stderr().write_all(s.as_bytes()).await?;
-                        }
-                        ErrorReport::String(msg) => eprintln!("{msg}"),
-                    }
+                    report_error(&file, &source, &e).await?;
                     return Err(e.into());
                 }
             }
