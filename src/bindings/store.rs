@@ -1,4 +1,4 @@
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use bon::bon;
 use dashmap::DashMap;
@@ -9,8 +9,7 @@ use tracing::debug_span;
 
 use crate::{LmbResult, LmbStore};
 
-static MIGRATIONS: LazyLock<Vec<&'static str>> =
-    LazyLock::new(|| vec![include_str!("migrations/0001-initial.sql")]);
+static MIGRATIONS: &[&str] = &[include_str!("migrations/0001-initial.sql")];
 
 static SQL_PUT: &str = "INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)";
 static SQL_GET: &str = "SELECT value FROM store WHERE key = ?";
