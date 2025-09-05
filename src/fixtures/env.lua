@@ -1,2 +1,4 @@
 local m = require("@lmb")
-return m:getenv("FOO")
+for k, v in pairs(m:getenvs()) do
+  print(k .. " = " .. v)
+end

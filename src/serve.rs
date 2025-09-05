@@ -65,9 +65,9 @@ async fn try_request_handler(
 
     debug!("Evaluating Lua code");
     let runner = Runner::builder(app_state.source.clone(), reader)
-        .maybe_allow_env(app_state.allow_env.clone())
         .maybe_default_name(app_state.name.clone())
         .maybe_http_timeout(app_state.http_timeout)
+        .maybe_permissions(app_state.permissions.clone())
         .maybe_store(conn)
         .maybe_timeout(app_state.timeout)
         .build()?;

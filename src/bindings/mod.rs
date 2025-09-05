@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bon::bon;
 use mlua::prelude::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
 use tracing::{Instrument, debug_span};
 
-use crate::LmbInput;
+use crate::{LmbInput, Permissions};
 
 pub(crate) mod coroutine;
 pub(crate) mod crypto;
@@ -22,7 +22,7 @@ pub(crate) struct Binding<R>
 where
     for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
-    allow_env: Vec<String>,
+    permissions: Option<Permissions>,
     reader: LmbInput<R>,
 }
 
@@ -32,9 +32,9 @@ where
     for<'lua> R: 'lua + AsyncRead + Send + Unpin,
 {
     #[builder]
-    pub fn new(#[builder(start_fn)] reader: LmbInput<R>, allow_env: Option<Vec<String>>) -> Self {
+    pub fn new(#[builder(start_fn)] reader: LmbInput<R>, permissions: Option<Permissions>) -> Self {
         Self {
-            allow_env: allow_env.unwrap_or_default(),
+            permissions,
             reader,
         }
     }
@@ -46,11 +46,26 @@ where
 {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("getenv", |vm, this, key: String| {
-            let Some(key) = this.allow_env.iter().find(|p| *p == &key) else {
-                return Ok(LuaNil);
-            };
-            let value = std::env::var(key).unwrap_or_default();
-            vm.to_value(&value)
+            if let Some(p) = &this.permissions {
+                if p.is_env_allowed(&key) {
+                    if let Ok(val) = std::env::var(&key) {
+                        return vm.to_value(&val);
+                    }
+                }
+            }
+            Ok(LuaNil)
+        });
+
+        methods.add_method("getenvs", |vm, this, ()| {
+            let mut vars = HashMap::new();
+            for (k, v) in std::env::vars() {
+                if let Some(p) = &this.permissions {
+                    if p.is_env_allowed(&k) {
+                        vars.insert(k, v);
+                    }
+                }
+            }
+            vm.to_value(&vars)
         });
 
         methods.add_async_method("read_unicode", |vm, this, fmt: LuaValue| {

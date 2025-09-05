@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 use tracing::{Instrument, debug_span};
 use url::Url;
 
-use crate::LmbResult;
+use crate::{LmbResult, Permissions};
 
 pub(crate) struct ResponseBinding {
     headers: Value,
@@ -47,18 +47,25 @@ impl LuaUserData for ResponseBinding {
 
 pub(crate) struct HttpBinding {
     client: reqwest::Client,
+    permissions: Option<Permissions>,
 }
 
 #[bon]
 impl HttpBinding {
     #[builder]
-    pub(crate) fn new(timeout: Option<Duration>) -> LmbResult<Self> {
+    pub(crate) fn new(
+        permissions: Option<Permissions>,
+        timeout: Option<Duration>,
+    ) -> LmbResult<Self> {
         let mut client = reqwest::Client::builder();
         if let Some(timeout) = timeout {
             client = client.timeout(timeout);
         }
         let client = client.build()?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            permissions,
+        })
     }
 }
 
@@ -90,6 +97,12 @@ impl LuaUserData for HttpBinding {
                 let body = options.pointer("/body").and_then(|v| v.as_str());
 
                 let url = Url::parse(&url).into_lua_err()?;
+                if let Some(perm) = &this.permissions {
+                    if !perm.is_url_allowed(&url) {
+                        return Err(LuaError::runtime("URL is not allowed"));
+                    }
+                }
+
                 let mut built = this.client.request(method.clone(), url.clone());
                 if let Some(headers) = headers {
                     built = built.headers(headers);

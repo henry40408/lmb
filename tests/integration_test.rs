@@ -32,7 +32,8 @@ fn eval_env() {
         .assert()
         .success()
         .stdout_eq(str![[r#"
-bar
+null
+FOO = bar
 
 "#]])
         .stderr_eq(str![]);
@@ -90,6 +91,7 @@ async fn eval_http_get() {
 
     Command::new(cargo_bin("lmb"))
         .args([
+            "--allow-all-net",
             "--http-timeout",
             "1s",
             "eval",
