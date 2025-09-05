@@ -7,7 +7,7 @@ use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
-    Runner,
+    EnvPermissions, Permissions, Runner,
     error::{ErrorReport, build_report, render_report},
 };
 use no_color::is_no_color;
@@ -24,8 +24,11 @@ const VERSION: &str = env!("APP_VERSION");
 #[derive(Debug, Parser)]
 #[clap(author, version=VERSION, about, long_about = None)]
 struct Opts {
+    /// Allow all environment variables
+    #[clap(long, group = "env_group", env = "ALLOW_ALL_ENVS")]
+    allow_all_envs: bool,
     /// Allowed environment variables
-    #[clap(long, value_delimiter = ',', env = "ALLOW_ENV")]
+    #[clap(long, value_delimiter = ',', group = "env_group", env = "ALLOW_ENV")]
     allow_env: Vec<String>,
     /// Enable debug mode
     #[clap(long, short = 'd', env = "DEBUG")]
@@ -37,10 +40,10 @@ struct Opts {
     #[clap(long, env = "NO_COLOR")]
     no_color: bool,
     /// Disable store usage
-    #[clap(long, action, group = "store", env = "NO_STORE")]
+    #[clap(long, action, group = "store_group", env = "NO_STORE")]
     no_store: bool,
     /// Optional path to the store file
-    #[clap(long, value_parser, group = "store", env = "STORE_PATH")]
+    #[clap(long, value_parser, group = "store_group", env = "STORE_PATH")]
     store_path: Option<PathBuf>,
     /// Timeout. Default is 30 seconds, set to 0 for no timeout
     #[clap(long, env = "TIMEOUT")]
@@ -77,6 +80,16 @@ enum Command {
     },
 }
 
+fn permissions_from_opts(opts: &Opts) -> Permissions {
+    Permissions {
+        env: if opts.allow_all_envs {
+            EnvPermissions::All
+        } else {
+            EnvPermissions::Some(opts.allow_env.clone())
+        },
+    }
+}
+
 async fn try_main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     debug!("Parsed options: {opts:?}");
@@ -96,6 +109,9 @@ async fn try_main() -> anyhow::Result<()> {
         .with_span_events(FmtSpan::CLOSE)
         .compact()
         .init();
+
+    let permissions = permissions_from_opts(&opts);
+    debug!("Permissions: {permissions:?}");
 
     match opts.command {
         Command::Eval { mut file, state } => {
@@ -142,17 +158,17 @@ async fn try_main() -> anyhow::Result<()> {
             let runner = if let Some(source) = &source {
                 debug!("Evaluating Lua code from stdin or a string input");
                 Runner::builder(source, reader)
-                    .allow_env(opts.allow_env)
                     .default_name("(stdin)")
                     .maybe_http_timeout(http_timeout)
+                    .permissions(permissions)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
                     .build()?
             } else {
                 debug!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
-                    .allow_env(opts.allow_env)
                     .maybe_http_timeout(http_timeout)
+                    .permissions(permissions)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
                     .build()?
@@ -242,11 +258,11 @@ async fn try_main() -> anyhow::Result<()> {
             let app_state = Arc::new(
                 AppState::builder()
                     .source(source)
-                    .allow_env(opts.allow_env.clone())
                     .maybe_http_timeout(http_timeout)
                     .max_body_size(max_body_size)
                     .name(name)
                     .no_store(opts.no_store)
+                    .permissions(permissions)
                     .maybe_state(state)
                     .maybe_store_path(opts.store_path)
                     .maybe_timeout(timeout)
@@ -273,11 +289,11 @@ fn build_router(app_state: Arc<AppState>) -> Router {
 struct AppState {
     #[builder(into)]
     source: String,
-    allow_env: Option<Vec<String>>,
     http_timeout: Option<Duration>,
     max_body_size: Option<usize>,
     name: Option<String>,
     no_store: Option<bool>,
+    permissions: Option<Permissions>,
     state: Option<Value>,
     store_path: Option<PathBuf>,
     timeout: Option<Duration>,

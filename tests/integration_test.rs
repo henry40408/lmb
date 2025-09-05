@@ -32,7 +32,8 @@ fn eval_env() {
         .assert()
         .success()
         .stdout_eq(str![[r#"
-bar
+null
+FOO = bar
 
 "#]])
         .stderr_eq(str![]);

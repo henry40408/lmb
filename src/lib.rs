@@ -25,6 +25,32 @@ mod bindings;
 /// Error handling module
 pub mod error;
 
+/// Permissions for accessing various resources
+#[derive(Clone, Debug)]
+pub struct Permissions {
+    /// Permissions for accessing environment variables
+    pub env: EnvPermissions,
+}
+
+impl Permissions {
+    /// Checks if the given environment variable key is allowed
+    pub fn is_env_allowed<S: AsRef<str>>(&self, key: S) -> bool {
+        match &self.env {
+            EnvPermissions::All => true,
+            EnvPermissions::Some(keys) => keys.contains(&key.as_ref().to_string()),
+        }
+    }
+}
+
+/// Permissions for accessing environment variables
+#[derive(Clone, Debug)]
+pub enum EnvPermissions {
+    /// All environment variables are accessible
+    All,
+    /// Some specific environment variables are accessible
+    Some(Vec<String>),
+}
+
 /// Represents a timeout error when executing a Lua script
 #[derive(Clone, Debug)]
 pub struct Timeout {
@@ -114,7 +140,7 @@ where
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
         #[builder(into)] default_name: Option<String>,
-        allow_env: Option<Vec<String>>,
+        permissions: Option<Permissions>,
         http_timeout: Option<Duration>,
         store: Option<Connection>,
         timeout: Option<Duration>,
@@ -159,7 +185,7 @@ where
             vm.register_module(
                 "@lmb",
                 Binding::builder(reader.clone())
-                    .maybe_allow_env(allow_env)
+                    .maybe_permissions(permissions)
                     .build(),
             )?;
             vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
