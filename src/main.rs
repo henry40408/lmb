@@ -323,10 +323,22 @@ struct AppState {
     timeout: Option<Duration>,
 }
 
+use mlua::prelude::*;
+
 #[tokio::main]
 async fn main() -> ExitCode {
     if let Err(e) = try_main().await {
-        eprintln!("Error: {e}");
+        match e.downcast_ref::<LmbError>() {
+            // strip traceback from the callback error to simplify error message
+            Some(LmbError::Lua(LuaError::CallbackError { .. })) => {
+                match e.to_string().lines().next() {
+                    Some(line) => eprintln!("Error: {line}"),
+                    _ => eprintln!("Error:{e}"),
+                }
+            }
+            _ => eprintln!("Error: {e}"),
+        }
+
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS

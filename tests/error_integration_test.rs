@@ -4,6 +4,29 @@ use snapbox::{
 };
 
 #[test]
+fn eval_callback_error() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "true")
+        .args(["eval", "--file", "src/fixtures/errors/callback-error.lua"])
+        .assert()
+        .failure()
+        .stdout_eq(str![])
+        .stderr_eq(str![[r#"
+  x EOF while parsing an object at line 1 column 1
+   ,-[@src/fixtures/errors/callback-error.lua:3:1]
+ 2 |   local json = require("@lmb/json")
+ 3 |   return json.decode("{")
+   : ^^^^^^^^^^^^^|^^^^^^^^^^^^
+   :              `-- EOF while parsing an object at line 1 column 1
+ 4 | end
+ 5 | 
+   `----
+Error: Lua error: EOF while parsing an object at line 1 column 1
+
+"#]]);
+}
+
+#[test]
 fn eval_error() {
     Command::new(cargo_bin("lmb"))
         .env("NO_COLOR", "true")
@@ -86,6 +109,7 @@ fn eval_syntax_error() {
         .failure()
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
+Error: Lua error: syntax error: src/fixtures/errors/syntax-error.lua:2: Incomplete statement: expected assignment or a function call
   x Incomplete statement: expected assignment or a function call
    ,-[@src/fixtures/errors/syntax-error.lua:2:1]
  1 | function syntax_error()
@@ -95,7 +119,6 @@ fn eval_syntax_error() {
  3 | end
  4 | 
    `----
-Error: Lua error: syntax error: src/fixtures/errors/syntax-error.lua:2: Incomplete statement: expected assignment or a function call
 
 "#]]);
 }

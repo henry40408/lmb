@@ -43,21 +43,21 @@ FOO = bar
 fn eval_error() {
     Command::new(cargo_bin("lmb"))
         .env("NO_COLOR", "true")
-        .args(["eval", "--file", "src/fixtures/error.lua"])
+        .args(["eval", "--file", "src/fixtures/errors/error.lua"])
         .assert()
         .failure()
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
-  x An error occurred
-   ,-[@src/fixtures/error.lua:3:1]
- 2 |   local a = 1
- 3 |   error("An error occurred")
-   : ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
-   :               `-- An error occurred
- 4 |   a = a + 1
- 5 |   return a
+  x unknown error
+   ,-[@src/fixtures/errors/error.lua:2:1]
+ 1 | function f()
+ 2 |   error("unknown error")
+   : ^^^^^^^^^^^^|^^^^^^^^^^^^
+   :             `-- unknown error
+ 3 |   return true
+ 4 | end
    `----
-Error: Lua value as error: "src/fixtures/error.lua:3: An error occurred"
+Error: Lua error: runtime error: src/fixtures/errors/error.lua:2: unknown error
 
 "#]]);
 }
@@ -165,22 +165,22 @@ Hello, world!
 fn eval_stdin_error() {
     Command::new(cargo_bin("lmb"))
         .env("NO_COLOR", "true")
-        .stdin(include_str!("../src/fixtures/error.lua"))
+        .stdin(include_str!("../src/fixtures/errors/error.lua"))
         .args(["eval", "--file", "-"])
         .assert()
         .failure()
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
-  x An error occurred
-   ,-[(stdin):3:1]
- 2 |   local a = 1
- 3 |   error("An error occurred")
-   : ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
-   :               `-- An error occurred
- 4 |   a = a + 1
- 5 |   return a
+  x unknown error
+   ,-[(stdin):2:1]
+ 1 | function f()
+ 2 |   error("unknown error")
+   : ^^^^^^^^^^^^|^^^^^^^^^^^^
+   :             `-- unknown error
+ 3 |   return true
+ 4 | end
    `----
-Error: Lua value as error: "(stdin):3: An error occurred"
+Error: Lua error: runtime error: (stdin):2: unknown error
 
 "#]]);
 }
