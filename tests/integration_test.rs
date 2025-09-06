@@ -57,7 +57,6 @@ fn eval_error() {
  3 |   return true
  4 | end
    `----
-Error: Lua error: runtime error: src/fixtures/errors/error.lua:2: unknown error
 
 "#]]);
 }
@@ -180,7 +179,6 @@ fn eval_stdin_error() {
  3 |   return true
  4 | end
    `----
-Error: Lua error: runtime error: (stdin):2: unknown error
 
 "#]]);
 }

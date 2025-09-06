@@ -21,7 +21,6 @@ fn eval_callback_error() {
  4 | end
  5 | 
    `----
-Error: Lua error: EOF while parsing an object at line 1 column 1
 
 "#]]);
 }
@@ -46,7 +45,6 @@ fn eval_callback_expr_error() {
    : ^^^^^^^^^^^^|^^^^^^^^^^^
    :             `-- EOF while parsing an object at line 1 column 1
    `----
-Error: Lua error: EOF while parsing an object at line 1 column 1
 
 "#]]);
 }
@@ -69,7 +67,6 @@ fn eval_error() {
  3 |   return true
  4 | end
    `----
-Error: Lua error: runtime error: src/fixtures/errors/error.lua:2: unknown error
 
 "#]]);
 }
@@ -90,7 +87,6 @@ fn eval_error_expr() {
    :            `-- unknown error
  2 | return true
    `----
-Error: Lua error: runtime error: src/fixtures/errors/error-expr.lua:1: unknown error
 
 "#]]);
 }
@@ -134,7 +130,6 @@ fn eval_syntax_error() {
         .failure()
         .stdout_eq(str![])
         .stderr_eq(str![[r#"
-Error: Lua error: syntax error: src/fixtures/errors/syntax-error.lua:2: Incomplete statement: expected assignment or a function call
   x Incomplete statement: expected assignment or a function call
    ,-[@src/fixtures/errors/syntax-error.lua:2:1]
  1 | function syntax_error()
