@@ -76,3 +76,26 @@ Error: Lua value as error: {"a":1}
 
 "#]]);
 }
+
+#[test]
+fn eval_syntax_error() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "true")
+        .args(["eval", "--file", "src/fixtures/errors/syntax-error.lua"])
+        .assert()
+        .failure()
+        .stdout_eq(str![])
+        .stderr_eq(str![[r#"
+  x Incomplete statement: expected assignment or a function call
+   ,-[@src/fixtures/errors/syntax-error.lua:2:1]
+ 1 | function syntax_error()
+ 2 |     ret true
+   : ^^^^^^|^^^^^^
+   :       `-- Incomplete statement: expected assignment or a function call
+ 3 | end
+ 4 | 
+   `----
+Error: Lua error: syntax error: src/fixtures/errors/syntax-error.lua:2: Incomplete statement: expected assignment or a function call
+
+"#]]);
+}

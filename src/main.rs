@@ -191,7 +191,7 @@ async fn try_main() -> anyhow::Result<()> {
                     .permissions(permissions)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
-                    .build()?
+                    .build()
             } else {
                 debug!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
@@ -199,7 +199,15 @@ async fn try_main() -> anyhow::Result<()> {
                     .permissions(permissions)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
-                    .build()?
+                    .build()
+            };
+
+            let runner = match runner {
+                Ok(runner) => runner,
+                Err(e) => {
+                    report_error(&file, &source, &e).await?;
+                    return Err(e.into());
+                }
             };
 
             let result = {

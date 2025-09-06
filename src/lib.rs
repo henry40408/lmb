@@ -442,7 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_syntax_error() {
-        let source = include_str!("fixtures/syntax-error.lua");
+        let source = include_str!("fixtures/errors/syntax-error.lua");
         let err = Runner::builder(source, empty())
             .default_name("test")
             .build()
