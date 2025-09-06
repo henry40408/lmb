@@ -1,4 +1,10 @@
-use std::{io::Read, path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
+use std::{
+    io::{Read, Write},
+    path::PathBuf,
+    process::ExitCode,
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::bail;
 use axum::{Router, routing::any};
@@ -13,7 +19,6 @@ use lmb::{
 use no_color::is_no_color;
 use rusqlite::Connection;
 use serde_json::{Value, json};
-use tokio::io::{self, AsyncWriteExt as _};
 use tracing::{Instrument, Level, debug, debug_span, info};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
@@ -111,7 +116,7 @@ async fn report_error(file: &Input, source: &Option<String>, e: &LmbError) -> an
         ErrorReport::Report(report) => {
             let mut s = String::new();
             render_report(&mut s, &report);
-            io::stderr().write_all(s.as_bytes()).await?;
+            std::io::stderr().write_all(s.as_bytes())?;
         }
         ErrorReport::String(msg) => eprintln!("{msg}"),
     }
@@ -152,7 +157,7 @@ async fn try_main() -> anyhow::Result<()> {
             });
             debug!("State: {state:?}");
 
-            let reader = io::stdin();
+            let reader = tokio::io::stdin();
             let source = if file.is_local() {
                 None
             } else if file.is_std() {
@@ -191,7 +196,7 @@ async fn try_main() -> anyhow::Result<()> {
                     .permissions(permissions)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
-                    .build()?
+                    .build()
             } else {
                 debug!("Evaluating Lua code from file: {:?}", file.path().path());
                 Runner::builder(file.path().path(), reader)
@@ -199,7 +204,15 @@ async fn try_main() -> anyhow::Result<()> {
                     .permissions(permissions)
                     .maybe_store(conn)
                     .maybe_timeout(timeout)
-                    .build()?
+                    .build()
+            };
+
+            let runner = match runner {
+                Ok(runner) => runner,
+                Err(e) => {
+                    report_error(&file, &source, &e).await?;
+                    return Err(e.into());
+                }
             };
 
             let result = {
@@ -318,7 +331,11 @@ struct AppState {
 #[tokio::main]
 async fn main() -> ExitCode {
     if let Err(e) = try_main().await {
-        eprintln!("Error: {e}");
+        match e.downcast_ref::<LmbError>() {
+            Some(LmbError::Lua(..)) => { /* error has been reported */ }
+            _ => eprintln!("Error: {e}"),
+        }
+
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS

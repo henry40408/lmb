@@ -334,7 +334,12 @@ where
                     return Ok(invoked.result(Err(LmbError::Lua(*e.clone()))).build());
                 } else {
                     let value = self.vm.from_value::<Value>(value.clone())?;
-                    return Ok(invoked.result(Err(LmbError::LuaValue(value))).build());
+                    return Ok(invoked
+                        .result(match value {
+                            Value::String(s) => Err(LmbError::Lua(LuaError::runtime(s))),
+                            _ => Err(LmbError::LuaValue(value)),
+                        })
+                        .build());
                 }
             } else {
                 unreachable!()
@@ -372,6 +377,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use mlua::prelude::*;
     use serde_json::json;
     use test_case::test_case;
     use tokio::io::empty;
@@ -412,19 +418,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_error_handling() {
-        let source = include_str!("fixtures/error.lua");
+        let source = include_str!("fixtures/errors/error.lua");
         let runner = Runner::builder(source, empty())
             .default_name("test")
             .build()
             .unwrap();
         let Some(Invoked {
-            result: Err(LmbError::LuaValue(value)),
+            result: Err(LmbError::Lua(LuaError::RuntimeError(message))),
             ..
         }) = runner.invoke().call().await.ok()
         else {
             panic!("Expected a Lua runtime error");
         };
-        assert_eq!(json!("test:3: An error occurred"), value);
+        assert_eq!("test:2: unknown error", message);
     }
 
     #[tokio::test]
@@ -437,7 +443,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_syntax_error() {
-        let source = include_str!("fixtures/syntax-error.lua");
+        let source = include_str!("fixtures/errors/syntax-error.lua");
         let err = Runner::builder(source, empty())
             .default_name("test")
             .build()

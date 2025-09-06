@@ -18,6 +18,32 @@ pub enum ErrorReport {
     Report(Report),
 }
 
+fn extract_line_number_from_traceback<'a>(name: &'a str, traceback: &'a str) -> Option<&'a str> {
+    let name = name.trim_start_matches("@").trim_start_matches("=");
+    traceback
+        .lines()
+        .find(|l| l.trim().starts_with(name))
+        .map(|l| l.trim())
+}
+
+fn parse_message<'a>(
+    name: &'a str,
+    message: &'a str,
+    traceback: Option<&'a String>,
+) -> Option<(usize, &'a str)> {
+    if let Some(traceback) = traceback {
+        let line_with_line_number = extract_line_number_from_traceback(name, traceback)?;
+        let captures = ERROR_MESSAGE.captures(line_with_line_number)?;
+        let line_number = captures.get(1)?.as_str().parse::<usize>().ok()?;
+        Some((line_number, message))
+    } else {
+        let captures = ERROR_MESSAGE.captures(message)?;
+        let line_number = captures.get(1)?.as_str().parse::<usize>().ok()?;
+        let message = captures.get(2)?.as_str();
+        Some((line_number, message))
+    }
+}
+
 /// Writes an error message to a string, extracting the line number and message from the Lua source.
 #[builder]
 pub fn build_report<S>(
@@ -35,48 +61,23 @@ where
     let Some(source) = std::str::from_utf8(&source).ok().map(|s| s.to_string()) else {
         return Ok(ErrorReport::String(error.to_string()));
     };
-    let message = match &error {
-        LmbError::Lua(e) => {
-            let e = e.chain().last().and_then(|e| e.downcast_ref::<LuaError>());
-            match e {
-                Some(LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. }) => {
-                    message
-                }
-                _ => return Ok(ErrorReport::String(error.to_string())),
-            }
+    let (message, traceback) = match &error {
+        LmbError::Lua(LuaError::CallbackError { traceback, cause }) => {
+            (&cause.to_string(), Some(traceback))
         }
-        LmbError::LuaValue(value) => {
-            if let Some(message) = value.as_str() {
-                &message.to_string()
-            } else {
-                return Ok(ErrorReport::String(error.to_string()));
-            }
+        LmbError::Lua(LuaError::RuntimeError(message) | LuaError::SyntaxError { message, .. }) => {
+            (message, None)
         }
         _ => return Ok(ErrorReport::String(error.to_string())),
     };
-    let Some(first_line) = message.lines().next() else {
-        return Ok(ErrorReport::String(error.to_string()));
-    };
-    let (line_number, message) = if let Some(caps) = ERROR_MESSAGE.captures(first_line) {
-        let Some(line_number) = caps
-            .get(1)
-            .map(|m| m.as_str())
-            .and_then(|s| s.parse::<usize>().ok())
-        else {
-            return Ok(ErrorReport::String(error.to_string()));
-        };
-        let Some(message) = caps.get(2).map(|m| m.as_str()) else {
-            return Ok(ErrorReport::String(error.to_string()));
-        };
-        (line_number, message)
-    } else {
+    let Some((line_number, message)) = parse_message(&name, message, traceback) else {
         return Ok(ErrorReport::String(error.to_string()));
     };
 
     let offsets: StringOffsets = StringOffsets::new(&source);
     let range = offsets.line_to_chars(line_number - 1);
 
-    let source = NamedSource::new(name, source).with_language("lua");
+    let source = NamedSource::new(&name, source).with_language("lua");
     let report = miette!(labels = vec![LabeledSpan::at(range, message)], "{message}")
         .with_source_code(source);
     Ok(ErrorReport::Report(report))
