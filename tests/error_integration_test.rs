@@ -27,6 +27,31 @@ Error: Lua error: EOF while parsing an object at line 1 column 1
 }
 
 #[test]
+fn eval_callback_expr_error() {
+    Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "true")
+        .args([
+            "eval",
+            "--file",
+            "src/fixtures/errors/callback-expr-error.lua",
+        ])
+        .assert()
+        .failure()
+        .stdout_eq(str![])
+        .stderr_eq(str![[r#"
+  x EOF while parsing an object at line 1 column 1
+   ,-[@src/fixtures/errors/callback-expr-error.lua:2:1]
+ 1 | local json = require("@lmb/json")
+ 2 | return json.decode("{")
+   : ^^^^^^^^^^^^|^^^^^^^^^^^
+   :             `-- EOF while parsing an object at line 1 column 1
+   `----
+Error: Lua error: EOF while parsing an object at line 1 column 1
+
+"#]]);
+}
+
+#[test]
 fn eval_error() {
     Command::new(cargo_bin("lmb"))
         .env("NO_COLOR", "true")
