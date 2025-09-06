@@ -334,7 +334,12 @@ where
                     return Ok(invoked.result(Err(LmbError::Lua(*e.clone()))).build());
                 } else {
                     let value = self.vm.from_value::<Value>(value.clone())?;
-                    return Ok(invoked.result(Err(LmbError::LuaValue(value))).build());
+                    return Ok(invoked
+                        .result(match value {
+                            Value::String(s) => Err(LmbError::Lua(LuaError::runtime(s))),
+                            _ => Err(LmbError::LuaValue(value)),
+                        })
+                        .build());
                 }
             } else {
                 unreachable!()
