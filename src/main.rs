@@ -13,8 +13,9 @@ use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
-    EnvPermissions, LmbError, Permissions, Runner,
+    LmbError, Runner,
     error::{ErrorReport, build_report, render_report},
+    permission::{EnvPermissions, NetPermissions, Permissions},
 };
 use no_color::is_no_color;
 use rusqlite::Connection;
@@ -29,18 +30,27 @@ const VERSION: &str = env!("APP_VERSION");
 #[derive(Debug, Parser)]
 #[clap(author, version=VERSION, about, long_about = None)]
 struct Opts {
+    /// Allow all resources
+    #[clap(long, env = "ALLOW_ALL")]
+    allow_all: bool,
     /// Allow all environment variables
-    #[clap(long, group = "env_group", env = "ALLOW_ALL_ENVS")]
+    #[clap(long, env = "ALLOW_ALL_ENVS")]
     allow_all_envs: bool,
     /// Allowed environment variables
-    #[clap(long, value_delimiter = ',', group = "env_group", env = "ALLOW_ENV")]
+    #[clap(long, value_delimiter = ',', env = "ALLOW_ENV")]
     allow_env: Vec<String>,
+    /// Denied environment variables. These take precedence over allowed variables
+    #[clap(long, value_delimiter = ',', env = "DENY_ENV")]
+    deny_env: Vec<String>,
     /// Allow all network addresses
-    #[clap(long, group = "net_group", env = "ALLOW_ALL_NET")]
+    #[clap(long, env = "ALLOW_ALL_NET")]
     allow_all_net: bool,
     /// Allowed network addresses
-    #[clap(long, value_delimiter = ',', group = "net_group", env = "ALLOW_NET")]
+    #[clap(long, value_delimiter = ',', env = "ALLOW_NET")]
     allow_net: Vec<String>,
+    /// Denied network addresses. These take precedence over allowed addresses
+    #[clap(long, value_delimiter = ',', env = "DENY_NET")]
+    deny_net: Vec<String>,
     /// Enable debug mode
     #[clap(long, short = 'd', env = "DEBUG")]
     debug: bool,
@@ -92,17 +102,34 @@ enum Command {
 }
 
 fn permissions_from_opts(opts: &Opts) -> Permissions {
-    Permissions {
-        env: if opts.allow_all_envs {
-            EnvPermissions::All
-        } else {
-            EnvPermissions::Some(opts.allow_env.clone())
-        },
-        net: if opts.allow_all_net {
-            lmb::NetPermissions::All
-        } else {
-            lmb::NetPermissions::Some(opts.allow_net.clone())
-        },
+    if opts.allow_all {
+        Permissions::All {
+            denied_env: opts.deny_env.clone(),
+            denied_net: opts.deny_net.clone(),
+        }
+    } else {
+        Permissions::Some {
+            env: if opts.allow_all_envs {
+                EnvPermissions::All {
+                    denied: opts.deny_env.clone(),
+                }
+            } else {
+                EnvPermissions::Some {
+                    allowed: opts.allow_env.clone(),
+                    denied: opts.deny_env.clone(),
+                }
+            },
+            net: if opts.allow_all_net {
+                NetPermissions::All {
+                    denied: opts.deny_net.clone(),
+                }
+            } else {
+                NetPermissions::Some {
+                    allowed: opts.allow_net.clone(),
+                    denied: opts.deny_net.clone(),
+                }
+            },
+        }
     }
 }
 
