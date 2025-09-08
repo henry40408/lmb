@@ -138,6 +138,8 @@ impl Permissions {
 
 #[cfg(test)]
 mod tests {
+    use url::Url;
+
     use crate::permission::{EnvPermissions, NetPermissions, Permissions};
 
     #[test]
@@ -150,6 +152,18 @@ mod tests {
         assert!(perm.is_env_allowed("B"));
         assert!(!perm.is_net_allowed("1.1.1.1"));
         assert!(perm.is_net_allowed("2.2.2.2"));
+
+        let perm = Permissions::Some {
+            env: EnvPermissions::All {
+                denied: vec!["A".to_string()],
+            },
+            net: NetPermissions::Some {
+                allowed: vec![],
+                denied: vec![],
+            },
+        };
+        assert!(!perm.is_env_allowed("A"));
+        assert!(perm.is_env_allowed("B"));
 
         let perm = Permissions::Some {
             env: EnvPermissions::Some {
@@ -165,12 +179,16 @@ mod tests {
         assert!(!perm.is_env_allowed("B"));
         assert!(!perm.is_env_allowed("C"));
 
+        assert!(!perm.is_net_allowed(""));
         assert!(perm.is_net_allowed("example.com:1234"));
         assert!(!perm.is_net_allowed("example.com:1235"));
 
         // no port is specific and domain name is not explicitly allowed,
         // it should be considered as denied
         assert!(!perm.is_net_allowed("example.com"));
+
+        assert!(!perm.is_url_allowed(&"ssh://example.com".parse::<Url>().unwrap()));
+        assert!(!perm.is_url_allowed(&"unix:/run/foo.socket".parse::<Url>().unwrap()));
     }
 
     #[test]
@@ -186,6 +204,7 @@ mod tests {
                 denied: vec!["example.com".to_string()],
             },
         };
+        assert!(!perm.is_net_allowed(""));
         assert!(!perm.is_net_allowed("example.com:1234"));
         assert!(!perm.is_net_allowed("example.com"));
     }
