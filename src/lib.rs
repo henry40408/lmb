@@ -3,8 +3,6 @@
 //! A library for running Lua scripts.
 
 use std::{
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -19,78 +17,19 @@ use serde_json::{Value, json};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader};
 use tracing::debug_span;
-use url::Url;
 
-use crate::bindings::{Binding, store::StoreBinding};
+use crate::{
+    bindings::{Binding, store::StoreBinding},
+    permission::Permissions,
+};
 
 mod bindings;
 
 /// Error handling module
 pub mod error;
 
-/// Permissions for accessing various resources
-#[derive(Clone, Debug)]
-pub struct Permissions {
-    /// Permissions for accessing environment variables
-    pub env: EnvPermissions,
-    /// Permissions for accessing network resources
-    pub net: NetPermissions,
-}
-
-impl Permissions {
-    /// Checks if the given environment variable key is allowed
-    pub fn is_env_allowed<S: AsRef<str>>(&self, key: S) -> bool {
-        match &self.env {
-            EnvPermissions::All => true,
-            EnvPermissions::Some(keys) => keys.contains(&key.as_ref().to_string()),
-        }
-    }
-
-    /// Checks if the given network address is allowed
-    pub fn is_net_allowed<S: AsRef<str>>(&self, addr: S) -> bool {
-        match &self.net {
-            NetPermissions::All => true,
-            NetPermissions::Some(expected) => {
-                let addr = addr.as_ref();
-                if let Ok(addr) = SocketAddr::from_str(addr) {
-                    let (ip, port) = (addr.ip(), addr.port());
-                    expected.contains(&format!("{ip}:{port}"))
-                } else if let Ok(ip) = IpAddr::from_str(addr) {
-                    expected.contains(&format!("{ip}"))
-                } else {
-                    expected.contains(&addr.to_string())
-                }
-            }
-        }
-    }
-
-    /// Checks if the given URL is allowed
-    pub fn is_url_allowed(&self, url: &Url) -> bool {
-        match (url.host_str(), url.port()) {
-            (Some(host), Some(port)) => self.is_net_allowed(format!("{host}:{port}")),
-            (Some(host), None) => self.is_net_allowed(host),
-            _ => false,
-        }
-    }
-}
-
-/// Permissions for accessing environment variables
-#[derive(Clone, Debug)]
-pub enum EnvPermissions {
-    /// All environment variables are accessible
-    All,
-    /// Some specific environment variables are accessible
-    Some(Vec<String>),
-}
-
-/// Permissions for accessing network resources
-#[derive(Clone, Debug)]
-pub enum NetPermissions {
-    /// All network resources are accessible
-    All,
-    /// Some specific network resources are accessible
-    Some(Vec<String>),
-}
+/// Permission module
+pub mod permission;
 
 /// Represents a timeout error when executing a Lua script
 #[derive(Clone, Debug)]
@@ -472,42 +411,5 @@ mod tests {
             panic!("Expected a Lua value error");
         };
         assert_eq!(json!({"a": 1}), value);
-    }
-
-    #[test]
-    fn test_permissions() {
-        let perm = Permissions {
-            env: EnvPermissions::All,
-            net: NetPermissions::All,
-        };
-        assert!(perm.is_env_allowed("ANYTHING"));
-        assert!(perm.is_net_allowed("1.1.1.1"));
-
-        let perm = Permissions {
-            env: EnvPermissions::Some(vec!["A".to_string(), "B".to_string()]),
-            net: NetPermissions::Some(vec![
-                "1.1.1.1".to_string(),
-                "1.1.1.1:1234".to_string(),
-                "example.com".to_string(),
-                "example.com:1234".to_string(),
-            ]),
-        };
-
-        assert!(perm.is_env_allowed("A"));
-        assert!(perm.is_env_allowed("B"));
-        assert!(!perm.is_env_allowed("C"));
-
-        assert!(perm.is_net_allowed("1.1.1.1"));
-        assert!(perm.is_net_allowed("1.1.1.1:1234"));
-        assert!(!perm.is_net_allowed("1.1.1.2"));
-        assert!(!perm.is_net_allowed("1.1.1.1:1235"));
-
-        assert!(perm.is_net_allowed("example.com"));
-        assert!(perm.is_net_allowed("example.com:1234"));
-        assert!(!perm.is_net_allowed("example.com:1235"));
-
-        assert!(perm.is_url_allowed(&"http://example.com".parse::<Url>().unwrap()));
-        assert!(perm.is_url_allowed(&"http://example.com:1234".parse::<Url>().unwrap()));
-        assert!(!perm.is_url_allowed(&"http://example.com:1235".parse::<Url>().unwrap()));
     }
 }
