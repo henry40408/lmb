@@ -60,7 +60,7 @@ impl Visitor for CommentVisitor {
 
 #[tokio::test]
 async fn test_guided_tour() {
-    let content = include_str!("../GUIDED_TOUR.md");
+    let content = include_str!("../docs/guided-tour.md");
     let parser = Parser::new_ext(content, Options::all());
 
     let sources = {

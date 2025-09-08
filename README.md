@@ -23,7 +23,7 @@ $ lmb eval --file hello.lua
 Hello, world!
 ```
 
-For more information, please read [the guided tour](GUIDED_TOUR.md).
+For more information, please read [the guided tour](docs/guided-tour.md).
 
 ## Features
 
