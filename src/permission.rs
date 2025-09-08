@@ -94,7 +94,7 @@ impl Permissions {
             // domain name e.g. example.com or example.com:1234
             let parts = addr.split(':').collect::<Vec<_>>();
             match (parts.first(), parts.get(1)) {
-                (Some(host), None) => expected.contains(&(*host).to_string()),
+                (Some(host), None) if !host.is_empty() => expected.contains(&(*host).to_string()),
                 // when list = ("example.com"), both "example.com" and "example.com:1234" matches
                 (Some(host), Some(port)) => {
                     expected.contains(&(*host).to_string())
@@ -180,6 +180,7 @@ mod tests {
         assert!(!perm.is_env_allowed("C"));
 
         assert!(!perm.is_net_allowed(""));
+        assert!(!perm.is_net_allowed(":1234"));
         assert!(perm.is_net_allowed("example.com:1234"));
         assert!(!perm.is_net_allowed("example.com:1235"));
 
