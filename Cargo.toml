@@ -70,6 +70,7 @@ url = "2.5.4"
 [dev-dependencies]
 axum-test = "18.0.2"
 criterion = { version = "0.7.0", features = ["async_tokio"] }
+curl-parser = "0.6.0"
 full_moon = "2.0.0"
 mockito = "1.7.0"
 pulldown-cmark = "0.13.0"
