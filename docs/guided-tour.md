@@ -531,3 +531,42 @@ end
 
 return yaml_decode
 ```
+
+## Handle HTTP requests with Lua scripts
+
+The following example shows a curl command and a Lua script named `handle_request.lua`.
+
+```lua
+--[[
+--name = "Handle requests with Lua script"
+--input = '{"a":1}'
+--curl = "curl -X POST -H 'x-api-key: api-key' --data '{\"a\":1}' http://localhost:3000/a/b/c"
+--]]
+function handle_request(ctx)
+  local request = ctx.request
+  assert("POST" == request.method, "Expected POST method")
+  assert("/a/b/c" == request.path, "Expected path /a/b/c")
+  assert("api-key" == request.headers["x-api-key"], "Expected x-api-key header")
+  assert('{"a":1}' == io.read("*a"), 'Expected body {"a":1}')
+  return {
+    status_code = 201,
+    headers = { ["content-type"] = "text/html", ["i-am"] = "teapot" },
+    body = "<h1>I am a teapot</h1>",
+  }
+end
+
+return handle_request
+```
+
+Run the following commands to handle requests with the Lua script:
+
+```bash
+$ lmb serve --file handle_request.lua &
+$ curl -v -H 'x-api-key: api-key' --data '{"a":1}' http://localhost:3000/a/b/c
+< HTTP/1.1 201 Created
+< content-type: text/html
+< i-am: teapot
+< content-length: 22
+<
+<h1>I am a teapot</h1>
+```

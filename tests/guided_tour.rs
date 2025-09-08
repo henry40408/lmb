@@ -1,5 +1,6 @@
-use std::{io::Cursor, time::Duration};
+use std::{io::Cursor, str::FromStr, time::Duration};
 
+use curl_parser::ParsedRequest;
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
 use lmb::{Runner, State};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
@@ -9,6 +10,7 @@ use toml::Table;
 
 #[derive(Default)]
 struct CommentVisitor {
+    curl: Option<String>,
     name: String,
     assert_return: Option<Value>,
     input: String,
@@ -54,6 +56,9 @@ impl Visitor for CommentVisitor {
         }
         if let Some(toml::Value::Integer(timeout)) = parsed.get("timeout") {
             self.timeout = Some(Duration::from_millis(*timeout as u64));
+        }
+        if let Some(toml::Value::String(curl)) = parsed.get("curl") {
+            self.curl = Some(curl.clone());
         }
     }
 }
@@ -113,18 +118,40 @@ async fn test_guided_tour() {
             }
         }
 
-        let input = Cursor::new(visitor.input);
         let conn = if visitor.store {
             Some(Connection::open_in_memory().unwrap())
         } else {
             None
+        };
+
+        let (request, input) = match &visitor.curl {
+            Some(curl) => {
+                let parsed = ParsedRequest::from_str(curl).unwrap();
+                let headers = {
+                    let mut m = json!({});
+                    for (k, v) in parsed.headers.iter() {
+                        m[k.as_str()] = json!(v.to_str().unwrap());
+                    }
+                    m
+                };
+                let request = json!({
+                    "method": parsed.method.as_str(),
+                    "path": parsed.url.path(),
+                    "headers": headers,
+                });
+                (Some(request), Cursor::new(parsed.body.concat()))
+            }
+            None => (None, Cursor::new(visitor.input)),
         };
         let runner = Runner::builder(&source, input)
             .maybe_store(conn)
             .maybe_timeout(visitor.timeout)
             .build()
             .unwrap();
-        let state = State::builder().maybe_state(visitor.state).build();
+        let state = State::builder()
+            .maybe_request(request)
+            .maybe_state(visitor.state)
+            .build();
         let value = runner
             .invoke()
             .state(state)
