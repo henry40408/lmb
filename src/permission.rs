@@ -86,7 +86,7 @@ impl Permissions {
         if let Ok(addr) = SocketAddr::from_str(addr) {
             // host with port e.g. 1.1.1.1:1234
             let (ip, port) = (addr.ip(), addr.port());
-            expected.contains(&format!("{ip}:{port}"))
+            expected.contains(&format!("{ip}:{port}")) || expected.contains(&ip.to_string())
         } else if let Ok(addr) = IpAddr::from_str(addr) {
             // host without port e.g. 1.1.1.1
             expected.contains(&addr.to_string())
@@ -138,75 +138,168 @@ impl Permissions {
 
 #[cfg(test)]
 mod tests {
+    use test_case::test_case;
     use url::Url;
 
     use crate::permission::{EnvPermissions, NetPermissions, Permissions};
 
-    #[test]
-    fn test_permissions() {
+    #[test_case(true, "A", &[])]
+    #[test_case(false, "A", &["A"])]
+    #[test_case(true, "A", &["B"])]
+    fn test_all_env(expected: bool, actual: &str, denied_env: &[&str]) {
         let perm = Permissions::All {
-            denied_env: vec!["A".to_string()],
-            denied_net: vec!["1.1.1.1".to_string()],
+            denied_env: denied_env.iter().map(|s| (*s).to_string()).collect(),
+            denied_net: vec![],
         };
-        assert!(!perm.is_env_allowed("A"));
-        assert!(perm.is_env_allowed("B"));
-        assert!(!perm.is_net_allowed("1.1.1.1"));
-        assert!(perm.is_net_allowed("2.2.2.2"));
-
-        let perm = Permissions::Some {
-            env: EnvPermissions::All {
-                denied: vec!["A".to_string()],
-            },
-            net: NetPermissions::Some {
-                allowed: vec![],
-                denied: vec![],
-            },
-        };
-        assert!(!perm.is_env_allowed("A"));
-        assert!(perm.is_env_allowed("B"));
-
-        let perm = Permissions::Some {
-            env: EnvPermissions::Some {
-                allowed: vec!["A".to_string()],
-                denied: vec!["B".to_string()],
-            },
-            net: NetPermissions::Some {
-                allowed: vec!["example.com:1234".to_string()],
-                denied: vec!["example.com:1235".to_string()],
-            },
-        };
-        assert!(perm.is_env_allowed("A"));
-        assert!(!perm.is_env_allowed("B"));
-        assert!(!perm.is_env_allowed("C"));
-
-        assert!(!perm.is_net_allowed(""));
-        assert!(!perm.is_net_allowed(":1234"));
-        assert!(perm.is_net_allowed("example.com:1234"));
-        assert!(!perm.is_net_allowed("example.com:1235"));
-
-        // no port is specific and domain name is not explicitly allowed,
-        // it should be considered as denied
-        assert!(!perm.is_net_allowed("example.com"));
-
-        assert!(!perm.is_url_allowed(&"ssh://example.com".parse::<Url>().unwrap()));
-        assert!(!perm.is_url_allowed(&"unix:/run/foo.socket".parse::<Url>().unwrap()));
+        assert_eq!(expected, perm.is_env_allowed(actual));
     }
 
-    #[test]
-    fn test_deny_domain_but_allow_port() {
+    #[test_case(true, "", &[])]
+    #[test_case(true, "1.1.1.1", &[])]
+    #[test_case(false, "1.1.1.1", &["1.1.1.1"])]
+    #[test_case(true, "1.1.1.1", &["2.2.2.2"])]
+    #[test_case(true, "1.1.1.1:1234", &[])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1"])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1:1234"])]
+    #[test_case(true, "1.1.1.1:1234", &["1.1.1.1:1235"])]
+    #[test_case(true,"example.com", &[])]
+    #[test_case(false,"example.com", &["example.com"])]
+    #[test_case(true,"example.com", &["example.com:443"])]
+    #[test_case(true,"example.com", &["another.com"])]
+    #[test_case(true,"example.com", &["another.com:443"])]
+    #[test_case(true,"example.com:443", &[])]
+    #[test_case(false,"example.com:443", &["example.com"])]
+    #[test_case(false,"example.com:443", &["example.com:443"])]
+    #[test_case(true,"example.com:443", &["another.com"])]
+    #[test_case(true,"example.com:443", &["another.com:443"])]
+    fn test_all_net(expected: bool, actual: &str, denied_net: &[&str]) {
+        let perm = Permissions::All {
+            denied_env: vec![],
+            denied_net: denied_net.iter().map(|s| (*s).to_string()).collect(),
+        };
+        assert_eq!(expected, perm.is_net_allowed(actual));
+    }
+
+    #[test_case(true, "A", &[])]
+    #[test_case(false, "A", &["A"])]
+    #[test_case(true, "A",  &["B"])]
+    fn test_some_all_env(expected: bool, actual: &str, denied_env: &[&str]) {
+        let perm = Permissions::Some {
+            env: EnvPermissions::All {
+                denied: denied_env.iter().map(|s| (*s).to_string()).collect(),
+            },
+            net: NetPermissions::All { denied: vec![] },
+        };
+        assert_eq!(expected, perm.is_env_allowed(actual));
+    }
+
+    #[test_case(false, "A", &[], &[])]
+    #[test_case(true, "A", &["A"], &[])]
+    #[test_case(false, "A", &["A"], &["A"])]
+    #[test_case(true, "A", &["A"], &["B"])]
+    #[test_case(false, "A", &["B"], &[])]
+    #[test_case(false, "A", &["B"], &["A"])]
+    #[test_case(false, "A", &["B"], &["B"])]
+    fn test_some_some_env(expected: bool, actual: &str, allowed_env: &[&str], denied_env: &[&str]) {
         let perm = Permissions::Some {
             env: EnvPermissions::Some {
-                allowed: vec![],
-                denied: vec![],
+                allowed: allowed_env.iter().map(|s| (*s).to_string()).collect(),
+                denied: denied_env.iter().map(|s| (*s).to_string()).collect(),
             },
-            // the following configuration conflicts because "example.com" is already denied
-            net: NetPermissions::Some {
-                allowed: vec!["example.com:1234".to_string()],
-                denied: vec!["example.com".to_string()],
+            net: NetPermissions::All { denied: vec![] },
+        };
+        assert_eq!(expected, perm.is_env_allowed(actual));
+    }
+
+    #[test_case(true, "", &[])]
+    #[test_case(true, "1.1.1.1", &[])]
+    #[test_case(false, "1.1.1.1", &["1.1.1.1"])]
+    #[test_case(true, "1.1.1.1", &["2.2.2.2"])]
+    #[test_case(true, "1.1.1.1:1234", &[])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1"])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1:1234"])]
+    #[test_case(true, "1.1.1.1:1234", &["1.1.1.1:1235"])]
+    #[test_case(true,"example.com", &[])]
+    #[test_case(false,"example.com", &["example.com"])]
+    #[test_case(true,"example.com", &["example.com:443"])]
+    #[test_case(true,"example.com", &["another.com"])]
+    #[test_case(true,"example.com", &["another.com:443"])]
+    #[test_case(true,"example.com:443", &[])]
+    #[test_case(false,"example.com:443", &["example.com"])]
+    #[test_case(false,"example.com:443", &["example.com:443"])]
+    #[test_case(true,"example.com:443", &["another.com"])]
+    #[test_case(true,"example.com:443", &["another.com:443"])]
+    fn test_some_all_net(expected: bool, actual: &str, denied_net: &[&str]) {
+        let perm = Permissions::Some {
+            env: EnvPermissions::All { denied: vec![] },
+            net: NetPermissions::All {
+                denied: denied_net.iter().map(|s| (*s).to_string()).collect(),
             },
         };
-        assert!(!perm.is_net_allowed(""));
-        assert!(!perm.is_net_allowed("example.com:1234"));
-        assert!(!perm.is_net_allowed("example.com"));
+        assert_eq!(expected, perm.is_net_allowed(actual));
+    }
+
+    #[test_case(false, "", &[], &[])]
+    #[test_case(false, "1.1.1.1", &[], &[])]
+    #[test_case(true, "1.1.1.1", &["1.1.1.1"], &[])]
+    #[test_case(false, "1.1.1.1", &["1.1.1.1"], &["1.1.1.1"])]
+    #[test_case(false, "1.1.1.1", &["2.2.2.2"], &[])]
+    #[test_case(false, "1.1.1.1:1234", &[], &[])]
+    #[test_case(true, "1.1.1.1:1234", &["1.1.1.1"], &[])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1"], &["1.1.1.1"])]
+    #[test_case(true, "1.1.1.1:1234", &["1.1.1.1:1234"], &[])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1:1234"], &["1.1.1.1:1234"])]
+    #[test_case(false, "1.1.1.1:1234", &["1.1.1.1:1235"], &[])]
+    #[test_case(false, "example.com", &[], &[])]
+    #[test_case(true, "example.com", &["example.com"], &[])]
+    #[test_case(false, "example.com", &["example.com"], &["example.com"])]
+    #[test_case(false, "example.com", &["example.com:443"], &[])]
+    #[test_case(false, "example.com", &["another.com"], &[])]
+    #[test_case(false, "example.com", &["another.com:443"], &[])]
+    #[test_case(false, "example.com:443", &[], &[])]
+    #[test_case(true, "example.com:443", &["example.com"], &[])]
+    #[test_case(false, "example.com:443", &["example.com"], &["example.com"])]
+    #[test_case(true, "example.com:443", &["example.com:443"], &[])]
+    #[test_case(false, "example.com:443", &["example.com:443"], &["example.com:443"])]
+    #[test_case(false, "example.com:443", &["another.com"], &[])]
+    #[test_case(false, "example.com:443", &["another.com:443"], &[])]
+
+    fn test_some_some_net(expected: bool, actual: &str, allowed_net: &[&str], denied_net: &[&str]) {
+        let perm = Permissions::Some {
+            env: EnvPermissions::All { denied: vec![] },
+            net: NetPermissions::Some {
+                allowed: allowed_net.iter().map(|s| (*s).to_string()).collect(),
+                denied: denied_net.iter().map(|s| (*s).to_string()).collect(),
+            },
+        };
+        assert_eq!(expected, perm.is_net_allowed(actual));
+    }
+
+    #[test_case(false, "http://1.1.1.1", &[], &[])]
+    #[test_case(true, "http://1.1.1.1", &["1.1.1.1"], &[])]
+    #[test_case(false, "http://1.1.1.1", &["1.1.1.1"], &["1.1.1.1"])]
+    #[test_case(true, "http://1.1.1.1", &["1.1.1.1:80"], &[])]
+    #[test_case(false, "http://1.1.1.1", &["1.1.1.1:80"], &["1.1.1.1:80"])]
+    #[test_case(false,"http://example.com", &[], &[])]
+    #[test_case(true, "http://example.com", &["example.com"], &[])]
+    #[test_case(false, "http://example.com", &["example.com"], &["example.com"])]
+    #[test_case(true, "http://example.com", &["example.com:80"], &[])]
+    #[test_case(false, "http://example.com", &["example.com:80"], &["example.com:80"])]
+    #[test_case(false, "http://example.com", &["another.com"], &[])]
+    #[test_case(false, "http://example.com", &["another.com:80"], &[])]
+    #[test_case(false, "ssh://example.com", &[], &[])]
+    #[test_case(false, "unix:/run/foo.socket", &[], &[])]
+    fn test_url(expected: bool, actual: &str, allowed_net: &[&str], denied_net: &[&str]) {
+        let perm = Permissions::Some {
+            env: EnvPermissions::All { denied: vec![] },
+            net: NetPermissions::Some {
+                allowed: allowed_net.iter().map(|s| (*s).to_string()).collect(),
+                denied: denied_net.iter().map(|s| (*s).to_string()).collect(),
+            },
+        };
+        assert_eq!(
+            expected,
+            perm.is_url_allowed(&actual.parse::<Url>().unwrap())
+        );
     }
 }
