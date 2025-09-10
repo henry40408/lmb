@@ -12,10 +12,14 @@ use std::{
 
 use bon::{Builder, bon};
 use mlua::{AsChunk, prelude::*};
+use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader};
+use tokio::{
+    io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader},
+    sync::Mutex as AsyncMutex,
+};
 use tracing::debug_span;
 
 use crate::{
@@ -77,8 +81,8 @@ pub enum LmbError {
     Timeout(#[from] Timeout),
 }
 
-type LmbInput<R> = Arc<tokio::sync::Mutex<BufReader<R>>>;
-type LmbStore = Arc<parking_lot::Mutex<Connection>>;
+type LmbInput<R> = Arc<AsyncMutex<BufReader<R>>>;
+type LmbStore = Arc<Mutex<Connection>>;
 
 /// Result type for the library
 pub type LmbResult<T> = Result<T, LmbError>;
@@ -120,8 +124,32 @@ where
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
         #[builder(into)] default_name: Option<String>,
-        permissions: Option<Permissions>,
         http_timeout: Option<Duration>,
+        permissions: Option<Permissions>,
+        store: Option<Connection>,
+        timeout: Option<Duration>,
+    ) -> LmbResult<Self>
+    where
+        S: AsChunk + Clone,
+    {
+        let reader = Arc::new(AsyncMutex::new(BufReader::new(reader)));
+        Self::new_with_reader(source, reader)
+            .maybe_default_name(default_name)
+            .maybe_http_timeout(http_timeout)
+            .maybe_permissions(permissions)
+            .maybe_store(store)
+            .maybe_timeout(timeout)
+            .call()
+    }
+
+    /// Creates a new Lua runner with the given source code and input reader
+    #[builder]
+    pub fn new_with_reader<S>(
+        #[builder(start_fn)] source: S,
+        #[builder(start_fn)] reader: LmbInput<R>,
+        #[builder(into)] default_name: Option<String>,
+        http_timeout: Option<Duration>,
+        permissions: Option<Permissions>,
         store: Option<Connection>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
@@ -159,7 +187,6 @@ where
             }
         };
 
-        let reader = Arc::new(tokio::sync::Mutex::new(BufReader::new(reader)));
         {
             let _ = debug_span!("register_modules").entered();
             vm.register_module(
@@ -319,9 +346,26 @@ mod tests {
     use mlua::prelude::*;
     use serde_json::json;
     use test_case::test_case;
-    use tokio::io::empty;
+    use tokio::{io::empty, sync::Mutex};
 
     use super::*;
+
+    #[tokio::test]
+    async fn test_error_handling() {
+        let source = include_str!("fixtures/errors/error.lua");
+        let runner = Runner::builder(source, empty())
+            .default_name("test")
+            .build()
+            .unwrap();
+        let Some(Invoked {
+            result: Err(LmbError::Lua(LuaError::RuntimeError(message))),
+            ..
+        }) = runner.invoke().call().await.ok()
+        else {
+            panic!("Expected a Lua runtime error");
+        };
+        assert_eq!("test:2: unknown error", message);
+    }
 
     #[test_case(include_str!("fixtures/hello.lua"), None, json!(true); "hello")]
     #[test_case(include_str!("fixtures/add.lua"), Some(json!(1)), json!(2); "add")]
@@ -356,28 +400,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_error_handling() {
-        let source = include_str!("fixtures/errors/error.lua");
-        let runner = Runner::builder(source, empty())
-            .default_name("test")
-            .build()
-            .unwrap();
-        let Some(Invoked {
-            result: Err(LmbError::Lua(LuaError::RuntimeError(message))),
-            ..
-        }) = runner.invoke().call().await.ok()
-        else {
-            panic!("Expected a Lua runtime error");
-        };
-        assert_eq!("test:2: unknown error", message);
-    }
-
-    #[tokio::test]
     async fn test_multi() {
         let source = include_str!("fixtures/multi.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         assert_eq!(json!([true, 1]), result.result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_new_with_reader() {
+        let source = include_str!("fixtures/hello.lua");
+        let reader = Arc::new(Mutex::new(BufReader::new(empty())));
+        Runner::new_with_reader(source, reader).call().unwrap();
     }
 
     #[tokio::test]
