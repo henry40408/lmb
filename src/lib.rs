@@ -29,8 +29,6 @@ use crate::{
     permission::Permissions,
 };
 
-mod bindings;
-
 /// Error handling module
 pub mod error;
 
@@ -42,6 +40,9 @@ pub mod pool;
 
 /// Store module
 pub mod store;
+
+mod bindings;
+mod stmt;
 
 /// Represents a timeout error when executing a Lua script
 #[derive(Clone, Debug)]

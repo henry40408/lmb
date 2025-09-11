@@ -7,12 +7,7 @@ use rusqlite::params;
 use serde_json::Value;
 use tracing::debug_span;
 
-use crate::{LmbResult, LmbStore, store::Store};
-
-static MIGRATIONS: &[&str] = &[include_str!("migrations/0001-initial.sql")];
-
-static SQL_PUT: &str = "INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)";
-static SQL_GET: &str = "SELECT value FROM store WHERE key = ?";
+use crate::{stmt::{MIGRATIONS, SQL_GET, SQL_PUT}, store::Store, LmbResult, LmbStore};
 
 pub(crate) struct StoreSnapshotBinding {
     inner: Arc<DashMap<String, Value>>,

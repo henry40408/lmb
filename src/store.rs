@@ -2,10 +2,10 @@ use bon::bon;
 use rusqlite::params;
 use serde_json::Value;
 
-use crate::{LmbResult, LmbStore};
-
-static SQL_PUT: &str = "INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)";
-static SQL_GET: &str = "SELECT value FROM store WHERE key = ?";
+use crate::{
+    LmbResult, LmbStore,
+    stmt::{SQL_GET, SQL_PUT},
+};
 
 /// Represents a key-value store for Lua scripts.
 #[derive(Debug)]
