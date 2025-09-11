@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_new_with_reader() {
+    async fn test_from_arc_mutex() {
         let source = include_str!("fixtures/hello.lua");
         let reader = Arc::new(Mutex::new(BufReader::new(empty())));
         Runner::from_arc_mutex(source, reader).call().unwrap();
