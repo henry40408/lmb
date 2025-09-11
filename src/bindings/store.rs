@@ -7,12 +7,11 @@ use rusqlite::params;
 use serde_json::Value;
 use tracing::debug_span;
 
-use crate::{LmbResult, LmbStore};
-
-static MIGRATIONS: &[&str] = &[include_str!("migrations/0001-initial.sql")];
-
-static SQL_PUT: &str = "INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)";
-static SQL_GET: &str = "SELECT value FROM store WHERE key = ?";
+use crate::{
+    LmbResult, LmbStore,
+    stmt::{MIGRATIONS, SQL_GET, SQL_PUT},
+    store::Store,
+};
 
 pub(crate) struct StoreSnapshotBinding {
     inner: Arc<DashMap<String, Value>>,
@@ -76,29 +75,25 @@ impl LuaUserData for StoreBinding {
                 let Some(store) = &this.store else {
                     return Ok(LuaNil);
                 };
-                let conn = store.lock();
-                let value = vm.from_value::<Value>(value)?;
-                let serialized = rmp_serde::to_vec(&value).into_lua_err()?;
-                conn.execute(SQL_PUT, params![key, serialized])
-                    .into_lua_err()?;
+                let store = Store::builder(store.clone()).build();
+                let value = vm.from_value(value)?;
+                store.put(key, &value).into_lua_err()?;
                 Ok(LuaNil)
             },
         );
+
         methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
             let _ = debug_span!("store_index", %key).entered();
             let Some(store) = &this.store else {
                 return Ok(LuaNil);
             };
-            let conn = store.lock();
-            let mut stmt = conn.prepare(SQL_GET).into_lua_err()?;
-            let mut rows = stmt.query(params![key]).into_lua_err()?;
-            if let Some(row) = rows.next().into_lua_err()? {
-                let value: Vec<u8> = row.get(0).into_lua_err()?;
-                let value: Value = rmp_serde::from_slice(&value).into_lua_err()?;
-                return vm.to_value(&value);
+            let store = Store::builder(store.clone()).build();
+            if let Some(value) = &store.get(key).into_lua_err()? {
+                return vm.to_value(value);
             }
             Ok(LuaNil)
         });
+
         methods.add_method(
             "update",
             |vm, this, (keys_defaults, f): (LuaTable, LuaFunction)| {

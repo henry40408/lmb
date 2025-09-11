@@ -3,6 +3,8 @@
 //! A library for running Lua scripts.
 
 use std::{
+    error::Error,
+    fmt,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -20,20 +22,27 @@ use tokio::{
     io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader},
     sync::Mutex as AsyncMutex,
 };
-use tracing::debug_span;
+use tracing::{Instrument, debug_span};
 
 use crate::{
     bindings::{Binding, store::StoreBinding},
     permission::Permissions,
 };
 
-mod bindings;
-
 /// Error handling module
 pub mod error;
 
 /// Permission module
 pub mod permission;
+
+/// Pool module
+pub mod pool;
+
+/// Store module
+pub mod store;
+
+mod bindings;
+mod stmt;
 
 /// Represents a timeout error when executing a Lua script
 #[derive(Clone, Debug)]
@@ -42,8 +51,8 @@ pub struct Timeout {
     timeout: Duration,
 }
 
-impl std::fmt::Display for Timeout {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Timeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Lua script execution timed out after {:?}, timeout was {:?}",
@@ -52,7 +61,7 @@ impl std::fmt::Display for Timeout {
     }
 }
 
-impl std::error::Error for Timeout {}
+impl Error for Timeout {}
 
 /// Represents the state of the Lua script execution
 #[derive(Builder, Debug)]
@@ -73,9 +82,18 @@ pub enum LmbError {
     /// Error converting a Lua value to a Rust type
     #[error("Lua value as error: {0}")]
     LuaValue(Value),
+    /// Error decoding ``MessagePack`` data
+    #[error("MessagePack decode error: {0}")]
+    RMPDecode(#[from] rmp_serde::decode::Error),
+    /// Error encoding ``MessagePack`` data
+    #[error("MessagePack encode error: {0}")]
+    RMPEncode(#[from] rmp_serde::encode::Error),
     /// Error from reqwest crate
     #[error("reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
+    /// Error from rusqlite crate
+    #[error("SQLite error: {0}")]
+    SQLite(#[from] rusqlite::Error),
     /// Error when the Lua script times out
     #[error("Timeout: {0}")]
     Timeout(#[from] Timeout),
@@ -133,7 +151,8 @@ where
         S: AsChunk + Clone,
     {
         let reader = Arc::new(AsyncMutex::new(BufReader::new(reader)));
-        Self::new_with_reader(source, reader)
+        let store = store.map(|s| Arc::new(Mutex::new(s)));
+        Self::from_arc_mutex(source, reader)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
             .maybe_permissions(permissions)
@@ -144,13 +163,13 @@ where
 
     /// Creates a new Lua runner with the given source code and input reader
     #[builder]
-    pub fn new_with_reader<S>(
+    pub fn from_arc_mutex<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: LmbInput<R>,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
-        store: Option<Connection>,
+        store: Option<LmbStore>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
@@ -186,7 +205,6 @@ where
                 (vm, func)
             }
         };
-
         {
             let _ = debug_span!("register_modules").entered();
             vm.register_module(
@@ -209,22 +227,19 @@ where
             vm.register_module("@lmb/toml", bindings::toml::TomlBinding {})?;
             vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
         }
-
         let func = vm.load(WRAP_FUNC).eval::<LuaFunction>()?.bind(func)?;
         let mut runner = Self {
             func,
             reader,
-            store: store.map(|conn| Arc::new(parking_lot::Mutex::new(conn))),
+            store,
             timeout,
             vm, // otherwise the Lua VM would be destroyed
         };
-
         {
             let _ = debug_span!("binding_globals").entered();
             bindings::globals::bind(&mut runner)?;
             bindings::io::bind(&mut runner)?;
         }
-
         Ok(runner)
     }
 
@@ -268,8 +283,13 @@ where
             .used_memory(used_memory.load(Ordering::Relaxed));
 
         let (ok, values) = {
-            let _ = debug_span!("call").entered();
-            match self.func.call_async::<LuaMultiValue>(ctx).await {
+            let span = debug_span!("call");
+            match self
+                .func
+                .call_async::<LuaMultiValue>(ctx)
+                .instrument(span)
+                .await
+            {
                 Ok(values) => {
                     let values = values.into_vec();
                     let ok = values
@@ -408,10 +428,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_new_with_reader() {
+    async fn test_from_arc_mutex() {
         let source = include_str!("fixtures/hello.lua");
         let reader = Arc::new(Mutex::new(BufReader::new(empty())));
-        Runner::new_with_reader(source, reader).call().unwrap();
+        Runner::from_arc_mutex(source, reader).call().unwrap();
     }
 
     #[tokio::test]

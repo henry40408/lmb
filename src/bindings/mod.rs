@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, env, str, sync::Arc};
 
 use bon::bon;
 use mlua::prelude::*;
@@ -48,7 +48,7 @@ where
         methods.add_method("getenv", |vm, this, key: String| {
             if let Some(p) = &this.permissions {
                 if p.is_env_allowed(&key) {
-                    if let Ok(val) = std::env::var(&key) {
+                    if let Ok(val) = env::var(&key) {
                         return vm.to_value(&val);
                     }
                 }
@@ -58,7 +58,7 @@ where
 
         methods.add_method("getenvs", |vm, this, ()| {
             let mut vars = HashMap::new();
-            for (k, v) in std::env::vars() {
+            for (k, v) in env::vars() {
                 if let Some(p) = &this.permissions {
                     if p.is_env_allowed(&k) {
                         vars.insert(k, v);
@@ -108,14 +108,14 @@ where
                             break;
                         }
                         buf.extend_from_slice(&single);
-                        if std::str::from_utf8(&buf).is_ok() {
+                        if str::from_utf8(&buf).is_ok() {
                             remaining -= 1;
                         }
                     }
                     if buf.is_empty() {
                         return Ok(LuaNil);
                     }
-                    return Ok(std::str::from_utf8(&buf).ok().map_or_else(
+                    return Ok(str::from_utf8(&buf).ok().map_or_else(
                         || LuaNil,
                         |s| {
                             vm.create_string(s)

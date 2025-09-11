@@ -1,3 +1,5 @@
+use std::str;
+
 use bon::builder;
 use lazy_regex::*;
 use miette::{GraphicalReportHandler, GraphicalTheme, LabeledSpan, NamedSource, Report, miette};
@@ -58,7 +60,7 @@ where
         .name()
         .unwrap_or_else(|| default_name.unwrap_or_else(|| "-".to_string()));
     let source = source.source()?;
-    let Some(source) = std::str::from_utf8(&source).ok().map(|s| s.to_string()) else {
+    let Some(source) = str::from_utf8(&source).ok().map(|s| s.to_string()) else {
         return Ok(ErrorReport::String(error.to_string()));
     };
     let (message, traceback) = match &error {

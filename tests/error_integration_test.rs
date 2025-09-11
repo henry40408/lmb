@@ -10,7 +10,10 @@ fn eval_callback_error() {
         .args(["eval", "--file", "src/fixtures/errors/callback-error.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x EOF while parsing an object at line 1 column 1
    ,-[@src/fixtures/errors/callback-error.lua:3:1]
@@ -36,7 +39,10 @@ fn eval_callback_expr_error() {
         ])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x EOF while parsing an object at line 1 column 1
    ,-[@src/fixtures/errors/callback-expr-error.lua:2:1]
@@ -56,7 +62,10 @@ fn eval_error() {
         .args(["eval", "--file", "src/fixtures/errors/error.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x unknown error
    ,-[@src/fixtures/errors/error.lua:2:1]
@@ -78,7 +87,10 @@ fn eval_error_expr() {
         .args(["eval", "--file", "src/fixtures/errors/error-expr.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x unknown error
    ,-[@src/fixtures/errors/error-expr.lua:1:1]
@@ -98,7 +110,10 @@ fn eval_error_value() {
         .args(["eval", "--file", "src/fixtures/errors/error-value.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
 Lua value as error: {"a":1}
 Error: Lua value as error: {"a":1}
@@ -113,7 +128,10 @@ fn eval_error_value_expr() {
         .args(["eval", "--file", "src/fixtures/errors/error-value-expr.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
 Lua value as error: {"a":1}
 Error: Lua value as error: {"a":1}
@@ -128,7 +146,10 @@ fn eval_syntax_error() {
         .args(["eval", "--file", "src/fixtures/errors/syntax-error.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x Incomplete statement: expected assignment or a function call
    ,-[@src/fixtures/errors/syntax-error.lua:2:1]

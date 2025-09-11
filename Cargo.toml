@@ -20,6 +20,7 @@ clio = { version = "0.3.5", features = ["clap-parse"] }
 crc32fast = "1.5.0"
 crypto-common = "0.1.6"
 dashmap = "6.1.0"
+deadpool = "0.12.3"
 des = "0.8.1"
 ecb = "0.1.2"
 futures = "0.3.31"
