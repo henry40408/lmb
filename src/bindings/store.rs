@@ -7,7 +7,11 @@ use rusqlite::params;
 use serde_json::Value;
 use tracing::debug_span;
 
-use crate::{stmt::{MIGRATIONS, SQL_GET, SQL_PUT}, store::Store, LmbResult, LmbStore};
+use crate::{
+    LmbResult, LmbStore,
+    stmt::{MIGRATIONS, SQL_GET, SQL_PUT},
+    store::Store,
+};
 
 pub(crate) struct StoreSnapshotBinding {
     inner: Arc<DashMap<String, Value>>,
