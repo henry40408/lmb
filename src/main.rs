@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::PathBuf,
     process::ExitCode,
     sync::Arc,
@@ -143,7 +143,8 @@ async fn report_error(file: &Input, source: &Option<String>, e: &LmbError) -> an
         ErrorReport::Report(report) => {
             let mut s = String::new();
             render_report(&mut s, &report);
-            std::io::stderr().write_all(s.as_bytes())?;
+            io::stderr().write_all(s.as_bytes())?;
+            io::stderr().flush()?;
         }
         ErrorReport::String(msg) => eprintln!("{msg}"),
     }

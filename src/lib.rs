@@ -3,6 +3,8 @@
 //! A library for running Lua scripts.
 
 use std::{
+    error::Error,
+    fmt,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -42,8 +44,8 @@ pub struct Timeout {
     timeout: Duration,
 }
 
-impl std::fmt::Display for Timeout {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Timeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Lua script execution timed out after {:?}, timeout was {:?}",
@@ -52,7 +54,7 @@ impl std::fmt::Display for Timeout {
     }
 }
 
-impl std::error::Error for Timeout {}
+impl Error for Timeout {}
 
 /// Represents the state of the Lua script execution
 #[derive(Builder, Debug)]
