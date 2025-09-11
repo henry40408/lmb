@@ -135,7 +135,8 @@ where
         S: AsChunk + Clone,
     {
         let reader = Arc::new(AsyncMutex::new(BufReader::new(reader)));
-        Self::new_with_reader(source, reader)
+        let store = store.map(|s| Arc::new(Mutex::new(s)));
+        Self::from_arc_mutex(source, reader)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
             .maybe_permissions(permissions)
@@ -146,13 +147,13 @@ where
 
     /// Creates a new Lua runner with the given source code and input reader
     #[builder]
-    pub fn new_with_reader<S>(
+    pub fn from_arc_mutex<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: LmbInput<R>,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
-        store: Option<Connection>,
+        store: Option<LmbStore>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
@@ -188,7 +189,6 @@ where
                 (vm, func)
             }
         };
-
         {
             let _ = debug_span!("register_modules").entered();
             vm.register_module(
@@ -211,22 +211,19 @@ where
             vm.register_module("@lmb/toml", bindings::toml::TomlBinding {})?;
             vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
         }
-
         let func = vm.load(WRAP_FUNC).eval::<LuaFunction>()?.bind(func)?;
         let mut runner = Self {
             func,
             reader,
-            store: store.map(|conn| Arc::new(parking_lot::Mutex::new(conn))),
+            store,
             timeout,
             vm, // otherwise the Lua VM would be destroyed
         };
-
         {
             let _ = debug_span!("binding_globals").entered();
             bindings::globals::bind(&mut runner)?;
             bindings::io::bind(&mut runner)?;
         }
-
         Ok(runner)
     }
 
@@ -413,7 +410,7 @@ mod tests {
     async fn test_new_with_reader() {
         let source = include_str!("fixtures/hello.lua");
         let reader = Arc::new(Mutex::new(BufReader::new(empty())));
-        Runner::new_with_reader(source, reader).call().unwrap();
+        Runner::from_arc_mutex(source, reader).call().unwrap();
     }
 
     #[tokio::test]
