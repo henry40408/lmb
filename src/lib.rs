@@ -37,6 +37,9 @@ pub mod error;
 /// Permission module
 pub mod permission;
 
+/// Pool module
+pub mod pool;
+
 /// Store module
 pub mod store;
 
