@@ -20,7 +20,7 @@ use lmb::{
 use no_color::is_no_color;
 use rusqlite::Connection;
 use serde_json::{Value, json};
-use tracing::{Instrument, Level, debug, debug_span, info};
+use tracing::{Instrument, Level, debug, debug_span, info, warn};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 mod serve;
@@ -201,18 +201,24 @@ async fn try_main() -> anyhow::Result<()> {
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
             };
-            debug!("Using HTTP timeout: {:?}", http_timeout);
+            debug!("Using HTTP timeout: {http_timeout:?}");
 
             let timeout = match opts.timeout {
                 None => Some(Duration::from_secs(30)),
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
             };
-            debug!("Using timeout: {:?}", timeout);
+            debug!("Using timeout: {timeout:?}");
 
             let conn = match (opts.store_path, opts.no_store) {
-                (None, false) => Some(Connection::open_in_memory()?),
-                (Some(path), false) => Some(Connection::open(path)?),
+                (None, false) => {
+                    warn!("No store path specified, using in-memory store");
+                    Some(Connection::open_in_memory()?)
+                }
+                (Some(path), false) => {
+                    debug!("Using store at: {path:?}");
+                    Some(Connection::open(path)?)
+                }
                 _ => None,
             };
 
@@ -292,14 +298,14 @@ async fn try_main() -> anyhow::Result<()> {
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
             };
-            debug!("Using HTTP timeout: {:?}", http_timeout);
+            debug!("Using HTTP timeout: {http_timeout:?}");
 
             let timeout = match opts.timeout {
                 None => Some(Duration::from_secs(30)),
                 Some(t) if t.is_zero() => None,
                 Some(t) => Some(Duration::try_from(t)?),
             };
-            debug!("Using timeout: {:?}", timeout);
+            debug!("Using timeout: {timeout:?}");
 
             let mut source = String::new();
             file.read_to_string(&mut source)?;

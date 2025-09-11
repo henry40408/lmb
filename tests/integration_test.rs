@@ -7,10 +7,12 @@ use snapbox::{
 #[test]
 fn eval_add() {
     Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/add.lua", "--state", "1"])
         .assert()
         .success()
         .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
 2
 
 "#]])
@@ -32,6 +34,7 @@ fn eval_env() {
         .assert()
         .success()
         .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
 null
 FOO = bar
 
@@ -46,7 +49,10 @@ fn eval_error() {
         .args(["eval", "--file", "src/fixtures/errors/error.lua"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x unknown error
    ,-[@src/fixtures/errors/error.lua:2:1]
@@ -64,10 +70,12 @@ fn eval_error() {
 #[test]
 fn eval_hello() {
     Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/hello.lua"])
         .assert()
         .success()
         .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
 true
 Hello, world!
 
@@ -89,6 +97,7 @@ async fn eval_http_get() {
         .await;
 
     Command::new(cargo_bin("lmb"))
+        .env("NO_COLOR", "true")
         .args([
             "--allow-all-net",
             "--http-timeout",
@@ -102,6 +111,7 @@ async fn eval_http_get() {
         .assert()
         .success()
         .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
 null
 
 "#]])
@@ -123,7 +133,10 @@ fn eval_infinite() {
         ])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
 Timeout: Lua script execution timed out after [..]ms, timeout was 100ms
 Error: Timeout: Lua script execution timed out after [..]ms, timeout was 100ms
@@ -139,6 +152,7 @@ fn eval_no_export() {
         .assert()
         .success()
         .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
 null
 
 "#]])
@@ -154,6 +168,7 @@ fn eval_stdin_expression() {
         .assert()
         .success()
         .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
 Hello, world!
 
 "#]])
@@ -168,7 +183,10 @@ fn eval_stdin_error() {
         .args(["eval", "--file", "-"])
         .assert()
         .failure()
-        .stdout_eq(str![])
+        .stdout_eq(str![[r#"
+[..]  WARN lmb: No store path specified, using in-memory store
+
+"#]])
         .stderr_eq(str![[r#"
   x unknown error
    ,-[(stdin):2:1]

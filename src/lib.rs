@@ -22,7 +22,7 @@ use tokio::{
     io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader},
     sync::Mutex as AsyncMutex,
 };
-use tracing::debug_span;
+use tracing::{Instrument, debug_span};
 
 use crate::{
     bindings::{Binding, store::StoreBinding},
@@ -36,6 +36,9 @@ pub mod error;
 
 /// Permission module
 pub mod permission;
+
+/// Store module
+pub mod store;
 
 /// Represents a timeout error when executing a Lua script
 #[derive(Clone, Debug)]
@@ -75,9 +78,18 @@ pub enum LmbError {
     /// Error converting a Lua value to a Rust type
     #[error("Lua value as error: {0}")]
     LuaValue(Value),
+    /// Error decoding ``MessagePack`` data
+    #[error("MessagePack decode error: {0}")]
+    RMPDecode(#[from] rmp_serde::decode::Error),
+    /// Error encoding ``MessagePack`` data
+    #[error("MessagePack encode error: {0}")]
+    RMPEncode(#[from] rmp_serde::encode::Error),
     /// Error from reqwest crate
     #[error("reqwest error: {0}")]
     Reqwest(#[from] reqwest::Error),
+    /// Error from rusqlite crate
+    #[error("SQLite error: {0}")]
+    SQLite(#[from] rusqlite::Error),
     /// Error when the Lua script times out
     #[error("Timeout: {0}")]
     Timeout(#[from] Timeout),
@@ -267,8 +279,13 @@ where
             .used_memory(used_memory.load(Ordering::Relaxed));
 
         let (ok, values) = {
-            let _ = debug_span!("call").entered();
-            match self.func.call_async::<LuaMultiValue>(ctx).await {
+            let span = debug_span!("call");
+            match self
+                .func
+                .call_async::<LuaMultiValue>(ctx)
+                .instrument(span)
+                .await
+            {
                 Ok(values) => {
                     let values = values.into_vec();
                     let ok = values
