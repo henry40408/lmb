@@ -69,14 +69,17 @@ mod tests {
     use std::sync::Arc;
 
     use parking_lot::Mutex;
-    use rusqlite::{Connection, params};
-    use serde_json::{Value, json};
+    use rusqlite::Connection;
+    use serde_json::json;
     use tokio::{
         io::{BufReader, empty},
         sync::Mutex as AsyncMutex,
     };
 
-    use crate::pool::{Pool, RunnerManager};
+    use crate::{
+        pool::{Pool, RunnerManager},
+        store::Store,
+    };
 
     #[tokio::test]
     async fn test_pool() {
@@ -100,18 +103,8 @@ mod tests {
 
         futures::future::join_all(tasks).await;
 
-        {
-            let locked = store.lock();
-            fn get_value(conn: &Connection) -> rusqlite::Result<Vec<u8>> {
-                let stmt = "SELECT value FROM store WHERE key = ?";
-                conn.query_row_and_then(stmt, params!["a"], |row| {
-                    let value: Vec<u8> = row.get(0).unwrap();
-                    Ok(value)
-                })
-            }
-            let value = get_value(&locked).unwrap();
-            let value: Value = rmp_serde::from_slice(&value).unwrap();
-            assert_eq!(json!(10), value);
-        }
+        let store = Store::builder(store).build();
+        let value = store.get("a").unwrap().unwrap();
+        assert_eq!(json!(10), value);
     }
 }
