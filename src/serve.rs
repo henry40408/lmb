@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Cursor, str::FromStr as _, sync::Arc};
 
 use axum::{
-    body::to_bytes,
+    body::{Body, to_bytes},
     extract::{Query, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -38,7 +38,7 @@ async fn try_request_handler(
     app_state: Arc<AppState>,
     query: HashMap<String, String>,
     req: Request,
-) -> anyhow::Result<Response<String>> {
+) -> anyhow::Result<Response<Body>> {
     let method = json!(req.method().as_str());
     let path = json!(req.uri().path());
     let headers = {
@@ -83,13 +83,13 @@ async fn try_request_handler(
         Ok(output) => {
             debug!("Request succeeded: {output}");
             match output {
-                Value::String(s) => Ok(Response::new(s)),
+                Value::String(s) => Ok(Response::new(s.into())),
                 Value::Object(_) => {
                     let body = output
                         .pointer("/body")
                         .map(|v| match v {
-                            Value::String(s) => s.clone(),
-                            _ => v.to_string(),
+                            Value::String(s) => s.clone().into(),
+                            _ => v.to_string().into(),
                         })
                         .unwrap_or_default();
                     let mut res = Response::new(body);
@@ -116,7 +116,7 @@ async fn try_request_handler(
 
                     Ok(res)
                 }
-                v => Ok(Response::new(v.to_string())),
+                v => Ok(Response::new(v.to_string().into())),
             }
         }
         Err(err) => {
@@ -130,7 +130,7 @@ pub(crate) async fn request_handler(
     State(app_state): State<Arc<AppState>>,
     Query(query): Query<HashMap<String, String>>,
     request: Request,
-) -> Result<Response<String>, AppError> {
+) -> Result<Response<Body>, AppError> {
     let span = debug_span!("handle_request");
     let res = try_request_handler(app_state, query, request)
         .instrument(span)
