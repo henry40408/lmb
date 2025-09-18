@@ -1,12 +1,14 @@
 use std::{collections::HashMap, io::Cursor, str::FromStr as _, sync::Arc};
 
 use axum::{
-    body::to_bytes,
+    body::{Body, to_bytes},
     extract::{Query, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
-use lmb::Runner;
+use base64::prelude::*;
+use lmb::{LmbResult, Runner};
+use mlua::ExternalResult;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use tracing::{Instrument as _, debug, debug_span, error};
@@ -34,11 +36,19 @@ where
     }
 }
 
+fn decode_base64_string(is_base64_encoded: bool, s: &String) -> LmbResult<Vec<u8>> {
+    Ok(if is_base64_encoded {
+        BASE64_STANDARD.decode(s.as_bytes()).into_lua_err()?
+    } else {
+        s.as_bytes().to_vec()
+    })
+}
+
 async fn try_request_handler(
     app_state: Arc<AppState>,
     query: HashMap<String, String>,
     req: Request,
-) -> anyhow::Result<Response<String>> {
+) -> anyhow::Result<Response<Body>> {
     let method = json!(req.method().as_str());
     let path = json!(req.uri().path());
     let headers = {
@@ -83,16 +93,20 @@ async fn try_request_handler(
         Ok(output) => {
             debug!("Request succeeded: {output}");
             match output {
-                Value::String(s) => Ok(Response::new(s)),
+                Value::String(s) => Ok(Response::new(s.into())),
                 Value::Object(_) => {
+                    let is_base64_encoded = output
+                        .pointer("/is_base64_encoded")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     let body = output
                         .pointer("/body")
-                        .map(|v| match v {
-                            Value::String(s) => s.clone(),
-                            _ => v.to_string(),
+                        .and_then(|v| match v {
+                            Value::String(s) => decode_base64_string(is_base64_encoded, s).ok(),
+                            _ => decode_base64_string(is_base64_encoded, &v.to_string()).ok(),
                         })
                         .unwrap_or_default();
-                    let mut res = Response::new(body);
+                    let mut res = Response::new(body.into());
 
                     let status_code = output.pointer("/status_code").and_then(|v| v.as_u64());
                     if let Some(status_code) = status_code {
@@ -116,7 +130,7 @@ async fn try_request_handler(
 
                     Ok(res)
                 }
-                v => Ok(Response::new(v.to_string())),
+                v => Ok(Response::new(v.to_string().into())),
             }
         }
         Err(err) => {
@@ -130,7 +144,7 @@ pub(crate) async fn request_handler(
     State(app_state): State<Arc<AppState>>,
     Query(query): Query<HashMap<String, String>>,
     request: Request,
-) -> Result<Response<String>, AppError> {
+) -> Result<Response<Body>, AppError> {
     let span = debug_span!("handle_request");
     let res = try_request_handler(app_state, query, request)
         .instrument(span)
@@ -183,5 +197,17 @@ mod tests {
             }),
             res.json::<Value>()
         );
+    }
+
+    #[tokio::test]
+    async fn test_serve_base64() {
+        let source = include_str!("./fixtures/serve-base64.lua");
+        let app_state = Arc::new(AppState::builder().source(source).build());
+        let router = build_router(app_state);
+        let server = TestServer::new(router).unwrap();
+
+        let res = server.get("/").await;
+        assert_eq!(200, res.status_code());
+        assert_eq!("hello world", res.text());
     }
 }

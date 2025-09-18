@@ -570,3 +570,33 @@ $ curl -v -H 'x-api-key: api-key' --data '{"a":1}' http://localhost:3000/a/b/c
 <
 <h1>I am a teapot</h1>
 ```
+
+Response body can be base64 encoded by setting `is_base64_encoded` to true in the returned table. This is useful when the response body contains binary data.
+
+```lua
+--[[
+--name = "Respond with base64 encoded body"
+--curl = "curl http://localhost:3000"
+--]]
+function handle_request_base64(ctx)
+  local request = ctx.request
+  local crypto = require("@lmb/crypto")
+  return {
+    is_base64_encoded = true,
+    body = crypto.base64_encode("hello world"),
+  }
+end
+
+return handle_request_base64
+```
+
+Run the following commands to handle requests with the Lua script:
+
+```bash
+$ lmb serve --file handle_request_base64.lua &
+$ curl -v http://localhost:3000
+< HTTP/1.1 200 OK
+< content-length: 11
+<
+hello world
+```
