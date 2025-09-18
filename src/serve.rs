@@ -6,7 +6,9 @@ use axum::{
     http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
-use lmb::Runner;
+use base64::prelude::*;
+use lmb::{LmbResult, Runner};
+use mlua::ExternalResult;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use tracing::{Instrument as _, debug, debug_span, error};
@@ -32,6 +34,14 @@ where
     fn from(err: E) -> Self {
         Self(err.into())
     }
+}
+
+fn decode_base64_string(is_base64_encoded: bool, s: &String) -> LmbResult<Vec<u8>> {
+    Ok(if is_base64_encoded {
+        BASE64_STANDARD.decode(s.as_bytes()).into_lua_err()?
+    } else {
+        s.as_bytes().to_vec()
+    })
 }
 
 async fn try_request_handler(
@@ -85,14 +95,18 @@ async fn try_request_handler(
             match output {
                 Value::String(s) => Ok(Response::new(s.into())),
                 Value::Object(_) => {
+                    let is_base64_encoded = output
+                        .pointer("/is_base64_encoded")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     let body = output
                         .pointer("/body")
-                        .map(|v| match v {
-                            Value::String(s) => s.clone().into(),
-                            _ => v.to_string().into(),
+                        .and_then(|v| match v {
+                            Value::String(s) => decode_base64_string(is_base64_encoded, s).ok(),
+                            _ => decode_base64_string(is_base64_encoded, &v.to_string()).ok(),
                         })
                         .unwrap_or_default();
-                    let mut res = Response::new(body);
+                    let mut res = Response::new(body.into());
 
                     let status_code = output.pointer("/status_code").and_then(|v| v.as_u64());
                     if let Some(status_code) = status_code {
@@ -183,5 +197,17 @@ mod tests {
             }),
             res.json::<Value>()
         );
+    }
+
+    #[tokio::test]
+    async fn test_serve_base64() {
+        let source = include_str!("./fixtures/serve-base64.lua");
+        let app_state = Arc::new(AppState::builder().source(source).build());
+        let router = build_router(app_state);
+        let server = TestServer::new(router).unwrap();
+
+        let res = server.get("/").await;
+        assert_eq!(200, res.status_code());
+        assert_eq!("hello world", res.text());
     }
 }
