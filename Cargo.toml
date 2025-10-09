@@ -11,7 +11,7 @@ axum = { version = "0.8.4", features = ["http2"] }
 base16ct = { version = "0.3.0", features = ["alloc"] }
 base64 = "0.22.1"
 bat = { version = "0.25.0", default-features = false }
-bon = "3.6.5"
+bon = "3.8.1"
 byte-unit = "5.1.6"
 bytes = "1.10.1"
 cbc = { version = "0.1.2", features = ["alloc"] }
