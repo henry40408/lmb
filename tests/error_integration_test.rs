@@ -1,11 +1,11 @@
 use snapbox::{
-    cmd::{Command, cargo_bin},
+    cmd::{self, Command},
     str,
 };
 
 #[test]
 fn eval_callback_error() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/callback-error.lua"])
         .assert()
@@ -30,7 +30,7 @@ fn eval_callback_error() {
 
 #[test]
 fn eval_callback_expr_error() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args([
             "eval",
@@ -57,7 +57,7 @@ fn eval_callback_expr_error() {
 
 #[test]
 fn eval_error() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/error.lua"])
         .assert()
@@ -82,7 +82,7 @@ fn eval_error() {
 
 #[test]
 fn eval_error_expr() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/error-expr.lua"])
         .assert()
@@ -105,7 +105,7 @@ fn eval_error_expr() {
 
 #[test]
 fn eval_error_value() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/error-value.lua"])
         .assert()
@@ -123,7 +123,7 @@ Error: Lua value as error: {"a":1}
 
 #[test]
 fn eval_error_value_expr() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/error-value-expr.lua"])
         .assert()
@@ -141,7 +141,7 @@ Error: Lua value as error: {"a":1}
 
 #[test]
 fn eval_syntax_error() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/syntax-error.lua"])
         .assert()
