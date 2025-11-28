@@ -1,12 +1,12 @@
 use reqwest::Method;
 use snapbox::{
-    cmd::{Command, cargo_bin},
+    cmd::{self, Command},
     str,
 };
 
 #[test]
 fn eval_add() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/add.lua", "--state", "1"])
         .assert()
@@ -21,7 +21,7 @@ fn eval_add() {
 
 #[test]
 fn eval_env() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("FOO", "bar")
         .env("NO_COLOR", "true")
         .args([
@@ -44,7 +44,7 @@ FOO = bar
 
 #[test]
 fn eval_error() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/errors/error.lua"])
         .assert()
@@ -69,7 +69,7 @@ fn eval_error() {
 
 #[test]
 fn eval_hello() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/hello.lua"])
         .assert()
@@ -96,7 +96,7 @@ async fn eval_http_get() {
         .create_async()
         .await;
 
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args([
             "--allow-all-net",
@@ -122,7 +122,7 @@ null
 
 #[test]
 fn eval_infinite() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args([
             "--timeout",
@@ -146,7 +146,7 @@ Error: Timeout: Lua script execution timed out after [..]ms, timeout was 100ms
 
 #[test]
 fn eval_no_export() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .args(["eval", "--file", "src/fixtures/no-export.lua"])
         .assert()
@@ -161,7 +161,7 @@ null
 
 #[test]
 fn eval_stdin_expression() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .stdin("return 'Hello, world!'")
         .args(["eval", "--file", "-"])
@@ -177,7 +177,7 @@ Hello, world!
 
 #[test]
 fn eval_stdin_error() {
-    Command::new(cargo_bin("lmb"))
+    Command::new(cmd::cargo_bin!("lmb"))
         .env("NO_COLOR", "true")
         .stdin(include_str!("../src/fixtures/errors/error.lua"))
         .args(["eval", "--file", "-"])
