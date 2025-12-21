@@ -35,7 +35,7 @@ jobs:
       - name: Install cargo-deny
         uses: taiki-e/install-action@v2.48.0
         with:
-          tool: cargo-deny@0.16.4
+          tool: cargo-deny@0.18.9
       - name: Check dependencies and licenses
         run: cargo deny check
   bench:
