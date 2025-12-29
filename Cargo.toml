@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 aes = "0.8.4"
 anyhow = "1.0.98"
-axum = { version = "0.8.4", features = ["http2"] }
+axum = { version = "0.8.8", features = ["http2"] }
 base16ct = { version = "0.3.0", features = ["alloc"] }
 base64 = "0.22.1"
 bat = { version = "0.26.0", default-features = false }
