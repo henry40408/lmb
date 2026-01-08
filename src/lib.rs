@@ -27,6 +27,7 @@ use tracing::{Instrument, debug_span};
 use crate::{
     bindings::{Binding, store::StoreBinding},
     permission::Permissions,
+    stmt::MIGRATIONS,
 };
 
 /// Error handling module
@@ -228,6 +229,23 @@ where
             vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
         }
         let func = vm.load(WRAP_FUNC).eval::<LuaFunction>()?.bind(func)?;
+        if let Some(store) = &store {
+            let conn = store.lock();
+            {
+                let _ = debug_span!("set_pragmas").entered();
+                conn.pragma_update(None, "busy_timeout", 5000)?;
+                conn.pragma_update(None, "journal_mode", "WAL")?;
+                conn.pragma_update(None, "foreign_keys", "OFF")?;
+                conn.pragma_update(None, "synchronous", "NORMAL")?;
+            }
+            {
+                let span = debug_span!("run_migrations", count = MIGRATIONS.len()).entered();
+                for migration in MIGRATIONS.iter() {
+                    let _ = debug_span!(parent: &span, "run_migration", migration).entered();
+                    conn.execute_batch(migration)?;
+                }
+            }
+        }
         let mut runner = Self {
             func,
             reader,
@@ -275,7 +293,12 @@ where
             }
         }
         if self.store.is_some() {
-            ctx.set("store", StoreBinding::builder(self.store.clone()).build()?)?;
+            ctx.set(
+                "store",
+                StoreBinding::builder()
+                    .maybe_store(self.store.clone())
+                    .build(),
+            )?;
         }
 
         let invoked = Invoked::builder()

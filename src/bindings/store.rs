@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bon::bon;
+use bon::{Builder, bon};
 use dashmap::DashMap;
 use mlua::prelude::*;
 use rusqlite::params;
@@ -8,8 +8,8 @@ use serde_json::Value;
 use tracing::debug_span;
 
 use crate::{
-    LmbResult, LmbStore,
-    stmt::{MIGRATIONS, SQL_GET, SQL_PUT},
+    LmbStore,
+    stmt::{SQL_GET, SQL_PUT},
     store::Store,
 };
 
@@ -46,24 +46,9 @@ impl LuaUserData for StoreSnapshotBinding {
     }
 }
 
+#[derive(Builder)]
 pub(crate) struct StoreBinding {
     store: Option<LmbStore>,
-}
-
-#[bon]
-impl StoreBinding {
-    #[builder]
-    pub(crate) fn new(#[builder(start_fn)] store: Option<LmbStore>) -> LmbResult<Self> {
-        if let Some(store) = &store {
-            let span = debug_span!("run_migrations", count = MIGRATIONS.len()).entered();
-            let conn = store.lock();
-            for migration in MIGRATIONS.iter() {
-                let _ = debug_span!(parent: &span, "run_migration", migration).entered();
-                conn.execute_batch(migration).into_lua_err()?;
-            }
-        }
-        Ok(Self { store })
-    }
 }
 
 impl LuaUserData for StoreBinding {
