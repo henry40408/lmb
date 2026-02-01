@@ -18,7 +18,7 @@ ARG GIT_VERSION=dev
 # Install cross-compilation toolchain based on target
 RUN case "$TARGETPLATFORM" in \
         "linux/arm64") \
-            apt-get update && apt-get install -y gcc-aarch64-linux-gnu && \
+            apt-get update && apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu && \
             rustup target add aarch64-unknown-linux-gnu \
             ;; \
         "linux/amd64") \
