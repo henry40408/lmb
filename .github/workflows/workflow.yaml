@@ -138,6 +138,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get version for nightly build
+        id: version
+        run: echo "version=$(git describe --always --tags)" >> $GITHUB_OUTPUT
+        if: github.ref_type == 'branch' && github.ref_name == 'main'
       - uses: docker/build-push-action@v5.0.0
         with:
           context: .
@@ -146,6 +150,8 @@ jobs:
           tags: ghcr.io/henry40408/lmb:nightly
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            GIT_VERSION=${{ steps.version.outputs.version }}
         if: github.ref_type == 'branch' && github.ref_name == 'main'
       - uses: docker/build-push-action@v5.0.0
         with:
@@ -155,6 +161,8 @@ jobs:
           tags: ghcr.io/henry40408/lmb:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            GIT_VERSION=${{ github.ref_name }}
         if: github.ref_type == 'tag'
       - uses: docker/build-push-action@v5.0.0
         with:
@@ -164,4 +172,6 @@ jobs:
           tags: ghcr.io/henry40408/lmb:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            GIT_VERSION=${{ github.ref_name }}
         if: github.ref_type == 'tag'
