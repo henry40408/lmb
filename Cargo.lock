@@ -1742,7 +1742,6 @@ dependencies = [
  "reqwest",
  "rmp-serde",
  "rusqlite",
- "serde",
  "serde_json",
  "serde_json_path",
  "serde_yaml",
