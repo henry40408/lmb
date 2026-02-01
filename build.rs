@@ -2,7 +2,17 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-env-changed=GIT_VERSION");
 
+    // Prefer GIT_VERSION env var (used during Docker builds)
+    if let Ok(version) = std::env::var("GIT_VERSION") {
+        if !version.is_empty() {
+            println!("cargo:rustc-env=APP_VERSION={version}");
+            return;
+        }
+    }
+
+    // Fall back to git describe (used during local development)
     let output = Command::new("git")
         .args(["describe", "--always", "--dirty=-modified", "--tags"])
         .output();
