@@ -11,7 +11,6 @@ anyhow = "1.0.98"
 axum = { version = "0.8.4", features = ["http2"] }
 base16ct = { version = "1.0.0", features = ["alloc"] }
 base64 = "0.22.1"
-bat = { version = "0.26.0", default-features = false }
 bon = "3.6.5"
 byte-unit = "5.1.6"
 bytes = "1.10.1"
@@ -30,7 +29,7 @@ hmac = "0.12.1"
 jiff = { version = "0.2.15", default-features = false, features = ["std"] }
 lazy-regex = "3.4.1"
 md-5 = "0.10.6"
-miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
+miette = { version = "7.6.0", default-features = false, features = ["fancy"] }
 mlua = { version = "0.11.1", features = [
     "async",
     "luau",
