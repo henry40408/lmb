@@ -57,11 +57,8 @@ RUN RUST_TARGET=$(cat /tmp/rust_target) && \
     GIT_VERSION=${GIT_VERSION} cargo build --release --target $RUST_TARGET && \
     cp target/$RUST_TARGET/release/lmb /app/lmb
 
-# Stage 4: Runtime - scratch for minimal image
-FROM scratch
-
-# Copy CA certificates for HTTPS
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Stage 4: Runtime - distroless for minimal image
+FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /app/lmb /lmb
 
