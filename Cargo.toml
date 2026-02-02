@@ -31,20 +31,20 @@ lazy-regex = "3.4.1"
 md-5 = "0.10.6"
 miette = { version = "7.6.0", default-features = false, features = ["fancy"] }
 mlua = { version = "0.11.1", features = [
-    "async",
-    "luau",
-    "error-send",
-    "serde",
-    "send",
-    "vendored",
+  "async",
+  "luau",
+  "error-send",
+  "serde",
+  "send",
+  "vendored",
 ] }
 no_color = "0.2.0"
 parking_lot = "0.12.4"
 reqwest = { version = "0.12.22", default-features = false, features = [
-    "charset",
-    "http2",
-    "rustls-tls",
-    "system-proxy",
+  "charset",
+  "http2",
+  "rustls-tls",
+  "system-proxy",
 ] }
 rmp-serde = "1.3.0"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
@@ -56,11 +56,11 @@ sha2 = "0.10.9"
 string-offsets = "0.2.0"
 thiserror = "2.0.12"
 tokio = { version = "1.47.0", default-features = false, features = [
-    "fs",
-    "io-std",
-    "io-util",
-    "macros",
-    "rt-multi-thread",
+  "fs",
+  "io-std",
+  "io-util",
+  "macros",
+  "rt-multi-thread",
 ] }
 toml = "0.9.4"
 tracing = "0.1.41"
@@ -68,7 +68,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 url = "2.5.4"
 
 [dev-dependencies]
-axum-test = "18.0.2"
+axum-test = "18.6.0"
 criterion = { version = "0.7.0", features = ["async_tokio"] }
 curl-parser = "0.6.0"
 full_moon = "2.0.0"
