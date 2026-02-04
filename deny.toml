@@ -1,18 +1,16 @@
 [licenses]
 allow = [
-    "Apache-2.0",
-    "BSD-3-Clause",
-    "CDLA-Permissive-2.0",
-    "ISC",
-    "LGPL-3.0-or-later",
-    "MIT",
-    "Unicode-3.0",
-    "Zlib",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "LGPL-3.0-or-later",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
 ]
 
 [advisories]
 ignore = [
-    { id = "RUSTSEC-2024-0320", reason = "unmaintained yaml-rust is not critical" },
-    { id = "RUSTSEC-2024-0436", reason = "unmaintained paste is not critical" },
-    { id = "RUSTSEC-2025-0141", reason = "unmaintained bincode is not critical" },
+  { id = "RUSTSEC-2024-0436", reason = "unmaintained paste is not critical" },
 ]
