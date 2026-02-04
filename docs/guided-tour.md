@@ -15,7 +15,7 @@ Lmb currently uses Luau from Roblox.
 --name = "Luau Version"
 --]]
 function luau_version()
-  local version = "0.702"
+  local version = "0.706"
   assert(_G._VERSION == "Luau " .. version, "Expected Luau version " .. version .. ", but got " .. _G._VERSION)
 end
 
