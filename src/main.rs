@@ -7,21 +7,21 @@ use std::{
 };
 
 use anyhow::bail;
-use axum::{routing::any, Router};
+use axum::{Router, routing::any};
 use bon::Builder;
 use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
-    error::{build_report, render_report, ErrorReport},
-    permission::{EnvPermissions, NetPermissions, Permissions},
     LmbError, Runner,
+    error::{ErrorReport, build_report, render_report},
+    permission::{EnvPermissions, NetPermissions, Permissions},
 };
 use no_color::is_no_color;
 use rusqlite::Connection;
-use serde_json::{json, Value};
-use tracing::{debug, debug_span, info, warn, Instrument, Level};
-use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+use serde_json::{Value, json};
+use tracing::{Instrument, Level, debug, debug_span, info, warn};
+use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 mod serve;
 

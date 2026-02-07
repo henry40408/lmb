@@ -6,23 +6,23 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
 
-use bon::{bon, Builder};
-use mlua::{prelude::*, AsChunk};
+use bon::{Builder, bon};
+use mlua::{AsChunk, prelude::*};
 use parking_lot::Mutex;
 use rusqlite::Connection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use thiserror::Error;
 use tokio::io::AsyncRead;
-use tracing::{debug_span, Instrument};
+use tracing::{Instrument, debug_span};
 
 use crate::{
-    bindings::{store::StoreBinding, Binding},
+    bindings::{Binding, store::StoreBinding},
     permission::Permissions,
     reader::SharedReader,
     stmt::MIGRATIONS,

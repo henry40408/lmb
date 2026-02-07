@@ -2,8 +2,8 @@ use std::str;
 
 use bon::builder;
 use lazy_regex::*;
-use miette::{miette, GraphicalReportHandler, GraphicalTheme, LabeledSpan, NamedSource, Report};
-use mlua::{prelude::*, AsChunk};
+use miette::{GraphicalReportHandler, GraphicalTheme, LabeledSpan, NamedSource, Report, miette};
+use mlua::{AsChunk, prelude::*};
 use no_color::is_no_color;
 use string_offsets::StringOffsets;
 

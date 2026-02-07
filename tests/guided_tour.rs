@@ -5,7 +5,7 @@ use full_moon::{tokenizer::TokenType, visitors::Visitor};
 use lmb::{Runner, State};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use rusqlite::Connection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use toml::Table;
 
 #[derive(Default)]

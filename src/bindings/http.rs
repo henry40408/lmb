@@ -4,12 +4,12 @@ use bon::bon;
 use bytes::BytesMut;
 use mlua::prelude::*;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
     Method, StatusCode,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::Mutex;
-use tracing::{debug_span, Instrument};
+use tracing::{Instrument, debug_span};
 use url::Url;
 
 use crate::{LmbResult, Permissions};

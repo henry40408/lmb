@@ -3,8 +3,8 @@ use rusqlite::params;
 use serde_json::Value;
 
 use crate::{
-    stmt::{SQL_GET, SQL_PUT},
     LmbResult, LmbStore,
+    stmt::{SQL_GET, SQL_PUT},
 };
 
 /// Represents a key-value store for Lua scripts.

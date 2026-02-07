@@ -3,7 +3,7 @@ use std::{collections::HashMap, env, str, sync::Arc};
 use bon::bon;
 use mlua::prelude::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
-use tracing::{debug_span, Instrument};
+use tracing::{Instrument, debug_span};
 
 use crate::{LmbInput, Permissions};
 

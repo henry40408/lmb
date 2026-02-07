@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bon::{bon, Builder};
+use bon::{Builder, bon};
 use dashmap::DashMap;
 use mlua::prelude::*;
 use rusqlite::params;
@@ -8,9 +8,9 @@ use serde_json::Value;
 use tracing::debug_span;
 
 use crate::{
+    LmbStore,
     stmt::{SQL_GET, SQL_PUT},
     store::Store,
-    LmbStore,
 };
 
 pub(crate) struct StoreSnapshotBinding {

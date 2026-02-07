@@ -2,7 +2,7 @@
 
 use std::io::Cursor;
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use lmb::{Runner, State};
 use rusqlite::Connection;
 use serde_json::json;
