@@ -18,15 +18,13 @@ use parking_lot::Mutex;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use thiserror::Error;
-use tokio::{
-    io::{AsyncRead, AsyncSeek, AsyncSeekExt as _, BufReader},
-    sync::Mutex as AsyncMutex,
-};
+use tokio::io::AsyncRead;
 use tracing::{Instrument, debug_span};
 
 use crate::{
     bindings::{Binding, store::StoreBinding},
     permission::Permissions,
+    reader::SharedReader,
     stmt::MIGRATIONS,
 };
 
@@ -38,6 +36,9 @@ pub mod permission;
 
 /// Pool module
 pub mod pool;
+
+/// Reader module
+pub mod reader;
 
 /// Store module
 pub mod store;
@@ -100,7 +101,8 @@ pub enum LmbError {
     Timeout(#[from] Timeout),
 }
 
-type LmbInput<R> = Arc<AsyncMutex<BufReader<R>>>;
+/// Type alias for the shared reader used in the library.
+pub type LmbInput = Arc<SharedReader>;
 type LmbStore = Arc<Mutex<Connection>>;
 
 /// Result type for the library
@@ -119,12 +121,9 @@ pub struct Invoked {
 
 /// A runner for executing Lua scripts with an input stream
 #[derive(Debug)]
-pub struct Runner<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
-{
+pub struct Runner {
     func: LuaFunction,
-    reader: LmbInput<R>,
+    reader: LmbInput,
     store: Option<LmbStore>,
     timeout: Option<Duration>,
     vm: Lua,
@@ -133,13 +132,10 @@ where
 static WRAP_FUNC: &str = r"return function(f, ctx) return pcall(f, ctx) end";
 
 #[bon]
-impl<R> Runner<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+impl Runner {
     /// Creates a new Lua runner with the given source code and input reader.
     #[builder]
-    pub fn new<S>(
+    pub fn new<S, R>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
         #[builder(into)] default_name: Option<String>,
@@ -150,10 +146,11 @@ where
     ) -> LmbResult<Self>
     where
         S: AsChunk + Clone,
+        R: AsyncRead + Send + Unpin + 'static,
     {
-        let reader = Arc::new(AsyncMutex::new(BufReader::new(reader)));
+        let reader = Arc::new(SharedReader::new(reader));
         let store = store.map(|s| Arc::new(Mutex::new(s)));
-        Self::from_arc_mutex(source, reader)
+        Self::from_shared_reader(source, reader)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
             .maybe_permissions(permissions)
@@ -162,11 +159,11 @@ where
             .call()
     }
 
-    /// Creates a new Lua runner with the given source code and input reader
+    /// Creates a new Lua runner with the given source code and shared reader.
     #[builder]
-    pub fn from_arc_mutex<S>(
+    pub fn from_shared_reader<S>(
         #[builder(start_fn)] source: S,
-        #[builder(start_fn)] reader: LmbInput<R>,
+        #[builder(start_fn)] reader: LmbInput,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
@@ -372,15 +369,21 @@ where
     }
 }
 
-impl<R> Runner<R>
-where
-    for<'lua> R: 'lua + AsyncRead + AsyncSeek + Unpin,
-{
-    /// Rewinds the input stream to the beginning.
-    /// This function should be only called in tests or benchmarks to reset the input stream.
-    pub async fn rewind_input(&self) -> LmbResult<()> {
-        self.reader.lock().await.rewind().await?;
-        Ok(())
+impl Runner {
+    /// Swaps the underlying reader with a new one.
+    ///
+    /// This is useful for reusing a Runner across multiple requests
+    /// by swapping the reader between invocations.
+    pub async fn swap_reader<R>(&self, reader: R)
+    where
+        R: AsyncRead + Send + Unpin + 'static,
+    {
+        self.reader.swap(reader).await;
+    }
+
+    /// Returns a reference to the shared reader.
+    pub fn shared_reader(&self) -> &LmbInput {
+        &self.reader
     }
 }
 
@@ -389,7 +392,7 @@ mod tests {
     use mlua::prelude::*;
     use serde_json::json;
     use test_case::test_case;
-    use tokio::{io::empty, sync::Mutex};
+    use tokio::io::empty;
 
     use super::*;
 
@@ -451,10 +454,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_from_arc_mutex() {
+    async fn test_from_shared_reader() {
         let source = include_str!("fixtures/hello.lua");
-        let reader = Arc::new(Mutex::new(BufReader::new(empty())));
-        Runner::from_arc_mutex(source, reader).call().unwrap();
+        let reader = Arc::new(SharedReader::new(empty()));
+        Runner::from_shared_reader(source, reader).call().unwrap();
     }
 
     #[tokio::test]

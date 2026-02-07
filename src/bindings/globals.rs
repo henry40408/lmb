@@ -1,11 +1,6 @@
-use tokio::io::AsyncRead;
-
 use crate::{LmbResult, Runner};
 
-pub(crate) fn bind<R>(runner: &mut Runner<R>) -> LmbResult<()>
-where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
-{
+pub(crate) fn bind(runner: &mut Runner) -> LmbResult<()> {
     let globals = runner.vm.globals();
 
     globals.set(

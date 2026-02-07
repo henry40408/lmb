@@ -95,6 +95,10 @@ enum Command {
         /// Optional maximum body size
         #[clap(long, default_value = "100M", env = "MAX_BODY_SIZE")]
         max_body_size: String,
+        /// Enable Runner pool with specified size.
+        /// WARNING: Requires proper state isolation in Lua scripts.
+        #[clap(long, env = "POOL_SIZE")]
+        pool_size: Option<usize>,
         /// Optional state to pass to the Lua script
         #[clap(long, env = "STATE")]
         state: Option<String>,
@@ -280,6 +284,7 @@ async fn try_main() -> anyhow::Result<()> {
             bind,
             mut file,
             max_body_size,
+            pool_size,
             state,
         } => {
             let state = state
@@ -318,6 +323,14 @@ async fn try_main() -> anyhow::Result<()> {
                 bail!("Expected a local file or a stdin input, but got: {file}");
             };
 
+            if let Some(size) = pool_size {
+                warn!(
+                    "Runner pool enabled (size: {size}). \
+                    Lua scripts MUST handle state isolation properly. \
+                    Global variables and module-level state will be shared across requests."
+                );
+            }
+
             let app_state = Arc::new(
                 AppState::builder()
                     .source(source)
@@ -326,12 +339,20 @@ async fn try_main() -> anyhow::Result<()> {
                     .name(name)
                     .no_store(opts.no_store)
                     .permissions(permissions)
+                    .maybe_pool_size(pool_size)
                     .maybe_state(state)
                     .maybe_store_path(opts.store_path)
                     .maybe_timeout(timeout)
                     .build(),
             );
-            let app = build_router(app_state);
+
+            let pool = if pool_size.is_some() {
+                Some(Arc::new(serve::create_pool(&app_state)?))
+            } else {
+                None
+            };
+
+            let app = build_router(app_state, pool);
             let listener = tokio::net::TcpListener::bind(&bind).await?;
             info!("Listening on {}", listener.local_addr()?);
             axum::serve(listener, app).await?;
@@ -341,11 +362,14 @@ async fn try_main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_router(app_state: Arc<AppState>) -> Router {
+fn build_router(
+    app_state: Arc<AppState>,
+    pool: Option<Arc<serve::RunnerPool>>,
+) -> Router {
     Router::new()
         .route("/{*wildcard}", any(serve::request_handler))
         .route("/", any(serve::request_handler))
-        .with_state(app_state)
+        .with_state((app_state, pool))
 }
 
 #[derive(Builder, Clone)]
@@ -357,6 +381,7 @@ struct AppState {
     name: Option<String>,
     no_store: Option<bool>,
     permissions: Option<Permissions>,
+    pool_size: Option<usize>,
     state: Option<Value>,
     store_path: Option<PathBuf>,
     timeout: Option<Duration>,

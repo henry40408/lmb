@@ -2,7 +2,7 @@ use std::{collections::HashMap, env, str, sync::Arc};
 
 use bon::bon;
 use mlua::prelude::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
+use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
 use tracing::{Instrument, debug_span};
 
 use crate::{LmbInput, Permissions};
@@ -18,21 +18,15 @@ pub(crate) mod store;
 pub(crate) mod toml;
 pub(crate) mod yaml;
 
-pub(crate) struct Binding<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+pub(crate) struct Binding {
     permissions: Option<Permissions>,
-    reader: LmbInput<R>,
+    reader: LmbInput,
 }
 
 #[bon]
-impl<R> Binding<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+impl Binding {
     #[builder]
-    pub fn new(#[builder(start_fn)] reader: LmbInput<R>, permissions: Option<Permissions>) -> Self {
+    pub fn new(#[builder(start_fn)] reader: LmbInput, permissions: Option<Permissions>) -> Self {
         Self {
             permissions,
             reader,
@@ -40,10 +34,7 @@ where
     }
 }
 
-impl<R> LuaUserData for Binding<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+impl LuaUserData for Binding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("getenv", |vm, this, key: String| {
             if let Some(p) = &this.permissions {
