@@ -23,7 +23,7 @@ impl fmt::Debug for SharedReader {
 }
 
 impl SharedReader {
-    /// Creates a new SharedReader with the given reader.
+    /// Creates a new `SharedReader` with the given reader.
     pub fn new<R>(reader: R) -> Self
     where
         R: AsyncRead + Send + Unpin + 'static,
@@ -33,7 +33,7 @@ impl SharedReader {
         }
     }
 
-    /// Creates a new SharedReader with an already buffered reader.
+    /// Creates a new `SharedReader` with an already buffered reader.
     pub fn from_buf_reader<R>(reader: BufReader<R>) -> Self
     where
         R: AsyncRead + Send + Unpin + 'static,
@@ -64,7 +64,6 @@ impl SharedReader {
         self.inner.lock().await
     }
 }
-
 
 #[cfg(test)]
 mod tests {

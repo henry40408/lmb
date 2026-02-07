@@ -1,4 +1,4 @@
-use futures::{StreamExt as _, stream::FuturesUnordered};
+use futures::{stream::FuturesUnordered, StreamExt as _};
 use mlua::prelude::*;
 
 enum Settled {

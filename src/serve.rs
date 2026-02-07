@@ -1,20 +1,20 @@
 use std::{collections::HashMap, io::Cursor, str::FromStr as _, sync::Arc};
 
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     extract::{Query, Request, State},
     http::{HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
 };
 use base64::prelude::*;
-use lmb::{LmbResult, Runner, pool::Pool, reader::SharedReader};
+use lmb::{pool::Pool, reader::SharedReader, LmbResult, Runner};
 use mlua::ExternalResult;
 use parking_lot::Mutex;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::empty;
-use tracing::{Instrument as _, debug, debug_span, error};
+use tracing::{debug, debug_span, error, Instrument as _};
 
-use crate::{AppState, open_store_connection};
+use crate::{open_store_connection, AppState};
 
 /// Type alias for the Runner pool used in serve mode.
 pub(crate) type RunnerPool = Pool<String>;
@@ -188,9 +188,9 @@ mod tests {
     use std::sync::Arc;
 
     use axum_test::TestServer;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
 
-    use crate::{AppState, build_router};
+    use crate::{build_router, AppState};
 
     #[tokio::test]
     async fn test_serve() {

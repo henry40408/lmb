@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use mlua::prelude::*;
 use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
-use tracing::{Instrument, debug_span};
+use tracing::{debug_span, Instrument};
 
 use crate::{LmbResult, Runner};
 
@@ -84,7 +84,7 @@ pub(crate) fn bind(runner: &mut Runner) -> LmbResult<()> {
 mod tests {
     use std::io::Cursor;
 
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use test_case::test_case;
 
     use crate::Runner;
