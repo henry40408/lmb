@@ -236,16 +236,15 @@ mod tests {
     async fn test_store_without_connection() {
         let source = r#"
             function f(ctx)
-                -- Store operations should return nil without a connection
-                local val = ctx.store.some_key
-                return val
+                -- Store is nil without a connection
+                return ctx.store == nil
             end
             return f
         "#;
         // Build runner without store connection
         let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner.invoke().call().await.unwrap().result.unwrap();
-        assert_eq!(json!(null), result);
+        assert_eq!(json!(true), result);
     }
 
     #[tokio::test]

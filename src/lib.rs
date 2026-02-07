@@ -289,12 +289,14 @@ impl Runner {
                 ctx.set("request", self.vm.to_value(request)?)?;
             }
         }
-        ctx.set(
-            "store",
-            StoreBinding::builder()
-                .maybe_store(self.store.clone())
-                .build(),
-        )?;
+        if self.store.is_some() {
+            ctx.set(
+                "store",
+                StoreBinding::builder()
+                    .maybe_store(self.store.clone())
+                    .build(),
+            )?;
+        }
 
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
