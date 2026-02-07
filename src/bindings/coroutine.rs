@@ -1,3 +1,42 @@
+//! Coroutine utilities binding module.
+//!
+//! This module provides JavaScript Promise-like utilities for working with Lua coroutines.
+//! Import via `require("@lmb/coroutine")`.
+//!
+//! # Available Methods
+//!
+//! - `all_settled(coroutines)` - Wait for all coroutines to complete, returning results with status.
+//! - `join_all(coroutines)` - Wait for all coroutines to complete successfully, fails if any fails.
+//! - `race(coroutines)` - Return the result of the first coroutine to complete.
+//!
+//! # Example
+//!
+//! ```lua
+//! local co = require("@lmb/coroutine")
+//!
+//! -- Create coroutines
+//! local threads = {
+//!     coroutine.create(function() sleep_ms(10); return 1 end),
+//!     coroutine.create(function() sleep_ms(20); return 2 end),
+//! }
+//!
+//! -- Wait for all to complete
+//! local results = co.join_all(threads)
+//!
+//! -- Race to get first result
+//! local first = co.race(threads)
+//!
+//! -- Get all results with status
+//! local settled = co.all_settled(threads)
+//! for _, r in ipairs(settled) do
+//!     if r.status == "fulfilled" then
+//!         print(r.value)
+//!     else
+//!         print(r.reason)
+//!     end
+//! end
+//! ```
+
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use mlua::prelude::*;
 

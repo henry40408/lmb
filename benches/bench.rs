@@ -111,6 +111,30 @@ fn lmb_call(c: &mut Criterion) {
                 .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
         });
     }
+    {
+        let source = include_str!("fixtures/yaml.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        c.bench_function("yaml encode decode", |b| {
+            b.to_async(&rt)
+                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+        });
+    }
+    {
+        let source = include_str!("fixtures/toml.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        c.bench_function("toml encode decode", |b| {
+            b.to_async(&rt)
+                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+        });
+    }
+    {
+        let source = include_str!("fixtures/pool.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        c.bench_function("pool concurrent", |b| {
+            b.to_async(&rt)
+                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+        });
+    }
 }
 
 criterion_group!(lmb, lmb_call);

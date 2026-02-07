@@ -117,8 +117,10 @@ impl LuaUserData for Binding {
                     let mut remaining = n;
                     let mut buf = vec![];
                     let mut single = [0u8; 1];
+                    // Hold the lock for the entire read operation to avoid repeated locking
+                    let mut reader_guard = reader.lock().await;
                     while remaining > 0 {
-                        let count = reader.lock().await.read(&mut single).await?;
+                        let count = reader_guard.read(&mut single).await?;
                         if count == 0 {
                             break;
                         }
@@ -127,6 +129,7 @@ impl LuaUserData for Binding {
                             remaining -= 1;
                         }
                     }
+                    drop(reader_guard);
                     if buf.is_empty() {
                         return Ok(LuaNil);
                     }

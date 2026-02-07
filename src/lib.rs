@@ -236,10 +236,25 @@ impl Runner {
                 conn.pragma_update(None, "synchronous", "NORMAL")?;
             }
             {
-                let span = debug_span!("run_migrations", count = MIGRATIONS.len()).entered();
-                for migration in MIGRATIONS.iter() {
-                    let _ = debug_span!(parent: &span, "run_migration", migration).entered();
-                    conn.execute_batch(migration)?;
+                // Use user_version to track which migrations have been executed
+                let current_version: i32 =
+                    conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+                let migrations_to_run = MIGRATIONS.len() as i32;
+
+                if current_version < migrations_to_run {
+                    let span =
+                        debug_span!("run_migrations", current_version, total = migrations_to_run)
+                            .entered();
+                    for (idx, migration) in MIGRATIONS.iter().enumerate() {
+                        let version = idx as i32 + 1;
+                        if version > current_version {
+                            let _ = debug_span!(parent: &span, "run_migration", version, migration)
+                                .entered();
+                            conn.execute_batch(migration)?;
+                        }
+                    }
+                    // Update user_version to the latest migration number
+                    conn.pragma_update(None, "user_version", migrations_to_run)?;
                 }
             }
         }

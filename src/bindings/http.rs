@@ -1,3 +1,56 @@
+//! HTTP client binding module.
+//!
+//! This module provides HTTP client functionality for making web requests.
+//! Import via `require("@lmb/http")`.
+//!
+//! # Available Methods
+//!
+//! - `fetch(url, options)` - Make an HTTP request and return a response object.
+//!
+//! # Options
+//!
+//! The `fetch` method accepts an optional table with the following fields:
+//! - `method` - HTTP method (GET, POST, PUT, DELETE, etc.). Default: GET.
+//! - `headers` - Table of HTTP headers.
+//! - `body` - Request body string.
+//! - `timeout` - Request timeout (number in seconds or duration string like "5s").
+//!
+//! # Response Object
+//!
+//! The response object has the following properties and methods:
+//! - `status` - HTTP status code (number).
+//! - `ok` - Boolean indicating if status is 2xx.
+//! - `headers` - Table of response headers.
+//! - `text()` - Get response body as string.
+//! - `json()` - Parse response body as JSON.
+//!
+//! # Example
+//!
+//! ```lua
+//! local http = require("@lmb/http")
+//!
+//! -- Simple GET request
+//! local response = http:fetch("https://api.example.com/data")
+//! if response.ok then
+//!     local data = response:json()
+//!     print(data.message)
+//! end
+//!
+//! -- POST request with headers and body
+//! local response = http:fetch("https://api.example.com/submit", {
+//!     method = "POST",
+//!     headers = {
+//!         ["Content-Type"] = "application/json",
+//!         ["Authorization"] = "Bearer token123"
+//!     },
+//!     body = '{"key": "value"}',
+//!     timeout = 30
+//! })
+//!
+//! print(response.status)  -- e.g., 200
+//! print(response:text())  -- Response body as text
+//! ```
+
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use bon::bon;
