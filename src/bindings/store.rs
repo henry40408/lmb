@@ -8,7 +8,6 @@ use serde_json::Value;
 use tracing::debug_span;
 
 use crate::{
-    LmbStore,
     stmt::{SQL_GET, SQL_PUT},
     store::Store,
 };
@@ -48,7 +47,7 @@ impl LuaUserData for StoreSnapshotBinding {
 
 #[derive(Builder)]
 pub(crate) struct StoreBinding {
-    store: Option<LmbStore>,
+    store: Option<Store>,
 }
 
 impl LuaUserData for StoreBinding {
@@ -60,7 +59,6 @@ impl LuaUserData for StoreBinding {
                 let Some(store) = &this.store else {
                     return Ok(LuaNil);
                 };
-                let store = Store::builder(store.clone()).build();
                 let value = vm.from_value(value)?;
                 store.put(key, &value).into_lua_err()?;
                 Ok(LuaNil)
@@ -72,7 +70,6 @@ impl LuaUserData for StoreBinding {
             let Some(store) = &this.store else {
                 return Ok(LuaNil);
             };
-            let store = Store::builder(store.clone()).build();
             if let Some(value) = &store.get(key).into_lua_err()? {
                 return vm.to_value(value);
             }

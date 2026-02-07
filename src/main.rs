@@ -127,29 +127,29 @@ pub(crate) fn open_store_connection(
 fn permissions_from_opts(opts: &Opts) -> Permissions {
     if opts.allow_all {
         Permissions::All {
-            denied_env: opts.deny_env.clone(),
-            denied_net: opts.deny_net.clone(),
+            denied_env: opts.deny_env.iter().cloned().collect(),
+            denied_net: opts.deny_net.iter().cloned().collect(),
         }
     } else {
         Permissions::Some {
             env: if opts.allow_all_envs {
                 EnvPermissions::All {
-                    denied: opts.deny_env.clone(),
+                    denied: opts.deny_env.iter().cloned().collect(),
                 }
             } else {
                 EnvPermissions::Some {
-                    allowed: opts.allow_env.clone(),
-                    denied: opts.deny_env.clone(),
+                    allowed: opts.allow_env.iter().cloned().collect(),
+                    denied: opts.deny_env.iter().cloned().collect(),
                 }
             },
             net: if opts.allow_all_net {
                 NetPermissions::All {
-                    denied: opts.deny_net.clone(),
+                    denied: opts.deny_net.iter().cloned().collect(),
                 }
             } else {
                 NetPermissions::Some {
-                    allowed: opts.allow_net.clone(),
-                    denied: opts.deny_net.clone(),
+                    allowed: opts.allow_net.iter().cloned().collect(),
+                    denied: opts.deny_net.iter().cloned().collect(),
                 }
             },
         }

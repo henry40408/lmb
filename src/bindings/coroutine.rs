@@ -79,13 +79,18 @@ impl LuaUserData for CoroutineBinding {
                 let task = coroutine.into_async::<LuaValue>(())?;
                 tasks.push(task);
             }
-            let mut results = vec![];
-            for result in tasks {
-                match result.await {
-                    Ok(value) => results.push(Settled::Fulfilled(value)),
-                    Err(err) => results.push(Settled::Rejected(err)),
-                }
-            }
+
+            // Use join_all for parallel execution instead of sequential await
+            let joined = futures::future::join_all(tasks).await;
+
+            let results: Vec<Settled> = joined
+                .into_iter()
+                .map(|result| match result {
+                    Ok(value) => Settled::Fulfilled(value),
+                    Err(err) => Settled::Rejected(err),
+                })
+                .collect();
+
             Ok(results)
         });
 

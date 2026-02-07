@@ -1,5 +1,6 @@
 use bon::bon;
-use rusqlite::params;
+use parking_lot::MutexGuard;
+use rusqlite::{Connection, params};
 use serde_json::Value;
 
 use crate::{
@@ -11,6 +12,13 @@ use crate::{
 #[derive(Debug)]
 pub struct Store {
     inner: LmbStore,
+}
+
+impl Store {
+    /// Acquires a lock on the underlying database connection.
+    pub fn lock(&self) -> MutexGuard<'_, Connection> {
+        self.inner.lock()
+    }
 }
 
 #[bon]

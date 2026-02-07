@@ -26,6 +26,7 @@ use crate::{
     permission::Permissions,
     reader::SharedReader,
     stmt::MIGRATIONS,
+    store::Store,
 };
 
 /// Error handling module
@@ -304,11 +305,11 @@ impl Runner {
                 ctx.set("request", self.vm.to_value(request)?)?;
             }
         }
-        if self.store.is_some() {
+        if let Some(lmb_store) = &self.store {
             ctx.set(
                 "store",
                 StoreBinding::builder()
-                    .maybe_store(self.store.clone())
+                    .store(Store::builder(lmb_store.clone()).build())
                     .build(),
             )?;
         }
