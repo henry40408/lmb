@@ -140,10 +140,10 @@ async fn try_request_handler(
                     let mut res = Response::new(body.into());
 
                     let status_code = output.pointer("/status_code").and_then(|v| v.as_u64());
-                    if let Some(status_code) = status_code {
-                        if let Ok(status_code) = u16::try_from(status_code) {
-                            *res.status_mut() = StatusCode::from_u16(status_code)?;
-                        }
+                    if let Some(status_code) = status_code
+                        && let Ok(status_code) = u16::try_from(status_code)
+                    {
+                        *res.status_mut() = StatusCode::from_u16(status_code)?;
                     }
 
                     let headers = output.pointer("/headers").and_then(|v| v.as_object());
@@ -190,7 +190,7 @@ mod tests {
     use axum_test::TestServer;
     use serde_json::{Value, json};
 
-    use crate::{AppState, build_router};
+    use crate::{AppState, build_router, serve::create_pool};
 
     #[tokio::test]
     async fn test_serve() {
@@ -240,5 +240,88 @@ mod tests {
         let res = server.get("/").await;
         assert_eq!(200, res.status_code());
         assert_eq!("hello world", res.text());
+    }
+
+    #[tokio::test]
+    async fn test_serve_with_pool() {
+        let source = include_str!("./fixtures/serve.lua");
+        let app_state = Arc::new(AppState::builder().source(source).pool_size(2).build());
+        let pool = create_pool(&app_state).unwrap();
+        let router = build_router(app_state, Some(Arc::new(pool)));
+        let server = TestServer::new(router).unwrap();
+
+        // Make multiple requests to exercise pool
+        for _ in 0..4 {
+            let res = server.get("/").await;
+            assert_eq!(201, res.status_code());
+            assert_eq!("<h1>Hello, World!</h1>", res.text());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_serve_string_response() {
+        let source = r#"return function() return "plain text" end"#;
+        let app_state = Arc::new(AppState::builder().source(source).build());
+        let router = build_router(app_state, None);
+        let server = TestServer::new(router).unwrap();
+
+        let res = server.get("/").await;
+        assert_eq!(200, res.status_code());
+        assert_eq!("plain text", res.text());
+    }
+
+    #[tokio::test]
+    async fn test_serve_number_response() {
+        let source = r#"return function() return 42 end"#;
+        let app_state = Arc::new(AppState::builder().source(source).build());
+        let router = build_router(app_state, None);
+        let server = TestServer::new(router).unwrap();
+
+        let res = server.get("/").await;
+        assert_eq!(200, res.status_code());
+        assert_eq!("42", res.text());
+    }
+
+    #[tokio::test]
+    async fn test_serve_error_response() {
+        let source = r#"return function() error("test error") end"#;
+        let app_state = Arc::new(AppState::builder().source(source).build());
+        let router = build_router(app_state, None);
+        let server = TestServer::new(router).unwrap();
+
+        let res = server.get("/").await;
+        assert_eq!(500, res.status_code());
+    }
+
+    #[tokio::test]
+    async fn test_create_pool_with_store() {
+        let source = r#"return function() return "ok" end"#;
+        let app_state = Arc::new(
+            AppState::builder()
+                .source(source)
+                .pool_size(2)
+                .no_store(false)
+                .build(),
+        );
+        let pool = create_pool(&app_state).unwrap();
+        let runner = pool.get().await.unwrap();
+        let res = runner.invoke().call().await.unwrap();
+        assert_eq!(json!("ok"), res.result.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_create_pool_no_store() {
+        let source = r#"return function() return "ok" end"#;
+        let app_state = Arc::new(
+            AppState::builder()
+                .source(source)
+                .pool_size(2)
+                .no_store(true)
+                .build(),
+        );
+        let pool = create_pool(&app_state).unwrap();
+        let runner = pool.get().await.unwrap();
+        let res = runner.invoke().call().await.unwrap();
+        assert_eq!(json!("ok"), res.result.unwrap());
     }
 }

@@ -112,10 +112,10 @@ async fn test_guided_tour() {
             .with_body(r#"{"a":1}"#)
             .create_async()
             .await;
-        if let Some(ref mut state) = visitor.state {
-            if let Some(state) = state.as_object_mut() {
-                state.insert("url".to_string(), json!(server.url()));
-            }
+        if let Some(ref mut state) = visitor.state
+            && let Some(state) = state.as_object_mut()
+        {
+            state.insert("url".to_string(), json!(server.url()));
         }
 
         let conn = if visitor.store {

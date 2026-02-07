@@ -268,13 +268,13 @@ impl Runner {
             let used_memory = used_memory.clone();
             move |vm| {
                 used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
-                if let Some(t) = timeout {
-                    if start.elapsed() > t {
-                        return Err(LuaError::external(Timeout {
-                            elapsed: start.elapsed(),
-                            timeout: t,
-                        }));
-                    }
+                if let Some(t) = timeout
+                    && start.elapsed() > t
+                {
+                    return Err(LuaError::external(Timeout {
+                        elapsed: start.elapsed(),
+                        timeout: t,
+                    }));
                 }
                 Ok(LuaVmState::Continue)
             }
@@ -458,6 +458,21 @@ mod tests {
         let source = include_str!("fixtures/hello.lua");
         let reader = Arc::new(SharedReader::new(empty()));
         Runner::from_shared_reader(source, reader).call().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_shared_reader_accessor() {
+        use std::io::Cursor;
+
+        let source = include_str!("fixtures/hello.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+
+        // Test shared_reader() accessor
+        let shared = runner.shared_reader();
+        assert!(std::sync::Arc::strong_count(shared) >= 1);
+
+        // Test swap_reader() through the runner
+        runner.swap_reader(Cursor::new(b"new data")).await;
     }
 
     #[tokio::test]

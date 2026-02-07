@@ -97,10 +97,10 @@ impl LuaUserData for HttpBinding {
                 let body = options.pointer("/body").and_then(|v| v.as_str());
 
                 let url = Url::parse(&url).into_lua_err()?;
-                if let Some(perm) = &this.permissions {
-                    if !perm.is_url_allowed(&url) {
-                        return Err(LuaError::runtime("URL is not allowed"));
-                    }
+                if let Some(perm) = &this.permissions
+                    && !perm.is_url_allowed(&url)
+                {
+                    return Err(LuaError::runtime("URL is not allowed"));
                 }
 
                 let mut built = this.client.request(method.clone(), url.clone());
@@ -137,10 +137,10 @@ impl LuaUserData for HttpBinding {
                     let mut m = json!({});
                     let headers = response.headers().clone();
                     for (k, v) in headers {
-                        if let Some(k) = k {
-                            if let Ok(v) = v.to_str() {
-                                m[k.as_str()] = json!(v.to_string());
-                            }
+                        if let Some(k) = k
+                            && let Ok(v) = v.to_str()
+                        {
+                            m[k.as_str()] = json!(v.to_string());
                         }
                     }
                     m

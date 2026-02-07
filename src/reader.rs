@@ -69,7 +69,7 @@ impl SharedReader {
 mod tests {
     use std::io::Cursor;
 
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, BufReader};
 
     use super::*;
 
@@ -92,5 +92,35 @@ mod tests {
         let mut buf = vec![0u8; 6];
         reader.lock().await.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"second");
+    }
+
+    #[tokio::test]
+    async fn test_shared_reader_from_buf_reader() {
+        let buf_reader = BufReader::new(Cursor::new(b"buffered"));
+        let reader = SharedReader::from_buf_reader(buf_reader);
+        let mut buf = vec![0u8; 8];
+        reader.lock().await.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"buffered");
+    }
+
+    #[tokio::test]
+    async fn test_shared_reader_swap_buf_reader() {
+        let reader = SharedReader::new(Cursor::new(b"first"));
+        let mut buf = vec![0u8; 5];
+        reader.lock().await.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"first");
+
+        let buf_reader = BufReader::new(Cursor::new(b"swapped"));
+        reader.swap_buf_reader(buf_reader).await;
+        let mut buf = vec![0u8; 7];
+        reader.lock().await.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"swapped");
+    }
+
+    #[test]
+    fn test_shared_reader_debug() {
+        let reader = SharedReader::new(Cursor::new(b"test"));
+        let debug_str = format!("{:?}", reader);
+        assert!(debug_str.contains("SharedReader"));
     }
 }

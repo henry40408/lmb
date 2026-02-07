@@ -62,12 +62,11 @@ impl Binding {
 impl LuaUserData for Binding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("getenv", |vm, this, key: String| {
-            if let Some(p) = &this.permissions {
-                if p.is_env_allowed(&key) {
-                    if let Ok(val) = env::var(&key) {
-                        return vm.to_value(&val);
-                    }
-                }
+            if let Some(p) = &this.permissions
+                && p.is_env_allowed(&key)
+                && let Ok(val) = env::var(&key)
+            {
+                return vm.to_value(&val);
             }
             Ok(LuaNil)
         });
@@ -75,10 +74,10 @@ impl LuaUserData for Binding {
         methods.add_method("getenvs", |vm, this, ()| {
             let mut vars = HashMap::new();
             for (k, v) in env::vars() {
-                if let Some(p) = &this.permissions {
-                    if p.is_env_allowed(&k) {
-                        vars.insert(k, v);
-                    }
+                if let Some(p) = &this.permissions
+                    && p.is_env_allowed(&k)
+                {
+                    vars.insert(k, v);
                 }
             }
             vm.to_value(&vars)
