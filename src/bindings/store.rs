@@ -154,6 +154,7 @@ impl LuaUserData for StoreBinding {
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
+    use serde_json::json;
     use tokio::io::empty;
 
     use crate::Runner;
@@ -161,7 +162,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_binding() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("fixtures/store.lua");
+        let source = include_str!("../fixtures/bindings/store/store.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
@@ -172,7 +173,49 @@ mod tests {
     #[tokio::test]
     async fn test_store_update() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("fixtures/store-update.lua");
+        let source = include_str!("../fixtures/bindings/store/store-update.lua");
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_update_with_missing_keys() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = include_str!("../fixtures/bindings/store/store-update-missing-keys.lua");
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_update_preserves_unmodified() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = include_str!("../fixtures/bindings/store/store-update-preserves.lua");
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_without_connection() {
+        let source = include_str!("../fixtures/bindings/store/store-without-connection.lua");
+        // Build runner without store connection
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        let result = runner.invoke().call().await.unwrap().result.unwrap();
+        assert_eq!(json!(true), result);
+    }
+
+    #[tokio::test]
+    async fn test_store_unicode_keys() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = include_str!("../fixtures/bindings/store/store-unicode-keys.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()

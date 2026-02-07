@@ -91,14 +91,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_all_settled() {
-        let source = include_str!("fixtures/all-settled.lua");
+        let source = include_str!("../fixtures/bindings/coroutine/all-settled.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
     }
 
     #[tokio::test]
     async fn test_join_all() {
-        let source = include_str!("fixtures/join-all.lua");
+        let source = include_str!("../fixtures/bindings/coroutine/join-all.lua");
         let runner = Runner::builder(source, empty())
             .timeout(Duration::from_millis(110))
             .build()
@@ -108,7 +108,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_race() {
-        let source = include_str!("fixtures/race.lua");
+        let source = include_str!("../fixtures/bindings/coroutine/race.lua");
         let runner = Runner::builder(source, empty())
             .timeout(Duration::from_millis(110))
             .build()

@@ -177,7 +177,7 @@ mod tests {
             .create_async()
             .await;
 
-        let source = include_str!("fixtures/http-get.lua");
+        let source = include_str!("../fixtures/bindings/http-get.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let state = State::builder().state(json!(url)).build();
         let result = runner.invoke().state(state).call().await.unwrap();
@@ -202,7 +202,7 @@ mod tests {
             .create_async()
             .await;
 
-        let source = include_str!("fixtures/http-post.lua");
+        let source = include_str!("../fixtures/bindings/http-post.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let state = State::builder().state(json!(url)).build();
         let result = runner.invoke().state(state).call().await.unwrap();

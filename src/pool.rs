@@ -77,7 +77,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool() {
-        let source = include_str!("./fixtures/store.lua");
+        let source = include_str!("./fixtures/bindings/store/store.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
         let store = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
@@ -99,6 +99,98 @@ mod tests {
 
         let store = Store::builder(store).build();
         let value = store.get("a").unwrap().unwrap();
-        assert_eq!(json!(10), value);
+        assert_eq!(json!(true), value);
+    }
+
+    #[tokio::test]
+    async fn test_pool_respects_max_size() {
+        let source = include_str!("./fixtures/pool/return-true.lua");
+        let reader = Arc::new(SharedReader::new(empty()));
+
+        let manager = RunnerManager::builder(source, reader).build();
+        let pool = Pool::builder(manager).max_size(2).build().unwrap();
+
+        // Get two runners, which should exhaust the pool
+        let runner1 = pool.get().await.unwrap();
+        let runner2 = pool.get().await.unwrap();
+
+        // Pool status should reflect the usage
+        let status = pool.status();
+        assert_eq!(2, status.max_size);
+        assert_eq!(2, status.size);
+
+        // Return runners to pool
+        drop(runner1);
+        drop(runner2);
+    }
+
+    #[tokio::test]
+    async fn test_pool_concurrent_requests() {
+        let source = include_str!("./fixtures/pool/stateful-counter.lua");
+        let reader = Arc::new(SharedReader::new(empty()));
+
+        let manager = RunnerManager::builder(source, reader).build();
+        let pool = Pool::builder(manager).max_size(4).build().unwrap();
+
+        let mut handles = vec![];
+        for _ in 0..20 {
+            let pool = pool.clone();
+            handles.push(tokio::spawn(async move {
+                let runner = pool.get().await.unwrap();
+                runner.invoke().call().await.unwrap().result.unwrap()
+            }));
+        }
+
+        let results: Vec<_> = futures::future::join_all(handles)
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+
+        // All invocations should succeed
+        assert_eq!(20, results.len());
+    }
+
+    #[tokio::test]
+    async fn test_pool_recycles_runners() {
+        let source = include_str!("./fixtures/pool/stateful-counter.lua");
+        let reader = Arc::new(SharedReader::new(empty()));
+
+        let manager = RunnerManager::builder(source, reader).build();
+        let pool = Pool::builder(manager).max_size(1).build().unwrap();
+
+        // First call
+        {
+            let runner = pool.get().await.unwrap();
+            let result = runner.invoke().call().await.unwrap().result.unwrap();
+            assert_eq!(json!(1), result);
+        }
+
+        // Second call - should reuse the same runner and increment count
+        {
+            let runner = pool.get().await.unwrap();
+            let result = runner.invoke().call().await.unwrap().result.unwrap();
+            assert_eq!(json!(2), result);
+        }
+
+        // Third call - should still be the same runner
+        {
+            let runner = pool.get().await.unwrap();
+            let result = runner.invoke().call().await.unwrap().result.unwrap();
+            assert_eq!(json!(3), result);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pool_without_store() {
+        let source = include_str!("./fixtures/pool/return-no-store.lua");
+        let reader = Arc::new(SharedReader::new(empty()));
+
+        let manager = RunnerManager::builder(source, reader).build();
+        let pool = Pool::builder(manager).max_size(2).build().unwrap();
+
+        let runner = pool.get().await.unwrap();
+        let result = runner.invoke().call().await.unwrap().result.unwrap();
+        assert_eq!(json!("no store"), result);
     }
 }

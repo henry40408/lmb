@@ -1,8 +1,9 @@
 function store_update(ctx)
   ctx.store.a = 20 -- Initial value for 'a'
+  ctx.store.b = 0  -- Reset 'b' for benchmark iterations
 
   -- a is fetched from the store
-  -- b is not in the store, so it should have a default value of 0
+  -- b uses default value of 0 if not set above
   ctx.store:update({ "a", b = 0 }, function(values)
     values.a = values.a - 10
     values.b = values.b + 10

@@ -11,7 +11,7 @@ use tokio::io::empty;
 fn lmb_call(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     {
-        let source = include_str!("fixtures/true.lua");
+        let source = include_str!("../src/fixtures/core/true.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("baseline", |b| {
             b.to_async(&rt)
@@ -19,7 +19,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("fixtures/true-expr.lua");
+        let source = include_str!("../src/fixtures/core/true-expr.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("baseline expr", |b| {
             b.to_async(&rt)
@@ -27,7 +27,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("fixtures/add.lua");
+        let source = include_str!("../src/fixtures/core/add.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("add", |b| {
             b.to_async(&rt).iter(|| async {
@@ -44,7 +44,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("fixtures/read.lua");
+        let source = include_str!("../src/fixtures/bindings/io/read-all.lua");
         let text = "";
         let runner = Runner::builder(source, Cursor::new(text)).build().unwrap();
         c.bench_function("read", |b| {
@@ -58,7 +58,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("fixtures/read-unicode.lua");
+        let source = include_str!("../src/fixtures/bindings/io/read-unicode.lua");
         let text = "你好，世界";
         let runner = Runner::builder(source, Cursor::new(text)).build().unwrap();
         c.bench_function("read unicode", |b| {
@@ -72,7 +72,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("fixtures/json.lua");
+        let source = include_str!("../src/fixtures/bindings/codecs/json.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("json encode decode", |b| {
             b.to_async(&rt)
@@ -80,7 +80,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("fixtures/store.lua");
+        let source = include_str!("../src/fixtures/bindings/store/store.lua");
         let conn = Connection::open_in_memory().unwrap();
         let runner = Runner::builder(source, empty())
             .store(conn)

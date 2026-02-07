@@ -194,7 +194,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_serve() {
-        let source = include_str!("./fixtures/serve.lua");
+        let source = include_str!("./fixtures/serve/serve.lua");
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
         let server = TestServer::new(router).unwrap();
@@ -207,7 +207,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_serve_echo() {
-        let source = include_str!("./fixtures/serve-echo.lua");
+        let source = include_str!("./fixtures/serve/serve-echo.lua");
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
         let server = TestServer::new(router).unwrap();
@@ -232,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_serve_base64() {
-        let source = include_str!("./fixtures/serve-base64.lua");
+        let source = include_str!("./fixtures/serve/serve-base64.lua");
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
         let server = TestServer::new(router).unwrap();
@@ -244,7 +244,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_serve_with_pool() {
-        let source = include_str!("./fixtures/serve.lua");
+        let source = include_str!("./fixtures/serve/serve.lua");
         let app_state = Arc::new(AppState::builder().source(source).pool_size(2).build());
         let pool = create_pool(&app_state).unwrap();
         let router = build_router(app_state, Some(Arc::new(pool)));
