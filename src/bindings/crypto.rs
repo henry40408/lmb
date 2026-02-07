@@ -1,3 +1,63 @@
+//! Cryptographic functions binding module.
+//!
+//! This module provides cryptographic utilities for hashing, encoding, and encryption.
+//! Import via `require("@lmb/crypto")`.
+//!
+//! # Available Methods
+//!
+//! ## Encoding
+//! - `base64_encode(data)` - Encode data to base64 string.
+//! - `base64_decode(data)` - Decode base64 string to data.
+//!
+//! ## Hashing
+//! - `crc32(data)` - Compute CRC32 checksum (hex string).
+//! - `md5(data)` - Compute MD5 hash (hex string).
+//! - `sha1(data)` - Compute SHA-1 hash (hex string).
+//! - `sha256(data)` - Compute SHA-256 hash (hex string).
+//! - `sha384(data)` - Compute SHA-384 hash (hex string).
+//! - `sha512(data)` - Compute SHA-512 hash (hex string).
+//! - `hmac(algorithm, data, secret)` - Compute HMAC (sha1, sha256, sha384, sha512).
+//!
+//! ## Encryption/Decryption
+//! - `encrypt(cipher, data, key, iv)` - Encrypt data using specified cipher.
+//! - `decrypt(cipher, encrypted, key, iv)` - Decrypt data using specified cipher.
+//!
+//! # Supported Ciphers
+//!
+//! | Cipher     | Key Size | IV Size | Notes                    |
+//! |------------|----------|---------|--------------------------|
+//! | `aes-cbc`  | 16 bytes | 16 bytes| AES-128 in CBC mode      |
+//! | `des-cbc`  | 8 bytes  | 8 bytes | DES in CBC mode          |
+//! | `des-ecb`  | 8 bytes  | N/A     | DES in ECB mode (no IV)  |
+//!
+//! # Security Warning
+//!
+//! - **DES is considered insecure** for modern applications. Use AES when possible.
+//! - **MD5 and SHA-1** should not be used for security-critical hashing.
+//! - Always use cryptographically secure random values for keys and IVs.
+//!
+//! # Example
+//!
+//! ```lua
+//! local crypto = require("@lmb/crypto")
+//!
+//! -- Base64 encoding
+//! local encoded = crypto.base64_encode("Hello")
+//! local decoded = crypto.base64_decode(encoded)
+//!
+//! -- Hashing
+//! local hash = crypto.sha256("password")
+//!
+//! -- HMAC
+//! local hmac = crypto.hmac("sha256", "message", "secret")
+//!
+//! -- AES encryption (key and IV must be 16 bytes)
+//! local key = "1234567890123456"
+//! local iv = "abcdefghijklmnop"
+//! local encrypted = crypto.encrypt("aes-cbc", "plaintext", key, iv)
+//! local decrypted = crypto.decrypt("aes-cbc", encrypted, key, iv)
+//! ```
+
 use std::{fmt, sync::Arc};
 
 use aes::cipher::{BlockDecryptMut as _, BlockEncryptMut as _, block_padding::Pkcs7};
@@ -142,6 +202,41 @@ mod tests {
     #[tokio::test]
     async fn test_crypto() {
         let source = include_str!("../fixtures/bindings/crypto.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_crypto_errors() {
+        let source = include_str!("../fixtures/bindings/crypto-errors.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_base64_roundtrip() {
+        let source = include_str!("../fixtures/bindings/crypto/base64-roundtrip.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_hash_functions() {
+        let source = include_str!("../fixtures/bindings/crypto/hash-functions.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_des_ecb_encryption() {
+        let source = include_str!("../fixtures/bindings/crypto/des-ecb.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_des_cbc_encryption() {
+        let source = include_str!("../fixtures/bindings/crypto/des-cbc.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
     }

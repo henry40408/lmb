@@ -186,6 +186,56 @@ Hello, world!
     }
 }
 
+mod cli {
+    use super::*;
+
+    #[test]
+    fn version() {
+        Command::new(cmd::cargo_bin!("lmb"))
+            .args(["--version"])
+            .assert()
+            .success()
+            .stdout_eq(str![[r#"
+lmb [..]
+
+"#]]);
+    }
+
+    #[test]
+    fn help() {
+        let assert = Command::new(cmd::cargo_bin!("lmb"))
+            .args(["--help"])
+            .assert()
+            .success();
+        let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+        assert!(stdout.contains("Commands:"));
+        assert!(stdout.contains("eval"));
+        assert!(stdout.contains("serve"));
+        assert!(stdout.contains("Options:"));
+    }
+
+    #[test]
+    fn missing_file() {
+        let assert = Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .args(["eval", "--file", "nonexistent-file.lua"])
+            .assert()
+            .failure();
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+        assert!(stderr.contains("nonexistent-file.lua"));
+    }
+
+    #[test]
+    fn missing_subcommand() {
+        let assert = Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .assert()
+            .failure();
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+        assert!(stderr.contains("requires a subcommand"));
+    }
+}
+
 mod errors {
     use super::*;
 
