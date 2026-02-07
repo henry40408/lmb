@@ -104,7 +104,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool_respects_max_size() {
-        let source = r#"return function() return true end"#;
+        let source = include_str!("./fixtures/pool/return-true.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
         let manager = RunnerManager::builder(source, reader).build();
@@ -126,13 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool_concurrent_requests() {
-        let source = r#"
-            local count = 0
-            return function()
-                count = count + 1
-                return count
-            end
-        "#;
+        let source = include_str!("./fixtures/pool/stateful-counter.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
         let manager = RunnerManager::builder(source, reader).build();
@@ -159,13 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool_recycles_runners() {
-        let source = r#"
-            local count = 0
-            return function()
-                count = count + 1
-                return count
-            end
-        "#;
+        let source = include_str!("./fixtures/pool/stateful-counter.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
         let manager = RunnerManager::builder(source, reader).build();
@@ -195,7 +183,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool_without_store() {
-        let source = r#"return function() return "no store" end"#;
+        let source = include_str!("./fixtures/pool/return-no-store.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
         let manager = RunnerManager::builder(source, reader).build();

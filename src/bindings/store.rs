@@ -184,20 +184,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_update_with_missing_keys() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = r#"
-            function f(ctx)
-                -- Update with keys that don't exist, using defaults
-                local result = ctx.store:update({ x = 100, y = 200 }, function(values)
-                    values.x = values.x + 1
-                    values.y = values.y + 2
-                    return values.x + values.y
-                end)
-                assert(result == 303, "Expected 303, got " .. tostring(result))
-                assert(ctx.store.x == 101, "Expected x=101, got " .. tostring(ctx.store.x))
-                assert(ctx.store.y == 202, "Expected y=202, got " .. tostring(ctx.store.y))
-            end
-            return f
-        "#;
+        let source = include_str!("../fixtures/bindings/store/store-update-missing-keys.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
@@ -208,23 +195,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_update_preserves_unmodified() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = r#"
-            function f(ctx)
-                -- Set initial values
-                ctx.store.preserved = "original"
-                ctx.store.modified = 0
-
-                -- Only modify 'modified', leave 'preserved' alone in update
-                ctx.store:update({ modified = 0 }, function(values)
-                    values.modified = values.modified + 10
-                end)
-
-                -- 'preserved' should still be the original value
-                assert(ctx.store.preserved == "original", "preserved should be untouched")
-                assert(ctx.store.modified == 10, "modified should be 10")
-            end
-            return f
-        "#;
+        let source = include_str!("../fixtures/bindings/store/store-update-preserves.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
@@ -234,13 +205,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_without_connection() {
-        let source = r#"
-            function f(ctx)
-                -- Store is nil without a connection
-                return ctx.store == nil
-            end
-            return f
-        "#;
+        let source = include_str!("../fixtures/bindings/store/store-without-connection.lua");
         // Build runner without store connection
         let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner.invoke().call().await.unwrap().result.unwrap();
@@ -250,19 +215,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_unicode_keys() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = r#"
-            function f(ctx)
-                -- Test Unicode keys
-                ctx.store["你好"] = "世界"
-                ctx.store["🔑"] = { emoji = "🎉" }
-                ctx.store["キー"] = 42
-
-                assert(ctx.store["你好"] == "世界", "Chinese key/value failed")
-                assert(ctx.store["🔑"].emoji == "🎉", "Emoji key failed")
-                assert(ctx.store["キー"] == 42, "Japanese key failed")
-            end
-            return f
-        "#;
+        let source = include_str!("../fixtures/bindings/store/store-unicode-keys.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
