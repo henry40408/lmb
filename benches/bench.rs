@@ -46,12 +46,11 @@ fn lmb_call(c: &mut Criterion) {
     {
         let source = include_str!("fixtures/read.lua");
         let text = "";
-        let input = Cursor::new(text);
-        let runner = Runner::builder(source, input).build().unwrap();
+        let runner = Runner::builder(source, Cursor::new(text)).build().unwrap();
         c.bench_function("read", |b| {
             b.to_async(&rt).iter_batched(
                 || async {
-                    runner.rewind_input().await.unwrap();
+                    runner.swap_reader(Cursor::new(text)).await;
                 },
                 |_| async { runner.invoke().call().await.unwrap().result.unwrap() },
                 BatchSize::SmallInput,
@@ -61,12 +60,11 @@ fn lmb_call(c: &mut Criterion) {
     {
         let source = include_str!("fixtures/read-unicode.lua");
         let text = "你好，世界";
-        let input = Cursor::new(text);
-        let runner = Runner::builder(source, input).build().unwrap();
+        let runner = Runner::builder(source, Cursor::new(text)).build().unwrap();
         c.bench_function("read unicode", |b| {
             b.to_async(&rt).iter_batched(
                 || async {
-                    runner.rewind_input().await.unwrap();
+                    runner.swap_reader(Cursor::new(text)).await;
                 },
                 |_| async { runner.invoke().call().await.unwrap().result.unwrap() },
                 BatchSize::SmallInput,

@@ -2,7 +2,7 @@
 name = "lmb"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 license = "MIT"
 
 [dependencies]
@@ -76,6 +76,9 @@ mockito = "1.7.0"
 pulldown-cmark = "0.13.0"
 snapbox = { version = "0.6.21", features = ["cmd"] }
 test-case = "3.3.1"
+
+[profile.dev]
+codegen-units = 16
 
 [profile.release]
 codegen-units = 1

@@ -2,10 +2,35 @@ use std::{collections::HashMap, env, str, sync::Arc};
 
 use bon::bon;
 use mlua::prelude::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
+use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
 use tracing::{Instrument, debug_span};
 
 use crate::{LmbInput, Permissions};
+
+macro_rules! define_codec_binding {
+    ($name:ident, $span_prefix:literal, $decode:expr, $encode:expr) => {
+        pub(crate) struct $name;
+
+        impl mlua::prelude::LuaUserData for $name {
+            fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
+                use mlua::prelude::*;
+
+                methods.add_function("decode", |vm, s: String| {
+                    let _ = tracing::debug_span!(concat!("decode_", $span_prefix)).entered();
+                    let parsed = ($decode)(&s).into_lua_err()?;
+                    vm.to_value(&parsed)
+                });
+                methods.add_function("encode", |vm, value: LuaValue| {
+                    let _ = tracing::debug_span!(concat!("encode_", $span_prefix)).entered();
+                    let encoded = ($encode)(&value).into_lua_err()?;
+                    vm.to_value(&encoded)
+                });
+            }
+        }
+    };
+}
+
+pub(crate) use define_codec_binding;
 
 pub(crate) mod coroutine;
 pub(crate) mod crypto;
@@ -18,21 +43,15 @@ pub(crate) mod store;
 pub(crate) mod toml;
 pub(crate) mod yaml;
 
-pub(crate) struct Binding<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+pub(crate) struct Binding {
     permissions: Option<Permissions>,
-    reader: LmbInput<R>,
+    reader: LmbInput,
 }
 
 #[bon]
-impl<R> Binding<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+impl Binding {
     #[builder]
-    pub fn new(#[builder(start_fn)] reader: LmbInput<R>, permissions: Option<Permissions>) -> Self {
+    pub fn new(#[builder(start_fn)] reader: LmbInput, permissions: Option<Permissions>) -> Self {
         Self {
             permissions,
             reader,
@@ -40,18 +59,14 @@ where
     }
 }
 
-impl<R> LuaUserData for Binding<R>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+impl LuaUserData for Binding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("getenv", |vm, this, key: String| {
-            if let Some(p) = &this.permissions {
-                if p.is_env_allowed(&key) {
-                    if let Ok(val) = env::var(&key) {
-                        return vm.to_value(&val);
-                    }
-                }
+            if let Some(p) = &this.permissions
+                && p.is_env_allowed(&key)
+                && let Ok(val) = env::var(&key)
+            {
+                return vm.to_value(&val);
             }
             Ok(LuaNil)
         });
@@ -59,10 +74,10 @@ where
         methods.add_method("getenvs", |vm, this, ()| {
             let mut vars = HashMap::new();
             for (k, v) in env::vars() {
-                if let Some(p) = &this.permissions {
-                    if p.is_env_allowed(&k) {
-                        vars.insert(k, v);
-                    }
+                if let Some(p) = &this.permissions
+                    && p.is_env_allowed(&k)
+                {
+                    vars.insert(k, v);
                 }
             }
             vm.to_value(&vars)

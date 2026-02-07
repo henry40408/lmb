@@ -1,15 +1,12 @@
 use std::sync::Arc;
 
 use mlua::prelude::*;
-use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _};
+use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
 use tracing::{Instrument, debug_span};
 
 use crate::{LmbResult, Runner};
 
-pub(crate) fn bind<R>(runner: &mut Runner<R>) -> LmbResult<()>
-where
-    for<'lua> R: 'lua + AsyncRead + Send + Unpin,
-{
+pub(crate) fn bind(runner: &mut Runner) -> LmbResult<()> {
     let globals = runner.vm.globals();
 
     let io = runner.vm.create_table()?;

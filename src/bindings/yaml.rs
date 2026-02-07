@@ -1,22 +1,9 @@
-use mlua::prelude::*;
-use tracing::debug_span;
-
-pub(crate) struct YamlBinding;
-
-impl LuaUserData for YamlBinding {
-    fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_function("decode", |vm, yaml_str: String| {
-            let _ = debug_span!("decode_yaml").entered();
-            let parsed = serde_yaml::from_str::<serde_yaml::Value>(&yaml_str).into_lua_err()?;
-            vm.to_value(&parsed)
-        });
-        methods.add_function("encode", |vm, value: LuaValue| {
-            let _ = debug_span!("encode_yaml").entered();
-            let yaml_str = serde_yaml::to_string(&value).into_lua_err()?;
-            vm.to_value(&yaml_str)
-        });
-    }
-}
+super::define_codec_binding!(
+    YamlBinding,
+    "yaml",
+    serde_yaml::from_str::<serde_yaml::Value>,
+    serde_yaml::to_string
+);
 
 #[cfg(test)]
 mod tests {

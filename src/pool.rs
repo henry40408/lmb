@@ -1,33 +1,30 @@
 use bon::bon;
 use deadpool::managed;
 use mlua::AsChunk;
-use tokio::io::AsyncRead;
 
 use crate::{LmbError, LmbInput, LmbStore, Runner};
 
 /// A manager for Lua script runners
 #[derive(Debug)]
-pub struct RunnerManager<R, S>
+pub struct RunnerManager<S>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
     S: AsChunk + Clone,
 {
     source: S,
-    reader: LmbInput<R>,
+    reader: LmbInput,
     store: Option<LmbStore>,
 }
 
 #[bon]
-impl<R, S> RunnerManager<R, S>
+impl<S> RunnerManager<S>
 where
-    for<'lua> R: 'lua + AsyncRead + Unpin,
     S: AsChunk + Clone,
 {
     /// Creates a new `RunnerManager`
     #[builder]
     pub fn new(
         #[builder(start_fn)] source: S,
-        #[builder(start_fn)] reader: LmbInput<R>,
+        #[builder(start_fn)] reader: LmbInput,
         store: Option<LmbStore>,
     ) -> Self {
         Self {
@@ -38,16 +35,15 @@ where
     }
 }
 
-impl<R, S> managed::Manager for RunnerManager<R, S>
+impl<S> managed::Manager for RunnerManager<S>
 where
-    for<'lua> R: 'lua + AsyncRead + Send + Sync + Unpin,
     S: AsChunk + Clone + Send + Sync,
 {
-    type Type = Runner<R>;
+    type Type = Runner;
     type Error = LmbError;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
-        Runner::from_arc_mutex(self.source.clone(), self.reader.clone())
+        Runner::from_shared_reader(self.source.clone(), self.reader.clone())
             .maybe_store(self.store.clone())
             .call()
     }
@@ -62,7 +58,7 @@ where
 }
 
 /// A pool of Lua script runners
-pub type Pool<R, S> = managed::Pool<RunnerManager<R, S>>;
+pub type Pool<S> = managed::Pool<RunnerManager<S>>;
 
 #[cfg(test)]
 mod tests {
@@ -71,20 +67,18 @@ mod tests {
     use parking_lot::Mutex;
     use rusqlite::Connection;
     use serde_json::json;
-    use tokio::{
-        io::{BufReader, empty},
-        sync::Mutex as AsyncMutex,
-    };
+    use tokio::io::empty;
 
     use crate::{
         pool::{Pool, RunnerManager},
+        reader::SharedReader,
         store::Store,
     };
 
     #[tokio::test]
     async fn test_pool() {
         let source = include_str!("./fixtures/store.lua");
-        let reader = Arc::new(AsyncMutex::new(BufReader::new(empty())));
+        let reader = Arc::new(SharedReader::new(empty()));
 
         let store = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
         let manager = RunnerManager::builder(source, reader)
