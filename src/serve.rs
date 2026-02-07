@@ -10,12 +10,11 @@ use base64::prelude::*;
 use lmb::{LmbResult, Runner, pool::Pool, reader::SharedReader};
 use mlua::ExternalResult;
 use parking_lot::Mutex;
-use rusqlite::Connection;
 use serde_json::{Value, json};
 use tokio::io::empty;
 use tracing::{Instrument as _, debug, debug_span, error};
 
-use crate::AppState;
+use crate::{AppState, open_store_connection};
 
 /// Type alias for the Runner pool used in serve mode.
 pub(crate) type RunnerPool = Pool<String>;
@@ -24,11 +23,11 @@ pub(crate) type RunnerPool = Pool<String>;
 pub(crate) fn create_pool(app_state: &AppState) -> anyhow::Result<RunnerPool> {
     let reader = Arc::new(SharedReader::new(empty()));
 
-    let store = match (app_state.store_path.clone(), app_state.no_store) {
-        (None, None) => Some(Arc::new(Mutex::new(Connection::open_in_memory()?))),
-        (Some(path), None) => Some(Arc::new(Mutex::new(Connection::open(path)?))),
-        _ => None,
-    };
+    let store = open_store_connection(
+        app_state.store_path.clone(),
+        app_state.no_store.unwrap_or(false),
+    )?
+    .map(|conn| Arc::new(Mutex::new(conn)));
 
     let manager = lmb::pool::RunnerManager::builder(app_state.source.clone(), reader)
         .maybe_store(store)
@@ -106,11 +105,10 @@ async fn try_request_handler(
     } else {
         // Non-pool mode: create new runner per request
         let reader = Cursor::new(bytes);
-        let conn = match (app_state.store_path.clone(), app_state.no_store) {
-            (None, None) => Some(Connection::open_in_memory()?),
-            (Some(path), None) => Some(Connection::open(path)?),
-            _ => None,
-        };
+        let conn = open_store_connection(
+            app_state.store_path.clone(),
+            app_state.no_store.unwrap_or(false),
+        )?;
 
         let runner = Runner::builder(app_state.source.clone(), reader)
             .maybe_default_name(app_state.name.clone())

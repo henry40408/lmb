@@ -7,6 +7,31 @@ use tracing::{Instrument, debug_span};
 
 use crate::{LmbInput, Permissions};
 
+macro_rules! define_codec_binding {
+    ($name:ident, $span_prefix:literal, $decode:expr, $encode:expr) => {
+        pub(crate) struct $name;
+
+        impl mlua::prelude::LuaUserData for $name {
+            fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
+                use mlua::prelude::*;
+
+                methods.add_function("decode", |vm, s: String| {
+                    let _ = tracing::debug_span!(concat!("decode_", $span_prefix)).entered();
+                    let parsed = ($decode)(&s).into_lua_err()?;
+                    vm.to_value(&parsed)
+                });
+                methods.add_function("encode", |vm, value: LuaValue| {
+                    let _ = tracing::debug_span!(concat!("encode_", $span_prefix)).entered();
+                    let encoded = ($encode)(&value).into_lua_err()?;
+                    vm.to_value(&encoded)
+                });
+            }
+        }
+    };
+}
+
+pub(crate) use define_codec_binding;
+
 pub(crate) mod coroutine;
 pub(crate) mod crypto;
 pub(crate) mod globals;

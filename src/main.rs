@@ -105,6 +105,25 @@ enum Command {
     },
 }
 
+fn parse_timeout(span: Option<jiff::Span>) -> anyhow::Result<Option<Duration>> {
+    match span {
+        None => Ok(Some(Duration::from_secs(30))),
+        Some(t) if t.is_zero() => Ok(None),
+        Some(t) => Ok(Some(Duration::try_from(t)?)),
+    }
+}
+
+pub(crate) fn open_store_connection(
+    store_path: Option<PathBuf>,
+    no_store: bool,
+) -> anyhow::Result<Option<Connection>> {
+    match (store_path, no_store) {
+        (None, false) => Ok(Some(Connection::open_in_memory()?)),
+        (Some(path), false) => Ok(Some(Connection::open(path)?)),
+        _ => Ok(None),
+    }
+}
+
 fn permissions_from_opts(opts: &Opts) -> Permissions {
     if opts.allow_all {
         Permissions::All {
@@ -200,31 +219,16 @@ async fn try_main() -> anyhow::Result<()> {
                 bail!("Expected a local file or a stdin input, but got: {file}");
             };
 
-            let http_timeout = match opts.http_timeout {
-                None => Some(Duration::from_secs(30)),
-                Some(t) if t.is_zero() => None,
-                Some(t) => Some(Duration::try_from(t)?),
-            };
+            let http_timeout = parse_timeout(opts.http_timeout)?;
             debug!("Using HTTP timeout: {http_timeout:?}");
 
-            let timeout = match opts.timeout {
-                None => Some(Duration::from_secs(30)),
-                Some(t) if t.is_zero() => None,
-                Some(t) => Some(Duration::try_from(t)?),
-            };
+            let timeout = parse_timeout(opts.timeout)?;
             debug!("Using timeout: {timeout:?}");
 
-            let conn = match (opts.store_path, opts.no_store) {
-                (None, false) => {
-                    warn!("No store path specified, using in-memory store");
-                    Some(Connection::open_in_memory()?)
-                }
-                (Some(path), false) => {
-                    debug!("Using store at: {path:?}");
-                    Some(Connection::open(path)?)
-                }
-                _ => None,
-            };
+            if opts.store_path.is_none() && !opts.no_store {
+                warn!("No store path specified, using in-memory store");
+            }
+            let conn = open_store_connection(opts.store_path, opts.no_store)?;
 
             let runner = if let Some(source) = &source {
                 debug!("Evaluating Lua code from stdin or a string input");
@@ -298,18 +302,10 @@ async fn try_main() -> anyhow::Result<()> {
             let max_body_size = Byte::parse_str(max_body_size, true)?;
             let max_body_size = usize::try_from(max_body_size.as_u64())?;
 
-            let http_timeout = match opts.http_timeout {
-                None => Some(Duration::from_secs(30)),
-                Some(t) if t.is_zero() => None,
-                Some(t) => Some(Duration::try_from(t)?),
-            };
+            let http_timeout = parse_timeout(opts.http_timeout)?;
             debug!("Using HTTP timeout: {http_timeout:?}");
 
-            let timeout = match opts.timeout {
-                None => Some(Duration::from_secs(30)),
-                Some(t) if t.is_zero() => None,
-                Some(t) => Some(Duration::try_from(t)?),
-            };
+            let timeout = parse_timeout(opts.timeout)?;
             debug!("Using timeout: {timeout:?}");
 
             let mut source = String::new();
