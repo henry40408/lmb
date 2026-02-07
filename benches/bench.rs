@@ -92,7 +92,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("../src/fixtures/bindings/store/store-update.lua");
+        let source = include_str!("fixtures/store-update.lua");
         let conn = Connection::open_in_memory().unwrap();
         let runner = Runner::builder(source, empty())
             .store(conn)
@@ -104,7 +104,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("../src/fixtures/bindings/crypto.lua");
+        let source = include_str!("fixtures/crypto.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("crypto", |b| {
             b.to_async(&rt)
