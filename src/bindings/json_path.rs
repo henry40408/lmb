@@ -23,7 +23,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_json_path() {
-        let source = include_str!("fixtures/json-path.lua");
+        let source = include_str!("../fixtures/bindings/codecs/json-path.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
     }

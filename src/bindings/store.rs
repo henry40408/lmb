@@ -154,6 +154,7 @@ impl LuaUserData for StoreBinding {
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
+    use serde_json::json;
     use tokio::io::empty;
 
     use crate::Runner;
@@ -161,7 +162,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_binding() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("fixtures/store.lua");
+        let source = include_str!("../fixtures/bindings/store/store.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
@@ -172,7 +173,97 @@ mod tests {
     #[tokio::test]
     async fn test_store_update() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("fixtures/store-update.lua");
+        let source = include_str!("../fixtures/bindings/store/store-update.lua");
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_update_with_missing_keys() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = r#"
+            function f(ctx)
+                -- Update with keys that don't exist, using defaults
+                local result = ctx.store:update({ x = 100, y = 200 }, function(values)
+                    values.x = values.x + 1
+                    values.y = values.y + 2
+                    return values.x + values.y
+                end)
+                assert(result == 303, "Expected 303, got " .. tostring(result))
+                assert(ctx.store.x == 101, "Expected x=101, got " .. tostring(ctx.store.x))
+                assert(ctx.store.y == 202, "Expected y=202, got " .. tostring(ctx.store.y))
+            end
+            return f
+        "#;
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_update_preserves_unmodified() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = r#"
+            function f(ctx)
+                -- Set initial values
+                ctx.store.preserved = "original"
+                ctx.store.modified = 0
+
+                -- Only modify 'modified', leave 'preserved' alone in update
+                ctx.store:update({ modified = 0 }, function(values)
+                    values.modified = values.modified + 10
+                end)
+
+                -- 'preserved' should still be the original value
+                assert(ctx.store.preserved == "original", "preserved should be untouched")
+                assert(ctx.store.modified == 10, "modified should be 10")
+            end
+            return f
+        "#;
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_without_connection() {
+        let source = r#"
+            function f(ctx)
+                -- Store operations should return nil without a connection
+                local val = ctx.store.some_key
+                return val
+            end
+            return f
+        "#;
+        // Build runner without store connection
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        let result = runner.invoke().call().await.unwrap().result.unwrap();
+        assert_eq!(json!(null), result);
+    }
+
+    #[tokio::test]
+    async fn test_store_unicode_keys() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = r#"
+            function f(ctx)
+                -- Test Unicode keys
+                ctx.store["你好"] = "世界"
+                ctx.store["🔑"] = { emoji = "🎉" }
+                ctx.store["キー"] = 42
+
+                assert(ctx.store["你好"] == "世界", "Chinese key/value failed")
+                assert(ctx.store["🔑"].emoji == "🎉", "Emoji key failed")
+                assert(ctx.store["キー"] == 42, "Japanese key failed")
+            end
+            return f
+        "#;
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()

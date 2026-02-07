@@ -44,3 +44,89 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use parking_lot::Mutex;
+    use rusqlite::Connection;
+    use serde_json::json;
+
+    use super::Store;
+    use crate::stmt::MIGRATIONS;
+
+    fn create_test_store() -> Store {
+        let conn = Connection::open_in_memory().unwrap();
+        for migration in MIGRATIONS.iter() {
+            conn.execute_batch(migration).unwrap();
+        }
+        Store::builder(Arc::new(Mutex::new(conn))).build()
+    }
+
+    #[test]
+    fn test_get_nonexistent_key() {
+        let store = create_test_store();
+        let result = store.get("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_put_and_get() {
+        let store = create_test_store();
+        let value = json!({"hello": "world"});
+        store.put("key1", &value).unwrap();
+        let result = store.get("key1").unwrap();
+        assert_eq!(Some(value), result);
+    }
+
+    #[test]
+    fn test_overwrite_value() {
+        let store = create_test_store();
+        let value1 = json!(1);
+        let value2 = json!(2);
+        store.put("counter", &value1).unwrap();
+        assert_eq!(Some(value1), store.get("counter").unwrap());
+        store.put("counter", &value2).unwrap();
+        assert_eq!(Some(value2), store.get("counter").unwrap());
+    }
+
+    #[test]
+    fn test_complex_json_value() {
+        let store = create_test_store();
+        let value = json!({
+            "string": "hello",
+            "number": 42,
+            "float": 1.23,
+            "boolean": true,
+            "null": null,
+            "array": [1, 2, 3],
+            "nested": {
+                "a": {"b": {"c": "deep"}}
+            }
+        });
+        store.put("complex", &value).unwrap();
+        assert_eq!(Some(value), store.get("complex").unwrap());
+    }
+
+    #[test]
+    fn test_null_value() {
+        let store = create_test_store();
+        let value = json!(null);
+        store.put("nullable", &value).unwrap();
+        assert_eq!(Some(value), store.get("nullable").unwrap());
+    }
+
+    #[test]
+    fn test_unicode_key_and_value() {
+        let store = create_test_store();
+        let key = "你好世界";
+        let value = json!({
+            "greeting": "こんにちは",
+            "emoji": "🎉🚀",
+            "arabic": "مرحبا"
+        });
+        store.put(key, &value).unwrap();
+        assert_eq!(Some(value), store.get(key).unwrap());
+    }
+}

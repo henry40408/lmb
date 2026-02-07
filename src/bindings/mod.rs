@@ -171,7 +171,7 @@ mod tests {
             "مرحبا بالعالم",
             "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚",
         ];
-        let source = include_str!("fixtures/read-unicode-all.lua");
+        let source = include_str!("../fixtures/bindings/io/read-unicode-all.lua");
         let input = Cursor::new(text.join("\n"));
         let runner = Runner::builder(source, input).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
@@ -189,7 +189,7 @@ mod tests {
             "مرحبا بالعالم",
             "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚",
         ];
-        let source = include_str!("fixtures/read-unicode-line.lua");
+        let source = include_str!("../fixtures/bindings/io/read-unicode-line.lua");
         let input = Cursor::new(text.join("\n"));
         let runner = Runner::builder(source, input).build().unwrap();
         assert_eq!(
@@ -236,7 +236,7 @@ mod tests {
     #[tokio::test]
 
     async fn test_read_unicode_count(text: &'static str) {
-        let source = include_str!("fixtures/read-unicode.lua");
+        let source = include_str!("../fixtures/bindings/io/read-unicode.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
 

@@ -289,14 +289,12 @@ impl Runner {
                 ctx.set("request", self.vm.to_value(request)?)?;
             }
         }
-        if self.store.is_some() {
-            ctx.set(
-                "store",
-                StoreBinding::builder()
-                    .maybe_store(self.store.clone())
-                    .build(),
-            )?;
-        }
+        ctx.set(
+            "store",
+            StoreBinding::builder()
+                .maybe_store(self.store.clone())
+                .build(),
+        )?;
 
         let invoked = Invoked::builder()
             .elapsed(start.elapsed())
@@ -398,7 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_error_handling() {
-        let source = include_str!("fixtures/errors/error.lua");
+        let source = include_str!("./fixtures/errors/error.lua");
         let runner = Runner::builder(source, empty())
             .default_name("test")
             .build()
@@ -413,8 +411,8 @@ mod tests {
         assert_eq!("test:2: unknown error", message);
     }
 
-    #[test_case(include_str!("fixtures/hello.lua"), None, json!(true); "hello")]
-    #[test_case(include_str!("fixtures/add.lua"), Some(json!(1)), json!(2); "add")]
+    #[test_case(include_str!("./fixtures/core/hello.lua"), None, json!(true); "hello")]
+    #[test_case(include_str!("./fixtures/core/add.lua"), Some(json!(1)), json!(2); "add")]
     #[tokio::test]
     async fn test_invoke(source: &'static str, state: Option<Value>, expected: Value) {
         let runner = Runner::builder(source, empty()).build().unwrap();
@@ -425,7 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invoke_closure() {
-        let source = include_str!("fixtures/closure.lua");
+        let source = include_str!("./fixtures/core/closure.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         for i in 1..=10 {
             let result = runner.invoke().call().await.unwrap();
@@ -435,7 +433,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invoke_timeout() {
-        let source = include_str!("fixtures/infinite.lua");
+        let source = include_str!("./fixtures/core/infinite.lua");
         let runner = Runner::builder(source, empty())
             .timeout(Duration::from_millis(10))
             .build()
@@ -447,7 +445,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi() {
-        let source = include_str!("fixtures/multi.lua");
+        let source = include_str!("./fixtures/core/multi.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner.invoke().call().await.unwrap();
         assert_eq!(json!([true, 1]), result.result.unwrap());
@@ -455,7 +453,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_shared_reader() {
-        let source = include_str!("fixtures/hello.lua");
+        let source = include_str!("./fixtures/core/hello.lua");
         let reader = Arc::new(SharedReader::new(empty()));
         Runner::from_shared_reader(source, reader).call().unwrap();
     }
@@ -464,7 +462,7 @@ mod tests {
     async fn test_shared_reader_accessor() {
         use std::io::Cursor;
 
-        let source = include_str!("fixtures/hello.lua");
+        let source = include_str!("./fixtures/core/hello.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
 
         // Test shared_reader() accessor
@@ -477,7 +475,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_syntax_error() {
-        let source = include_str!("fixtures/errors/syntax-error.lua");
+        let source = include_str!("./fixtures/errors/syntax-error.lua");
         let err = Runner::builder(source, empty())
             .default_name("test")
             .build()
@@ -493,7 +491,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_value_as_error() {
-        let source = include_str!("fixtures/value-as-error.lua");
+        let source = include_str!("./fixtures/value-as-error.lua");
         let runner = Runner::builder(source, empty())
             .default_name("test")
             .build()
