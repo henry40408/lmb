@@ -86,7 +86,7 @@ where
 }
 
 /// Renders a report to a string using the graphical report handler.
-pub fn render_report<W>(writer: &mut W, report: &Report)
+pub fn render_report<W>(writer: &mut W, report: &Report) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
@@ -95,7 +95,5 @@ where
     } else {
         GraphicalTheme::ascii()
     };
-    GraphicalReportHandler::new_themed(theme)
-        .render_report(writer, report.as_ref())
-        .expect("failed to render report");
+    GraphicalReportHandler::new_themed(theme).render_report(writer, report.as_ref())
 }
