@@ -216,7 +216,7 @@ async fn report_error(file: &Input, source: &Option<String>, e: &LmbError) -> an
     match report {
         ErrorReport::Report(report) => {
             let mut s = String::new();
-            render_report(&mut s, &report);
+            render_report(&mut s, &report)?;
             io::stderr().write_all(s.as_bytes())?;
             io::stderr().flush()?;
         }
