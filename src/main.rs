@@ -27,8 +27,32 @@ mod serve;
 
 const VERSION: &str = env!("APP_VERSION");
 
+const LONG_ABOUT: &str = "\
+A standalone Luau runtime for running Lua scripts from the command line.
+
+lmb provides a sandboxed environment with built-in modules for cryptography,
+HTTP requests, JSON/YAML/TOML parsing, and coroutine utilities. It is optimized
+for quick execution and suitable for low-end hardware like Raspberry Pi.";
+
+const AFTER_HELP: &str = "\
+EXAMPLES:
+    Evaluate a Lua script:
+        lmb eval --file script.lua
+
+    Evaluate with input from stdin:
+        echo 'Hello' | lmb eval --file script.lua
+
+    Start an HTTP server:
+        lmb serve --file handler.lua --bind 0.0.0.0:3000
+
+    Allow environment variable access:
+        lmb --allow-env API_KEY eval --file script.lua
+
+    Allow network access to specific hosts:
+        lmb --allow-net api.example.com eval --file script.lua";
+
 #[derive(Debug, Parser)]
-#[clap(author, version=VERSION, about, long_about = None)]
+#[clap(author, version=VERSION, about, long_about = LONG_ABOUT, after_help = AFTER_HELP)]
 struct Opts {
     /// Allow all resources
     #[clap(long, env = "ALLOW_ALL")]
@@ -63,10 +87,10 @@ struct Opts {
     /// Disable store usage
     #[clap(long, action, group = "store_group", env = "NO_STORE")]
     no_store: bool,
-    /// Optional path to the store file
+    /// Path to SQLite file for persistent key-value storage
     #[clap(long, value_parser, group = "store_group", env = "STORE_PATH")]
     store_path: Option<PathBuf>,
-    /// Timeout. Default is 30 seconds, set to 0 for no timeout
+    /// Script execution timeout (e.g., 30s, 1m). Default: 30s, use 0 for unlimited
     #[clap(long, env = "TIMEOUT")]
     timeout: Option<jiff::Span>,
     #[clap(subcommand)]
@@ -75,31 +99,41 @@ struct Opts {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Evaluate a file
+    /// Evaluate a Lua script file and execute its returned function
+    #[clap(after_help = "\
+EXAMPLES:
+    lmb eval --file hello.lua
+    lmb eval --file script.lua --state '{\"key\": \"value\"}'
+    echo 'input' | lmb eval --file processor.lua")]
     Eval {
-        /// Path to the file to evaluate
+        /// Path to the Lua script file, use '-' for stdin
         #[clap(long, value_parser, env = "FILE_PATH")]
         file: Input,
-        /// Optional state to pass to the Lua script
+        /// JSON state passed to the Lua script as ctx.state
         #[clap(long, env = "STATE")]
         state: Option<String>,
     },
-    /// Serve a file
+    /// Start an HTTP server that handles requests with a Lua script
+    #[clap(after_help = "\
+EXAMPLES:
+    lmb serve --file api.lua
+    lmb serve --file api.lua --bind 0.0.0.0:8080
+    lmb serve --file api.lua --pool-size 4 --max-body-size 10mb")]
     Serve {
-        /// Bound address and port
+        /// Address and port to listen on
         #[clap(long, default_value = "127.0.0.1:3000", env = "BIND")]
         bind: String,
-        /// Path to the file to serve
+        /// Path to the Lua script file, use '-' for stdin
         #[clap(long, value_parser, env = "FILE_PATH")]
         file: Input,
-        /// Optional maximum body size
+        /// Maximum request body size (e.g., 10mb, 1gb)
         #[clap(long, default_value = "100M", env = "MAX_BODY_SIZE")]
         max_body_size: String,
-        /// Enable Runner pool with specified size.
+        /// Number of Lua VM instances to pool for concurrent requests.
         /// WARNING: Requires proper state isolation in Lua scripts.
         #[clap(long, env = "POOL_SIZE")]
         pool_size: Option<usize>,
-        /// Optional state to pass to the Lua script
+        /// JSON state passed to the Lua script as ctx.state
         #[clap(long, env = "STATE")]
         state: Option<String>,
     },
