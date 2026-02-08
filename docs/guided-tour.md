@@ -308,6 +308,7 @@ In this example, we demonstrate how to use coroutines to race multiple coroutine
 ```lua
 --[[
 --name = "Coroutines - race"
+--timeout = 10
 --]]
 function race()
   local m = require('@lmb/coroutine')
