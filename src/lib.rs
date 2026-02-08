@@ -132,6 +132,27 @@ pub struct Runner {
 
 static WRAP_FUNC: &str = r"return function(f, ctx) return pcall(f, ctx) end";
 
+/// Processes the error value(s) returned by pcall when it fails.
+///
+/// When pcall returns `(false, ...)`, this function extracts and converts the error
+/// into an appropriate `LmbError`.
+fn process_pcall_error(values: &[LuaValue], vm: &Lua) -> LmbResult<LmbError> {
+    if let Some(value) = values.first() {
+        if let LuaValue::Error(e) = value {
+            Ok(LmbError::Lua(*e.clone()))
+        } else {
+            let value = vm.from_value::<Value>(value.clone())?;
+            Ok(match value {
+                Value::String(s) => LmbError::Lua(LuaError::runtime(s)),
+                _ => LmbError::LuaValue(value),
+            })
+        }
+    } else {
+        debug_assert!(false, "pcall should always return an error on failure");
+        Ok(LmbError::Lua(LuaError::runtime("pcall failed")))
+    }
+}
+
 #[bon]
 impl Runner {
     /// Creates a new Lua runner with the given source code and input reader.
@@ -351,24 +372,8 @@ impl Runner {
         };
 
         if !ok {
-            if let Some(value) = values.first() {
-                if let LuaValue::Error(e) = value {
-                    return Ok(invoked.result(Err(LmbError::Lua(*e.clone()))).build());
-                } else {
-                    let value = self.vm.from_value::<Value>(value.clone())?;
-                    return Ok(invoked
-                        .result(match value {
-                            Value::String(s) => Err(LmbError::Lua(LuaError::runtime(s))),
-                            _ => Err(LmbError::LuaValue(value)),
-                        })
-                        .build());
-                }
-            } else {
-                debug_assert!(false, "pcall should always return an error on failure");
-                return Ok(invoked
-                    .result(Err(LmbError::Lua(LuaError::runtime("pcall failed"))))
-                    .build());
-            }
+            let err = process_pcall_error(&values, &self.vm)?;
+            return Ok(invoked.result(Err(err)).build());
         }
 
         let value = if values.is_empty() {
@@ -525,5 +530,48 @@ mod tests {
             panic!("Expected a Lua value error");
         };
         assert_eq!(json!({"a": 1}), value);
+    }
+
+    #[test]
+    #[cfg_attr(
+        debug_assertions,
+        should_panic(expected = "pcall should always return an error")
+    )]
+    fn test_process_pcall_error_empty_values() {
+        let lua = Lua::new();
+        let result = super::process_pcall_error(&[], &lua);
+        // In release mode, the debug_assert! is stripped, so we can test the fallback behavior
+        let err = result.unwrap();
+        assert!(matches!(err, LmbError::Lua(LuaError::RuntimeError(msg)) if msg == "pcall failed"));
+    }
+
+    #[test]
+    fn test_process_pcall_error_with_lua_error() {
+        let lua = Lua::new();
+        let lua_err = LuaError::runtime("test error");
+        let error_value = LuaValue::Error(Box::new(lua_err));
+        let result = super::process_pcall_error(&[error_value], &lua);
+        let err = result.unwrap();
+        assert!(matches!(err, LmbError::Lua(LuaError::RuntimeError(msg)) if msg == "test error"));
+    }
+
+    #[test]
+    fn test_process_pcall_error_with_string_value() {
+        let lua = Lua::new();
+        let string_value = lua.create_string("error message").unwrap();
+        let result = super::process_pcall_error(&[LuaValue::String(string_value)], &lua);
+        let err = result.unwrap();
+        assert!(
+            matches!(err, LmbError::Lua(LuaError::RuntimeError(msg)) if msg == "error message")
+        );
+    }
+
+    #[test]
+    fn test_process_pcall_error_with_non_string_value() {
+        let lua = Lua::new();
+        let number_value = LuaValue::Number(42.0);
+        let result = super::process_pcall_error(&[number_value], &lua);
+        let err = result.unwrap();
+        assert!(matches!(err, LmbError::LuaValue(Value::Number(n)) if n.as_f64() == Some(42.0)));
     }
 }
