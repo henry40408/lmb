@@ -114,7 +114,10 @@ pub fn find_section(name: &str) -> Option<(Section, String)> {
     for section in &sections {
         if section.title.to_lowercase() == name_lower {
             let content = &GUIDED_TOUR[section.start..section.end];
-            return Some((section.clone(), format!("# {}\n\n{}", section.title, content)));
+            return Some((
+                section.clone(),
+                format!("# {}\n\n{}", section.title, content),
+            ));
         }
     }
 
@@ -122,7 +125,10 @@ pub fn find_section(name: &str) -> Option<(Section, String)> {
     for section in &sections {
         if section.title.to_lowercase().contains(&name_lower) {
             let content = &GUIDED_TOUR[section.start..section.end];
-            return Some((section.clone(), format!("# {}\n\n{}", section.title, content)));
+            return Some((
+                section.clone(),
+                format!("# {}\n\n{}", section.title, content),
+            ));
         }
     }
 
@@ -183,9 +189,7 @@ fn render_plain<W: Write>(writer: &mut W, content: &str) -> io::Result<()> {
                 }
                 write!(writer, " ")?;
             }
-            Event::End(
-                TagEnd::Heading(_) | TagEnd::Paragraph | TagEnd::List(_) | TagEnd::Item,
-            )
+            Event::End(TagEnd::Heading(_) | TagEnd::Paragraph | TagEnd::List(_) | TagEnd::Item)
             | Event::SoftBreak
             | Event::HardBreak => {
                 writeln!(writer)?;
