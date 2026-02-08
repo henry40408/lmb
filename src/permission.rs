@@ -3,6 +3,7 @@ use std::{
     str::FromStr as _,
 };
 
+use rustc_hash::FxHashSet;
 use url::Url;
 
 /// Permissions for accessing environment variables
@@ -11,14 +12,14 @@ pub enum EnvPermissions {
     /// All environment variables are accessible
     All {
         /// Environment variables that are denied access
-        denied: Vec<String>,
+        denied: FxHashSet<String>,
     },
     /// Some specific environment variables are accessible
     Some {
         /// Environment variables that are allowed access
-        allowed: Vec<String>,
+        allowed: FxHashSet<String>,
         /// Environment variables that are denied access, these take precedence over allowed
-        denied: Vec<String>,
+        denied: FxHashSet<String>,
     },
 }
 
@@ -28,14 +29,14 @@ pub enum NetPermissions {
     /// All network resources are accessible
     All {
         /// Network resources that are denied access
-        denied: Vec<String>,
+        denied: FxHashSet<String>,
     },
     /// Some specific network resources are accessible
     Some {
         /// Network resources that are allowed access
-        allowed: Vec<String>,
+        allowed: FxHashSet<String>,
         /// Network resources that are denied access, these take precedence over allowed
-        denied: Vec<String>,
+        denied: FxHashSet<String>,
     },
 }
 
@@ -45,9 +46,9 @@ pub enum Permissions {
     /// All resources are allowed access
     All {
         /// Environment variables that are denied access
-        denied_env: Vec<String>,
+        denied_env: FxHashSet<String>,
         /// Network resources that are denied access
-        denied_net: Vec<String>,
+        denied_net: FxHashSet<String>,
     },
     /// Some resources are allowed access
     Some {
@@ -61,44 +62,34 @@ pub enum Permissions {
 impl Permissions {
     /// Checks if the given environment variable key is allowed
     pub fn is_env_allowed<S: AsRef<str>>(&self, key: S) -> bool {
-        let key = key.as_ref().to_string();
+        let key = key.as_ref();
         match self {
-            Permissions::All { denied_env, .. } => !denied_env.contains(&key),
+            Permissions::All { denied_env, .. } => !denied_env.contains(key),
             Permissions::Some { env, .. } => match env {
-                EnvPermissions::All { denied } => !denied.contains(&key),
+                EnvPermissions::All { denied } => !denied.contains(key),
                 EnvPermissions::Some { allowed, denied } => {
-                    if allowed.contains(&key) {
-                        !denied.contains(&key)
-                    } else {
-                        false
-                    }
+                    allowed.contains(key) && !denied.contains(key)
                 }
             },
         }
     }
 
-    fn is_domain_or_ip_allowed<S: AsRef<str>>(expected: &[S], addr: &S) -> bool {
-        let expected = expected
-            .iter()
-            .map(|s| s.as_ref().to_string())
-            .collect::<Vec<_>>();
-        let addr = addr.as_ref();
-        if let Ok(addr) = SocketAddr::from_str(addr) {
+    fn is_domain_or_ip_allowed(expected: &FxHashSet<String>, addr: &str) -> bool {
+        if let Ok(sock_addr) = SocketAddr::from_str(addr) {
             // host with port e.g. 1.1.1.1:1234
-            let (ip, port) = (addr.ip(), addr.port());
+            let (ip, port) = (sock_addr.ip(), sock_addr.port());
             expected.contains(&format!("{ip}:{port}")) || expected.contains(&ip.to_string())
-        } else if let Ok(addr) = IpAddr::from_str(addr) {
+        } else if let Ok(ip_addr) = IpAddr::from_str(addr) {
             // host without port e.g. 1.1.1.1
-            expected.contains(&addr.to_string())
+            expected.contains(&ip_addr.to_string())
         } else {
             // domain name e.g. example.com or example.com:1234
-            let parts = addr.split(':').collect::<Vec<_>>();
+            let parts: Vec<_> = addr.split(':').collect();
             match (parts.first(), parts.get(1)) {
-                (Some(host), None) if !host.is_empty() => expected.contains(&(*host).to_string()),
+                (Some(host), None) if !host.is_empty() => expected.contains(*host),
                 // when list = ("example.com"), both "example.com" and "example.com:1234" matches
                 (Some(host), Some(port)) => {
-                    expected.contains(&(*host).to_string())
-                        || expected.contains(&format!("{host}:{port}"))
+                    expected.contains(*host) || expected.contains(&format!("{host}:{port}"))
                 }
                 _ => false,
             }
@@ -107,19 +98,14 @@ impl Permissions {
 
     /// Checks if the given network address is allowed
     pub fn is_net_allowed<S: AsRef<str>>(&self, addr: S) -> bool {
-        let addr = addr.as_ref().to_string();
+        let addr = addr.as_ref();
         match self {
-            Permissions::All { denied_net, .. } => {
-                !Self::is_domain_or_ip_allowed(denied_net, &addr)
-            }
+            Permissions::All { denied_net, .. } => !Self::is_domain_or_ip_allowed(denied_net, addr),
             Permissions::Some { net, .. } => match net {
-                NetPermissions::All { denied } => !Self::is_domain_or_ip_allowed(denied, &addr),
+                NetPermissions::All { denied } => !Self::is_domain_or_ip_allowed(denied, addr),
                 NetPermissions::Some { allowed, denied } => {
-                    if Self::is_domain_or_ip_allowed(allowed, &addr) {
-                        !Self::is_domain_or_ip_allowed(denied, &addr)
-                    } else {
-                        false
-                    }
+                    Self::is_domain_or_ip_allowed(allowed, addr)
+                        && !Self::is_domain_or_ip_allowed(denied, addr)
                 }
             },
         }
@@ -138,6 +124,7 @@ impl Permissions {
 
 #[cfg(test)]
 mod tests {
+    use rustc_hash::FxHashSet;
     use test_case::test_case;
     use url::Url;
 
@@ -149,7 +136,7 @@ mod tests {
     fn test_all_env(expected: bool, actual: &str, denied_env: &[&str]) {
         let perm = Permissions::All {
             denied_env: denied_env.iter().map(|s| (*s).to_string()).collect(),
-            denied_net: vec![],
+            denied_net: FxHashSet::default(),
         };
         assert_eq!(expected, perm.is_env_allowed(actual));
     }
@@ -174,7 +161,7 @@ mod tests {
     #[test_case(true,"example.com:443", &["another.com:443"])]
     fn test_all_net(expected: bool, actual: &str, denied_net: &[&str]) {
         let perm = Permissions::All {
-            denied_env: vec![],
+            denied_env: FxHashSet::default(),
             denied_net: denied_net.iter().map(|s| (*s).to_string()).collect(),
         };
         assert_eq!(expected, perm.is_net_allowed(actual));
@@ -188,7 +175,9 @@ mod tests {
             env: EnvPermissions::All {
                 denied: denied_env.iter().map(|s| (*s).to_string()).collect(),
             },
-            net: NetPermissions::All { denied: vec![] },
+            net: NetPermissions::All {
+                denied: FxHashSet::default(),
+            },
         };
         assert_eq!(expected, perm.is_env_allowed(actual));
     }
@@ -206,7 +195,9 @@ mod tests {
                 allowed: allowed_env.iter().map(|s| (*s).to_string()).collect(),
                 denied: denied_env.iter().map(|s| (*s).to_string()).collect(),
             },
-            net: NetPermissions::All { denied: vec![] },
+            net: NetPermissions::All {
+                denied: FxHashSet::default(),
+            },
         };
         assert_eq!(expected, perm.is_env_allowed(actual));
     }
@@ -231,7 +222,9 @@ mod tests {
     #[test_case(true,"example.com:443", &["another.com:443"])]
     fn test_some_all_net(expected: bool, actual: &str, denied_net: &[&str]) {
         let perm = Permissions::Some {
-            env: EnvPermissions::All { denied: vec![] },
+            env: EnvPermissions::All {
+                denied: FxHashSet::default(),
+            },
             net: NetPermissions::All {
                 denied: denied_net.iter().map(|s| (*s).to_string()).collect(),
             },
@@ -266,7 +259,9 @@ mod tests {
 
     fn test_some_some_net(expected: bool, actual: &str, allowed_net: &[&str], denied_net: &[&str]) {
         let perm = Permissions::Some {
-            env: EnvPermissions::All { denied: vec![] },
+            env: EnvPermissions::All {
+                denied: FxHashSet::default(),
+            },
             net: NetPermissions::Some {
                 allowed: allowed_net.iter().map(|s| (*s).to_string()).collect(),
                 denied: denied_net.iter().map(|s| (*s).to_string()).collect(),
@@ -291,7 +286,9 @@ mod tests {
     #[test_case(false, "unix:/run/foo.socket", &[], &[])]
     fn test_url(expected: bool, actual: &str, allowed_net: &[&str], denied_net: &[&str]) {
         let perm = Permissions::Some {
-            env: EnvPermissions::All { denied: vec![] },
+            env: EnvPermissions::All {
+                denied: FxHashSet::default(),
+            },
             net: NetPermissions::Some {
                 allowed: allowed_net.iter().map(|s| (*s).to_string()).collect(),
                 denied: denied_net.iter().map(|s| (*s).to_string()).collect(),
