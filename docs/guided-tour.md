@@ -269,6 +269,38 @@ end
 return join_all
 ```
 
+#### all_settled
+
+The `all_settled` function waits for all coroutines to complete and returns an array of result objects. Unlike `join_all`, it does not fail if any coroutine fails. Each result object has:
+- `status`: "fulfilled" or "rejected"
+- `value`: The return value (if fulfilled)
+- `reason`: The error (if rejected)
+
+```lua
+--[[
+--name = "Coroutines - all_settled"
+--timeout = 110
+--]]
+function all_settled()
+  local m = require('@lmb/coroutine')
+  local a = coroutine.create(function()
+    return 100
+  end)
+  local b = coroutine.create(function()
+    error("intentional error")
+  end)
+  local results = m.all_settled({ a, b })
+
+  assert(results[1].status == "fulfilled", "Expected first coroutine to be fulfilled")
+  assert(results[1].value == 100, "Expected first coroutine value to be 100")
+
+  assert(results[2].status == "rejected", "Expected second coroutine to be rejected")
+  assert(results[2].reason ~= nil, "Expected second coroutine to have a reason")
+end
+
+return all_settled
+```
+
 #### race
 
 In this example, we demonstrate how to use coroutines to race multiple coroutines against each other and return the result of the first one that finishes.
