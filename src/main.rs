@@ -24,6 +24,7 @@ use tracing::{Instrument, Level, debug, debug_span, info, warn};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 mod serve;
+mod tour;
 
 const VERSION: &str = env!("APP_VERSION");
 
@@ -112,6 +113,22 @@ EXAMPLES:
         /// JSON state passed to the Lua script as ctx.state
         #[clap(long, env = "STATE")]
         state: Option<String>,
+    },
+    /// Display the guided tour of lmb features
+    #[clap(after_help = "\
+EXAMPLES:
+    lmb tour                 # Display the full guided tour
+    lmb tour | less -R       # Use with a pager for easier reading
+    lmb tour --list          # List all available sections
+    lmb tour -s crypto       # Display a specific section")]
+    Tour {
+        /// Show a specific section (e.g., \"crypto\", \"http\")
+        #[clap(long, short)]
+        section: Option<String>,
+
+        /// List all available sections
+        #[clap(long, short)]
+        list: bool,
     },
     /// Start an HTTP server that handles requests with a Lua script
     #[clap(after_help = "\
@@ -232,6 +249,16 @@ async fn try_main() -> anyhow::Result<()> {
     debug!("Permissions: {permissions:?}");
 
     match opts.command {
+        Command::Tour { section, list } => {
+            let color_mode = tour::ColorMode::detect(no_color);
+            if list {
+                tour::print_section_list();
+            } else if let Some(section_name) = section {
+                tour::display_section(&section_name, color_mode)?;
+            } else {
+                tour::display_tour(color_mode)?;
+            }
+        }
         Command::Eval { mut file, state } => {
             let span = debug_span!("eval").entered();
             debug!("Evaluate Lua script: {file:?}");

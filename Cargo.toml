@@ -40,6 +40,7 @@ mlua = { version = "0.11.1", features = [
 ] }
 no_color = "0.2.0"
 parking_lot = "0.12.4"
+pulldown-cmark = "0.13.0"
 reqwest = { version = "0.12.22", default-features = false, features = [
   "charset",
   "http2",
@@ -55,6 +56,8 @@ serde_yaml = "0.9.34"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
 string-offsets = "0.2.0"
+syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
+termimad = "0.34"
 thiserror = "2.0.12"
 tokio = { version = "1.47.0", default-features = false, features = [
   "fs",
@@ -74,7 +77,6 @@ criterion = { version = "0.7.0", features = ["async_tokio"] }
 curl-parser = "0.6.0"
 full_moon = "2.0.0"
 mockito = "1.7.0"
-pulldown-cmark = "0.13.0"
 snapbox = { version = "0.6.21", features = ["cmd"] }
 test-case = "3.3.1"
 
