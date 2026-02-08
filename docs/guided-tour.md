@@ -308,6 +308,7 @@ In this example, we demonstrate how to use coroutines to race multiple coroutine
 ```lua
 --[[
 --name = "Coroutines - race"
+--timeout = 10
 --]]
 function race()
   local m = require('@lmb/coroutine')
@@ -466,7 +467,8 @@ In this section, we demonstrate how to make HTTP requests using the `@lmb/http` 
 ```lua
 --[[
 --name = "HTTP"
---state = {}
+--# NOTE: The url is a placeholder; it will be overridden by the test harness.
+--state = { url = "http://localhost:8080" }
 --]]
 function http_get(ctx)
   local http = require("@lmb/http")
