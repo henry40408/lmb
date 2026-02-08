@@ -3,7 +3,7 @@
 [![CI](https://github.com/henry40408/lmb/actions/workflows/ci.yaml/badge.svg)](https://github.com/henry40408/lmb/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/gh/henry40408/lmb/graph/badge.svg?token=O7WLYVEX0E)](https://codecov.io/gh/henry40408/lmb)
 [![License](https://img.shields.io/github/license/henry40408/lmb)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.85%2B-blue.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://www.rust-lang.org/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://ghcr.io/henry40408/lmb)
 [![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
 
