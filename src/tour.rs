@@ -377,6 +377,43 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_sections_custom_markdown() {
+        let markdown = r#"# First Heading
+
+Some content here.
+
+## Second Heading
+
+More content.
+
+### Third Heading
+
+Even more content.
+"#;
+        let sections = extract_sections(markdown);
+        assert_eq!(sections.len(), 3);
+        assert_eq!(sections[0].title, "First Heading");
+        assert_eq!(sections[0].level, 1);
+        assert_eq!(sections[1].title, "Second Heading");
+        assert_eq!(sections[1].level, 2);
+        assert_eq!(sections[2].title, "Third Heading");
+        assert_eq!(sections[2].level, 3);
+    }
+
+    #[test]
+    fn test_extract_sections_empty_markdown() {
+        let sections = extract_sections("");
+        assert!(sections.is_empty());
+    }
+
+    #[test]
+    fn test_extract_sections_no_headings() {
+        let markdown = "Just some plain text without any headings.";
+        let sections = extract_sections(markdown);
+        assert!(sections.is_empty());
+    }
+
+    #[test]
     fn test_find_section() {
         let result = find_section("hello");
         assert!(result.is_some());
@@ -391,7 +428,355 @@ mod tests {
     }
 
     #[test]
+    fn test_find_section_not_found() {
+        let result = find_section("nonexistent_section_xyz_12345");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_section_exact_match() {
+        let result = find_section("Guided tour");
+        assert!(result.is_some());
+        let (section, content) = result.unwrap();
+        assert_eq!(section.title, "Guided tour");
+        assert!(content.contains("# Guided tour"));
+    }
+
+    #[test]
+    fn test_find_section_case_insensitive() {
+        let result = find_section("GUIDED TOUR");
+        assert!(result.is_some());
+        let (section, _) = result.unwrap();
+        assert_eq!(section.title, "Guided tour");
+    }
+
+    #[test]
+    fn test_list_sections() {
+        let sections = list_sections();
+        assert!(!sections.is_empty());
+        // First section should be "Guided tour"
+        assert_eq!(sections[0].title, "Guided tour");
+        assert_eq!(sections[0].level, 1);
+    }
+
+    #[test]
     fn test_color_mode_detect() {
         assert_eq!(ColorMode::detect(true), ColorMode::None);
+    }
+
+    #[test]
+    fn test_color_mode_detect_no_flag() {
+        // When no_color is false, result depends on NO_COLOR env var
+        let result = ColorMode::detect(false);
+        if std::env::var("NO_COLOR").is_ok() {
+            assert_eq!(result, ColorMode::None);
+        } else {
+            assert_eq!(result, ColorMode::TrueColor);
+        }
+    }
+
+    #[test]
+    fn test_color_mode_equality() {
+        assert_eq!(ColorMode::TrueColor, ColorMode::TrueColor);
+        assert_eq!(ColorMode::None, ColorMode::None);
+        assert_ne!(ColorMode::TrueColor, ColorMode::None);
+    }
+
+    #[test]
+    fn test_color_mode_clone() {
+        let mode = ColorMode::TrueColor;
+        let cloned = mode;
+        assert_eq!(mode, cloned);
+    }
+
+    #[test]
+    fn test_color_mode_debug() {
+        let mode = ColorMode::TrueColor;
+        let debug_str = format!("{:?}", mode);
+        assert_eq!(debug_str, "TrueColor");
+    }
+
+    #[test]
+    fn test_section_clone() {
+        let section = Section {
+            title: "Test".to_string(),
+            level: 1,
+            start: 0,
+            end: 10,
+        };
+        let cloned = section.clone();
+        assert_eq!(section.title, cloned.title);
+        assert_eq!(section.level, cloned.level);
+        assert_eq!(section.start, cloned.start);
+        assert_eq!(section.end, cloned.end);
+    }
+
+    #[test]
+    fn test_section_debug() {
+        let section = Section {
+            title: "Test".to_string(),
+            level: 1,
+            start: 0,
+            end: 10,
+        };
+        let debug_str = format!("{:?}", section);
+        assert!(debug_str.contains("Test"));
+        assert!(debug_str.contains("level: 1"));
+    }
+
+    #[test]
+    fn test_render_plain_basic() {
+        let content = "# Hello\n\nThis is a test.";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("# Hello"));
+        assert!(result.contains("This is a test."));
+    }
+
+    #[test]
+    fn test_render_plain_with_code_block() {
+        let content = "```rust\nlet x = 1;\n```";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("let x = 1;"));
+    }
+
+    #[test]
+    fn test_render_plain_with_inline_code() {
+        let content = "Use `code` here.";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("`code`"));
+    }
+
+    #[test]
+    fn test_render_plain_with_list() {
+        let content = "- Item 1\n- Item 2";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("- Item 1"));
+        assert!(result.contains("- Item 2"));
+    }
+
+    #[test]
+    fn test_render_plain_with_headings() {
+        let content = "# H1\n## H2\n### H3";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("# H1"));
+        assert!(result.contains("## H2"));
+        assert!(result.contains("### H3"));
+    }
+
+    #[test]
+    fn test_render_plain_with_link() {
+        let content = "[link text](https://example.com)";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("[link text]"));
+    }
+
+    #[test]
+    fn test_render_colored_basic() {
+        let content = "# Hello\n\nThis is a test.";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("Hello"));
+        assert!(result.contains("This is a test."));
+        // Should contain ANSI escape codes
+        assert!(result.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_render_colored_with_code_block_lua() {
+        let content = "```lua\nlocal x = 1\n```";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("local"));
+        assert!(result.contains("1"));
+    }
+
+    #[test]
+    fn test_render_colored_with_code_block_luau() {
+        let content = "```luau\nlocal x = 1\n```";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("local"));
+    }
+
+    #[test]
+    fn test_render_colored_with_code_block_unknown_lang() {
+        let content = "```unknown_lang\nsome code\n```";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("some code"));
+    }
+
+    #[test]
+    fn test_render_colored_with_code_block_no_lang() {
+        let content = "```\nplain code\n```";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("plain code"));
+    }
+
+    #[test]
+    fn test_render_colored_with_inline_code() {
+        let content = "Use `code` here.";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("code"));
+        // Should have background color escape code
+        assert!(result.contains("\x1b[48;5;238m"));
+    }
+
+    #[test]
+    fn test_render_colored_headings() {
+        let content = "# H1\n## H2\n### H3\n#### H4";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        // Check for different heading colors
+        assert!(result.contains("\x1b[1;36m")); // H1 cyan
+        assert!(result.contains("\x1b[1;33m")); // H2 yellow
+        assert!(result.contains("\x1b[1;32m")); // H3 green
+        assert!(result.contains("\x1b[1;37m")); // H4 white
+    }
+
+    #[test]
+    fn test_render_colored_with_list() {
+        let content = "- Item 1\n- Item 2";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("Item 1"));
+        assert!(result.contains("Item 2"));
+        // Should have colored bullet
+        assert!(result.contains("\x1b[33m-\x1b[0m"));
+    }
+
+    #[test]
+    fn test_render_colored_with_link() {
+        let content = "[link text](https://example.com)";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("link text"));
+        // Should have underline blue color
+        assert!(result.contains("\x1b[4;34m"));
+    }
+
+    #[test]
+    fn test_render_colored_with_bold() {
+        let content = "**bold text**";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("bold text"));
+        // Should have bold escape code
+        assert!(result.contains("\x1b[1m"));
+    }
+
+    #[test]
+    fn test_render_colored_with_italic() {
+        let content = "*italic text*";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("italic text"));
+        // Should have italic escape code
+        assert!(result.contains("\x1b[3m"));
+    }
+
+    #[test]
+    fn test_create_skin() {
+        let skin = create_skin();
+        // Just verify it doesn't panic and returns a valid skin
+        assert!(!skin.headers.is_empty());
+    }
+
+    #[test]
+    fn test_display_section_not_found() {
+        let result = display_section("nonexistent_section_xyz_12345", ColorMode::None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_render_none_mode() {
+        // Test the render function with ColorMode::None
+        // This will write to stdout, so we just verify it doesn't panic
+        let content = "# Test\n\nSimple content.";
+        let result = render(content, ColorMode::None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_render_truecolor_mode() {
+        // Test the render function with ColorMode::TrueColor
+        let content = "# Test\n\nSimple content.";
+        let result = render(content, ColorMode::TrueColor);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_display_tour_no_color() {
+        // Just verify display_tour doesn't panic
+        let result = display_tour(ColorMode::None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_render_plain_with_soft_break() {
+        let content = "Line 1\nLine 2";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("Line 1"));
+        assert!(result.contains("Line 2"));
+    }
+
+    #[test]
+    fn test_render_colored_with_soft_break() {
+        let content = "Line 1\nLine 2";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("Line 1"));
+        assert!(result.contains("Line 2"));
+    }
+
+    #[test]
+    fn test_render_plain_multiline_code() {
+        let content = "```\nline1\nline2\nline3\n```";
+        let mut output = Vec::new();
+        render_plain(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("line1"));
+        assert!(result.contains("line2"));
+        assert!(result.contains("line3"));
+    }
+
+    #[test]
+    fn test_render_colored_multiline_code() {
+        let content = "```rust\nfn main() {\n    println!(\"hello\");\n}\n```";
+        let mut output = Vec::new();
+        render_colored(&mut output, content).unwrap();
+        let result = String::from_utf8(output).unwrap();
+        assert!(result.contains("fn"));
+        assert!(result.contains("main"));
     }
 }
