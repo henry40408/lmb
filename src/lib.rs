@@ -364,7 +364,10 @@ impl Runner {
                         .build());
                 }
             } else {
-                unreachable!()
+                debug_assert!(false, "pcall should always return an error on failure");
+                return Ok(invoked
+                    .result(Err(LmbError::Lua(LuaError::runtime("pcall failed"))))
+                    .build());
             }
         }
 
