@@ -88,7 +88,7 @@ struct Opts {
     /// Disable store usage
     #[clap(long, action, group = "store_group", env = "NO_STORE")]
     no_store: bool,
-    /// Path to SQLite file for persistent key-value storage
+    /// Path to `SQLite` file for persistent key-value storage
     #[clap(long, value_parser, group = "store_group", env = "STORE_PATH")]
     store_path: Option<PathBuf>,
     /// Script execution timeout (e.g., 30s, 1m). Default: 30s, use 0 for unlimited

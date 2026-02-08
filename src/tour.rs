@@ -183,25 +183,15 @@ fn render_plain<W: Write>(writer: &mut W, content: &str) -> io::Result<()> {
                 }
                 write!(writer, " ")?;
             }
-            Event::End(TagEnd::Heading(_)) => {
-                writeln!(writer)?;
-            }
-            Event::Start(Tag::Paragraph) => {}
-            Event::End(TagEnd::Paragraph) => {
-                writeln!(writer)?;
-            }
-            Event::Start(Tag::List(_)) => {}
-            Event::End(TagEnd::List(_)) => {
+            Event::End(
+                TagEnd::Heading(_) | TagEnd::Paragraph | TagEnd::List(_) | TagEnd::Item,
+            )
+            | Event::SoftBreak
+            | Event::HardBreak => {
                 writeln!(writer)?;
             }
             Event::Start(Tag::Item) => {
                 write!(writer, "  - ")?;
-            }
-            Event::End(TagEnd::Item) => {
-                writeln!(writer)?;
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                writeln!(writer)?;
             }
             Event::Start(Tag::Link { dest_url, .. }) => {
                 write!(writer, "[")?;
@@ -300,41 +290,26 @@ fn render_colored<W: Write>(writer: &mut W, content: &str) -> io::Result<()> {
             Event::End(TagEnd::Heading(_)) => {
                 writeln!(writer, "\x1b[0m")?;
             }
-            Event::Start(Tag::Paragraph) => {}
-            Event::End(TagEnd::Paragraph) => {
-                writeln!(writer)?;
-            }
-            Event::Start(Tag::List(_)) => {}
-            Event::End(TagEnd::List(_)) => {
+            Event::End(TagEnd::Paragraph | TagEnd::List(_) | TagEnd::Item)
+            | Event::SoftBreak
+            | Event::HardBreak => {
                 writeln!(writer)?;
             }
             Event::Start(Tag::Item) => {
                 write!(writer, "  \x1b[33m-\x1b[0m ")?;
             }
-            Event::End(TagEnd::Item) => {
-                writeln!(writer)?;
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                writeln!(writer)?;
-            }
             Event::Start(Tag::Link { dest_url, .. }) => {
                 write!(writer, "\x1b[4;34m")?; // Underline blue
                 let _ = dest_url;
             }
-            Event::End(TagEnd::Link) => {
+            Event::End(TagEnd::Link | TagEnd::Strong | TagEnd::Emphasis) => {
                 write!(writer, "\x1b[0m")?;
             }
             Event::Start(Tag::Strong) => {
                 write!(writer, "\x1b[1m")?; // Bold
             }
-            Event::End(TagEnd::Strong) => {
-                write!(writer, "\x1b[0m")?;
-            }
             Event::Start(Tag::Emphasis) => {
                 write!(writer, "\x1b[3m")?; // Italic
-            }
-            Event::End(TagEnd::Emphasis) => {
-                write!(writer, "\x1b[0m")?;
             }
             _ => {}
         }
@@ -362,13 +337,13 @@ pub fn display_tour(color_mode: ColorMode) -> anyhow::Result<()> {
 
 /// Display a specific section of the guided tour
 pub fn display_section(section_name: &str, color_mode: ColorMode) -> anyhow::Result<()> {
-    match find_section(section_name) {
-        Some((_, content)) => render(&content, color_mode),
-        None => {
-            eprintln!("Section '{}' not found.", section_name);
-            eprintln!("Use 'lmb tour --list' to see available sections.");
-            std::process::exit(1);
-        }
+    if let Some((_, content)) = find_section(section_name) {
+        render(&content, color_mode)
+    } else {
+        anyhow::bail!(
+            "Section '{}' not found. Use 'lmb tour --list' to see available sections.",
+            section_name
+        )
     }
 }
 
