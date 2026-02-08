@@ -42,11 +42,9 @@ pub(crate) struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong {}", self.0),
-        )
-            .into_response()
+        // Log error internally, don't expose details to clients
+        error!("Internal error: {:?}", self.0);
+        (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()
     }
 }
 
