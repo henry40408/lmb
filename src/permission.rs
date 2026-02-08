@@ -100,9 +100,7 @@ impl Permissions {
     pub fn is_net_allowed<S: AsRef<str>>(&self, addr: S) -> bool {
         let addr = addr.as_ref();
         match self {
-            Permissions::All { denied_net, .. } => {
-                !Self::is_domain_or_ip_allowed(denied_net, addr)
-            }
+            Permissions::All { denied_net, .. } => !Self::is_domain_or_ip_allowed(denied_net, addr),
             Permissions::Some { net, .. } => match net {
                 NetPermissions::All { denied } => !Self::is_domain_or_ip_allowed(denied, addr),
                 NetPermissions::Some { allowed, denied } => {
