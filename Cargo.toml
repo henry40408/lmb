@@ -76,7 +76,7 @@ axum-test = "18.6.0"
 criterion = { version = "0.8.1", features = ["async_tokio"] }
 curl-parser = "0.6.0"
 full_moon = "2.0.0"
-mockito = "1.7.0"
+mockito = "1.7.2"
 snapbox = { version = "0.6.21", features = ["cmd"] }
 test-case = "3.3.1"
 
