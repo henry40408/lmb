@@ -28,6 +28,12 @@ function test_logging()
 
   -- Test mixed types
   log.info("mixed", 42, true, nil, { a = 1 })
+
+  -- Test function value (covers the fallback type name branch)
+  log.info("function:", function() end)
+
+  -- Test thread value
+  log.info("thread:", coroutine.create(function() end))
 end
 
 return test_logging

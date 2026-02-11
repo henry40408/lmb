@@ -78,6 +78,7 @@ impl LuaUserData for LoggingBinding {
 
 #[cfg(test)]
 mod tests {
+    use mlua::prelude::*;
     use tokio::io::empty;
 
     use crate::Runner;
@@ -87,5 +88,17 @@ mod tests {
         let source = include_str!("../fixtures/bindings/logging.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[test]
+    fn test_lua_value_to_string_error() {
+        let lua = Lua::new();
+        let err = LuaError::runtime("test error");
+        let value = LuaValue::Error(Box::new(err));
+        let result = super::lua_value_to_string(&lua, value).unwrap();
+        assert!(
+            result.contains("test error"),
+            "Expected error message, got: {result}"
+        );
     }
 }
