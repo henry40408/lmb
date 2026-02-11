@@ -222,23 +222,20 @@ impl LuaUserData for HttpBinding {
                 })
             },
         );
-        methods.add_function(
-            "parse_path",
-            |vm, (path, pattern): (String, String)| {
-                let mut router = Router::new();
-                router.insert(&pattern, ()).into_lua_err()?;
-                match router.at(&path) {
-                    Ok(matched) => {
-                        let table = vm.create_table()?;
-                        for (key, value) in matched.params.iter() {
-                            table.set(key, value)?;
-                        }
-                        Ok(LuaValue::Table(table))
+        methods.add_function("parse_path", |vm, (path, pattern): (String, String)| {
+            let mut router = Router::new();
+            router.insert(&pattern, ()).into_lua_err()?;
+            match router.at(&path) {
+                Ok(matched) => {
+                    let table = vm.create_table()?;
+                    for (key, value) in matched.params.iter() {
+                        table.set(key, value)?;
                     }
-                    Err(_) => Ok(LuaNil),
+                    Ok(LuaValue::Table(table))
                 }
-            },
-        );
+                Err(_) => Ok(LuaNil),
+            }
+        });
     }
 }
 
