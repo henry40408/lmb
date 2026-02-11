@@ -6,6 +6,7 @@
 //! # Available Methods
 //!
 //! - `fetch(url, options)` - Make an HTTP request and return a response object.
+//! - `parse_path(path, pattern)` - Extract path parameters from a URL path using a pattern.
 //!
 //! # Options
 //!
@@ -23,6 +24,15 @@
 //! - `headers` - Table of response headers.
 //! - `text()` - Get response body as string.
 //! - `json()` - Parse response body as JSON.
+//!
+//! # `parse_path`
+//!
+//! Extracts named parameters from a URL path by matching it against a pattern.
+//! Returns a table of parameter key-value pairs on match, or `nil` if the path
+//! does not match the pattern.
+//!
+//! Pattern syntax uses `{name}` for named parameters and `{*name}` for catch-all
+//! parameters (powered by the `matchit` crate).
 //!
 //! # Example
 //!
@@ -49,12 +59,17 @@
 //!
 //! print(response.status)  -- e.g., 200
 //! print(response:text())  -- Response body as text
+//!
+//! -- Parse path parameters
+//! local params = http.parse_path("/users/42", "/users/{id}")
+//! print(params.id)  -- "42"
 //! ```
 
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use bon::bon;
 use bytes::BytesMut;
+use matchit::Router;
 use mlua::prelude::*;
 use reqwest::{
     Method, StatusCode,
@@ -207,6 +222,20 @@ impl LuaUserData for HttpBinding {
                 })
             },
         );
+        methods.add_function("parse_path", |vm, (path, pattern): (String, String)| {
+            let mut router = Router::new();
+            router.insert(&pattern, ()).into_lua_err()?;
+            match router.at(&path) {
+                Ok(matched) => {
+                    let table = vm.create_table()?;
+                    for (key, value) in matched.params.iter() {
+                        table.set(key, value)?;
+                    }
+                    Ok(LuaValue::Table(table))
+                }
+                Err(_) => Ok(LuaNil),
+            }
+        });
     }
 }
 
@@ -263,5 +292,12 @@ mod tests {
         assert_eq!(json!({"a":1}), result.result.unwrap());
 
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_parse_path() {
+        let source = include_str!("../fixtures/bindings/http-parse-path.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
     }
 }
