@@ -512,6 +512,40 @@ end
 return http_get
 ```
 
+### Parse path
+
+The `parse_path` function extracts named parameters from a URL path by matching it against a pattern. It returns a table of parameter key-value pairs on match, or `nil` if the path does not match.
+
+Pattern syntax uses `{name}` for named parameters and `{*name}` for catch-all parameters.
+
+```lua
+--[[
+--name = "Parse path"
+--]]
+function parse_path()
+  local http = require("@lmb/http")
+
+  -- Extract a single parameter
+  local params = http.parse_path("/users/42", "/users/{id}")
+  assert(params.id == "42", "Expected id to be '42'")
+
+  -- Extract multiple parameters
+  params = http.parse_path("/users/42/posts/99", "/users/{user_id}/posts/{post_id}")
+  assert(params.user_id == "42", "Expected user_id to be '42'")
+  assert(params.post_id == "99", "Expected post_id to be '99'")
+
+  -- Returns nil when the path does not match
+  params = http.parse_path("/other/path", "/users/{id}")
+  assert(params == nil, "Expected nil for non-matching path")
+
+  -- Catch-all parameter
+  params = http.parse_path("/files/docs/readme.md", "/files/{*rest}")
+  assert(params.rest == "docs/readme.md", "Expected rest to be 'docs/readme.md'")
+end
+
+return parse_path
+```
+
 ## Encoding and decoding
 
 ### JSON
