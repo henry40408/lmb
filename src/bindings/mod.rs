@@ -39,6 +39,7 @@ pub(crate) mod http;
 pub(crate) mod io;
 pub(crate) mod json;
 pub(crate) mod json_path;
+pub(crate) mod logging;
 pub(crate) mod store;
 pub(crate) mod toml;
 pub(crate) mod yaml;

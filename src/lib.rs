@@ -244,6 +244,7 @@ impl Runner {
             )?;
             vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
             vm.register_module("@lmb/json-path", bindings::json_path::JsonPathBinding {})?;
+            vm.register_module("@lmb/logging", bindings::logging::LoggingBinding {})?;
             vm.register_module("@lmb/toml", bindings::toml::TomlBinding {})?;
             vm.register_module("@lmb/yaml", bindings::yaml::YamlBinding {})?;
         }
