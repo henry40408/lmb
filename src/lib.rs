@@ -301,22 +301,29 @@ impl Runner {
     pub async fn invoke(&self, state: Option<State>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
-        self.vm.set_interrupt({
-            let timeout = self.timeout;
-            let used_memory = used_memory.clone();
-            move |vm| {
-                used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
-                if let Some(t) = timeout
-                    && start.elapsed() > t
-                {
-                    return Err(LuaError::external(Timeout {
-                        elapsed: start.elapsed(),
-                        timeout: t,
-                    }));
+        if let Some(timeout) = self.timeout {
+            self.vm.set_interrupt({
+                let used_memory = used_memory.clone();
+                move |vm| {
+                    used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+                    if start.elapsed() > timeout {
+                        return Err(LuaError::external(Timeout {
+                            elapsed: start.elapsed(),
+                            timeout,
+                        }));
+                    }
+                    Ok(LuaVmState::Continue)
                 }
-                Ok(LuaVmState::Continue)
-            }
-        });
+            });
+        } else {
+            self.vm.set_interrupt({
+                let used_memory = used_memory.clone();
+                move |vm| {
+                    used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+                    Ok(LuaVmState::Continue)
+                }
+            });
+        }
 
         let ctx = self.vm.create_table()?;
         if let Some(state) = &state {
@@ -340,7 +347,7 @@ impl Runner {
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed));
 
-        let (ok, values) = {
+        let (ok, mut values) = {
             let span = debug_span!("call");
             match self
                 .func
@@ -349,12 +356,14 @@ impl Runner {
                 .await
             {
                 Ok(values) => {
-                    let values = values.into_vec();
+                    let mut values = values.into_vec();
                     let ok = values
                         .first()
                         .and_then(|b| b.as_boolean())
                         .unwrap_or_default();
-                    let values = values[1..].to_vec();
+                    if !values.is_empty() {
+                        values.remove(0);
+                    }
                     (ok, values)
                 }
                 Err(e) => match &e {
@@ -377,18 +386,16 @@ impl Runner {
             return Ok(invoked.result(Err(err)).build());
         }
 
-        let value = if values.is_empty() {
-            json!(null)
-        } else if values.len() == 1 {
-            let value = values.first().expect("expect a value");
-            self.vm.from_value::<Value>(value.clone())?
-        } else {
-            let mut arr = json!([]);
-            let arr_mut = arr.as_array_mut().expect("expect an array");
-            for value in values {
-                arr_mut.push(self.vm.from_value::<Value>(value.clone())?);
+        let value = match values.len() {
+            0 => json!(null),
+            1 => self.vm.from_value::<Value>(values.remove(0))?,
+            _ => {
+                let mut arr = Vec::with_capacity(values.len());
+                for value in values {
+                    arr.push(self.vm.from_value::<Value>(value)?);
+                }
+                Value::Array(arr)
             }
-            arr
         };
         Ok(invoked.result(Ok(value)).build())
     }

@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use bon::{Builder, bon};
-use dashmap::DashMap;
 use mlua::prelude::*;
+use parking_lot::Mutex as PlMutex;
 use rusqlite::params;
 use serde_json::Value;
 use tracing::debug_span;
@@ -13,13 +13,13 @@ use crate::{
 };
 
 pub(crate) struct StoreSnapshotBinding {
-    inner: Arc<DashMap<String, Value>>,
+    inner: Arc<PlMutex<HashMap<String, Value>>>,
 }
 
 #[bon]
 impl StoreSnapshotBinding {
     #[builder]
-    pub(crate) fn new(#[builder(start_fn)] inner: Arc<DashMap<String, Value>>) -> Self {
+    pub(crate) fn new(#[builder(start_fn)] inner: Arc<PlMutex<HashMap<String, Value>>>) -> Self {
         Self { inner }
     }
 }
@@ -28,8 +28,8 @@ impl LuaUserData for StoreSnapshotBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
             let _ = debug_span!("store_snapshot_index", %key).entered();
-            if let Some(tuple) = this.inner.get(&key) {
-                return vm.to_value(tuple.value());
+            if let Some(value) = this.inner.lock().get(&key) {
+                return vm.to_value(value);
             }
             Ok(LuaNil)
         });
@@ -38,7 +38,7 @@ impl LuaUserData for StoreSnapshotBinding {
             |vm, this, (key, value): (String, LuaValue)| {
                 let _ = debug_span!("store_snapshot_new_index", %key).entered();
                 let value = vm.from_value::<Value>(value)?;
-                this.inner.insert(key, value);
+                this.inner.lock().insert(key, value);
                 Ok(LuaNil)
             },
         );
@@ -102,10 +102,10 @@ impl LuaUserData for StoreBinding {
                 let mut conn = store.lock();
                 let tx = conn.transaction().into_lua_err()?;
 
-                let snapshot = DashMap::new();
+                let mut snapshot = HashMap::new();
                 {
                     let _ = debug_span!(parent: &span, "create_snapshot").entered();
-                    let mut stmt = tx.prepare(SQL_GET).into_lua_err()?;
+                    let mut stmt = tx.prepare_cached(SQL_GET).into_lua_err()?;
                     for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
                         let (k, v) = pair?;
                         let (key, default) = parse_key_default(k, v)?;
@@ -120,7 +120,7 @@ impl LuaUserData for StoreBinding {
                     }
                 }
 
-                let snapshot = Arc::new(snapshot);
+                let snapshot = Arc::new(PlMutex::new(snapshot));
                 let snapshot_binding = StoreSnapshotBinding::builder(snapshot.clone()).build();
 
                 let returned = {
@@ -130,12 +130,15 @@ impl LuaUserData for StoreBinding {
 
                 {
                     let _ = debug_span!(parent: &span, "write_snapshot").entered();
+                    let snapshot = snapshot.lock();
                     for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
                         let (k, v) = pair?;
                         let (key, _) = parse_key_default(k, v)?;
-                        if let Some(pair) = snapshot.get(&key) {
-                            let serialized = rmp_serde::to_vec(pair.value()).into_lua_err()?;
-                            tx.execute(SQL_PUT, params![&key, serialized])
+                        if let Some(value) = snapshot.get(&key) {
+                            let serialized = rmp_serde::to_vec(value).into_lua_err()?;
+                            tx.prepare_cached(SQL_PUT)
+                                .into_lua_err()?
+                                .execute(params![&key, serialized])
                                 .into_lua_err()?;
                         }
                     }

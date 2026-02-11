@@ -32,7 +32,7 @@ impl Store {
     /// Retrieves a value from the store by key
     pub fn get<S: AsRef<str>>(&self, key: S) -> LmbResult<Option<Value>> {
         let conn = self.inner.lock();
-        let mut stmt = conn.prepare(SQL_GET)?;
+        let mut stmt = conn.prepare_cached(SQL_GET)?;
         let mut rows = stmt.query(params![key.as_ref()])?;
         if let Some(row) = rows.next()? {
             let value: Vec<u8> = row.get(0)?;
@@ -48,7 +48,8 @@ impl Store {
         let conn = self.inner.lock();
         let key = key.as_ref();
         let serialized = rmp_serde::to_vec(&value)?;
-        conn.execute(SQL_PUT, params![key, serialized])?;
+        conn.prepare_cached(SQL_PUT)?
+            .execute(params![key, serialized])?;
         Ok(())
     }
 }
