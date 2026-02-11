@@ -1925,6 +1925,7 @@ dependencies = [
  "hmac",
  "jiff",
  "lazy-regex",
+ "matchit",
  "md-5",
  "miette",
  "mlua",
