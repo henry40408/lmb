@@ -327,6 +327,35 @@ end
 return race
 ```
 
+### Logging
+
+The `@lmb/logging` module provides standard log-level functions that integrate with the Rust `tracing` framework. Each method accepts variadic arguments, which are converted to strings and joined with tab characters (matching Lua `print()` convention). Tables are automatically serialized to JSON.
+
+Available log levels: `error`, `warn`, `info`, `debug`, `trace`.
+
+```lua
+--[[
+--name = "Logging"
+--]]
+function logging()
+  local log = require("@lmb/logging")
+
+  -- Log at different levels
+  log.error("something went wrong")
+  log.warn("deprecated feature used")
+  log.info("server started", "port", 8080)
+  log.debug("processing request", { method = "GET", path = "/" })
+  log.trace("detailed step")
+
+  -- Tables are serialized to JSON
+  log.info("config", { host = "localhost", port = 3000 })
+end
+
+return logging
+```
+
+Use `RUST_LOG=lmb::lua=debug` to control the log level for Lua scripts independently from the rest of the application.
+
 ### Cryptography
 
 In this section, we demonstrate various cryptographic functions such as encoding, hashing, HMAC, and encryption/decryption. These functions are essential for secure data handling and communication.
