@@ -15,7 +15,7 @@ use clio::Input;
 use lmb::{
     LmbError, Runner,
     error::{ErrorReport, build_report, render_report},
-    permission::{EnvPermissions, NetPermissions, Permissions},
+    permission::{EnvPermissions, FsPermissions, NetPermissions, Permissions},
 };
 use no_color::is_no_color;
 use rusqlite::Connection;
@@ -50,7 +50,10 @@ EXAMPLES:
         lmb --allow-env API_KEY eval --file script.lua
 
     Allow network access to specific hosts:
-        lmb --allow-net api.example.com eval --file script.lua";
+        lmb --allow-net api.example.com eval --file script.lua
+
+    Allow file system access to a directory:
+        lmb --allow-fs ./data eval --file script.lua";
 
 #[derive(Debug, Parser)]
 #[clap(author, version=VERSION, about, long_about = LONG_ABOUT, after_help = AFTER_HELP)]
@@ -67,6 +70,15 @@ struct Opts {
     /// Denied environment variables. These take precedence over allowed variables
     #[clap(long, value_delimiter = ',', env = "DENY_ENV")]
     deny_env: Vec<String>,
+    /// Allow all file system paths
+    #[clap(long, env = "ALLOW_ALL_FS")]
+    allow_all_fs: bool,
+    /// Allowed file system paths (prefix-matched)
+    #[clap(long, value_delimiter = ',', env = "ALLOW_FS")]
+    allow_fs: Vec<PathBuf>,
+    /// Denied file system paths. These take precedence over allowed paths
+    #[clap(long, value_delimiter = ',', env = "DENY_FS")]
+    deny_fs: Vec<PathBuf>,
     /// Allow all network addresses
     #[clap(long, env = "ALLOW_ALL_NET")]
     allow_all_net: bool,
@@ -175,10 +187,15 @@ pub(crate) fn open_store_connection(
     }
 }
 
+fn canonicalize_paths(paths: &[PathBuf]) -> rustc_hash::FxHashSet<PathBuf> {
+    paths.iter().filter_map(|p| p.canonicalize().ok()).collect()
+}
+
 fn permissions_from_opts(opts: &Opts) -> Permissions {
     if opts.allow_all {
         Permissions::All {
             denied_env: opts.deny_env.iter().cloned().collect(),
+            denied_fs: canonicalize_paths(&opts.deny_fs),
             denied_net: opts.deny_net.iter().cloned().collect(),
         }
     } else {
@@ -191,6 +208,16 @@ fn permissions_from_opts(opts: &Opts) -> Permissions {
                 EnvPermissions::Some {
                     allowed: opts.allow_env.iter().cloned().collect(),
                     denied: opts.deny_env.iter().cloned().collect(),
+                }
+            },
+            fs: if opts.allow_all_fs {
+                FsPermissions::All {
+                    denied: canonicalize_paths(&opts.deny_fs),
+                }
+            } else {
+                FsPermissions::Some {
+                    allowed: canonicalize_paths(&opts.allow_fs),
+                    denied: canonicalize_paths(&opts.deny_fs),
                 }
             },
             net: if opts.allow_all_net {

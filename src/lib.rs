@@ -234,6 +234,7 @@ impl Runner {
                     .build(),
             )?;
             vm.register_module("@lmb/coroutine", bindings::coroutine::CoroutineBinding {})?;
+            vm.register_module("@lmb/fs", bindings::fs::FsBinding::new(permissions.clone()))?;
             vm.register_module("@lmb/crypto", bindings::crypto::CryptoBinding {})?;
             vm.register_module(
                 "@lmb/http",

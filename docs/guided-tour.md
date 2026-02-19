@@ -546,6 +546,117 @@ end
 return parse_path
 ```
 
+### File System
+
+The `@lmb/fs` module provides file system operations gated by the permission system. Access must be explicitly granted using `--allow-fs` or `--allow-all-fs`.
+
+```bash
+$ lmb --allow-fs ./data eval --file script.lua
+$ lmb --allow-all-fs eval --file script.lua
+```
+
+#### High-level API
+
+For common use cases, high-level wrappers provide one-call convenience:
+
+```lua
+--[[
+--name = "File System - High-level"
+--]]
+function fs_highlevel()
+  local fs = require("@lmb/fs")
+  local path = "/tmp/lmb_tour_highlevel.txt"
+
+  -- Write a file
+  fs:write_file(path, "hello world")
+  assert(fs:exists(path), "File should exist after write")
+
+  -- Read a file
+  local content = fs:read_file(path)
+  assert(content == "hello world", "Expected 'hello world'")
+
+  -- Check metadata
+  local info = fs:stat(path)
+  assert(info.size == 11, "Expected size 11")
+  assert(info.is_file == true, "Expected is_file to be true")
+
+  -- Clean up
+  fs:remove(path)
+  assert(not fs:exists(path), "File should not exist after remove")
+end
+
+return fs_highlevel
+```
+
+#### Low-level API
+
+For more control (e.g., reading large files line by line), use the UNIX-style low-level API:
+
+```lua
+--[[
+--name = "File System - Low-level"
+--assert_return = "line one"
+--]]
+function fs_lowlevel()
+  local fs = require("@lmb/fs")
+  local path = "/tmp/lmb_tour_lowlevel.txt"
+
+  -- Open for writing
+  local f = fs:open(path, "w")
+  f:write("line one\nline two\n")
+  f:close()
+
+  -- Open for reading, read line by line
+  f = fs:open(path, "r")
+  local first_line = f:read("*l")
+  f:close()
+
+  -- Append mode
+  f = fs:open(path, "a")
+  f:write("line three\n")
+  f:close()
+
+  fs:remove(path)
+  return first_line
+end
+
+return fs_lowlevel
+```
+
+#### Directory operations
+
+```lua
+--[[
+--name = "File System - Directory"
+--]]
+function fs_directory()
+  local fs = require("@lmb/fs")
+  local dir = "/tmp/lmb_tour_dir"
+
+  pcall(function()
+    fs:remove(dir .. "/hello.txt")
+  end)
+  pcall(function()
+    -- platform rmdir not available, ignore cleanup errors
+  end)
+
+  pcall(function() fs:mkdir(dir) end)
+
+  fs:write_file(dir .. "/hello.txt", "hi")
+
+  local entries = fs:readdir(dir)
+  local found = false
+  for _, name in ipairs(entries) do
+    if name == "hello.txt" then found = true end
+  end
+  assert(found, "Expected to find hello.txt in directory listing")
+
+  fs:remove(dir .. "/hello.txt")
+end
+
+return fs_directory
+```
+
 ## Encoding and decoding
 
 ### JSON
