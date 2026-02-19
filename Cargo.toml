@@ -77,7 +77,7 @@ criterion = { version = "0.8.2", features = ["async_tokio"] }
 curl-parser = "0.6.0"
 full_moon = "2.0.0"
 mockito = "1.7.2"
-snapbox = { version = "0.6.21", features = ["cmd"] }
+snapbox = { version = "1.0.0", features = ["cmd"] }
 test-case = "3.3.1"
 
 [profile.dev]
