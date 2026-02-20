@@ -270,14 +270,14 @@ return write_and_read
 
 ### Supported file modes
 
-| Mode | Description |
-|------|-------------|
-| `"r"` | Read only (default) |
-| `"w"` | Write only (creates/truncates) |
-| `"a"` | Append only (creates if needed) |
-| `"r+"` | Read and write |
-| `"w+"` | Read and write (creates/truncates) |
-| `"a+"` | Read and append (creates if needed) |
+| Mode | Read | Write | Creates | Truncates | File must exist |
+|------|:----:|:-----:|:-------:|:---------:|:---------------:|
+| `"r"` | O | | | | O |
+| `"w"` | | O | O | O | |
+| `"a"` | | O (append) | O | | |
+| `"r+"` | O | O | | | O |
+| `"w+"` | O | O | O | O | |
+| `"a+"` | O | O (append) | O | | |
 
 ### Iterating lines
 
