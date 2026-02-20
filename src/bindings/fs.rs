@@ -946,4 +946,519 @@ mod tests {
             .result
             .expect("result");
     }
+
+    #[tokio::test]
+    async fn test_read_number() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "42.5\n").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/read-number.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(42.5), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_read_invalid_format() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "test").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/read-invalid-format.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(msg.as_str().expect("string").contains("invalid format"));
+    }
+
+    #[tokio::test]
+    async fn test_write_number() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/write-number.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir.clone()].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!("423.14"), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_write_invalid() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/write-invalid.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(msg.as_str().expect("string").contains("invalid value"));
+    }
+
+    #[tokio::test]
+    async fn test_flush() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/flush.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir.clone()].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!("flushed"), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_seek_cur_end() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "abcdefghij").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/seek-cur-end.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(
+            json!({"size": 10, "rest": "cdefghij"}),
+            result.result.expect("result")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_open_rw() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "abcde").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/open-rw.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir.clone()].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(
+            json!({"original": "abcde", "modified": "XXcde"}),
+            result.result.expect("result")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_open_wp() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/open-wp.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir.clone()].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!("hello w+"), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_open_ap() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "initial").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/open-ap.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir.clone()].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!("initial appended"), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_open_invalid_mode() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/open-invalid-mode.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(msg.as_str().expect("string").contains("invalid mode"));
+    }
+
+    #[tokio::test]
+    async fn test_open_nonexistent() {
+        let dir = TempDir::new().expect("create temp dir");
+        let path = dir.path().to_string_lossy().to_string();
+        let canonical_dir = std::fs::canonicalize(dir.path()).expect("canonicalize");
+
+        let source = include_str!("../fixtures/bindings/fs/open-nonexistent.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [canonical_dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(true), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_write_permission_denied() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/write-permission-denied.lua");
+        // Grant read but not write
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(msg.as_str().expect("string").contains("permission denied"));
+    }
+
+    #[tokio::test]
+    async fn test_write_no_permissions() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+
+        let source = include_str!("../fixtures/bindings/fs/write-no-permissions.lua");
+        // No permissions at all
+        let runner = Runner::builder(source, empty())
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(
+            msg.as_str()
+                .expect("string")
+                .contains("no permissions granted")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_number_eof() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        // Empty file - no content written
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/read-number-eof.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(true), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_read_number_nan() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "not a number\n").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/read-number-nan.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(true), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_read_bytes_eof() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        // Empty file
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/read-bytes-eof.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(true), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_seek_invalid_whence() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "test").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/seek-invalid.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(msg.as_str().expect("string").contains("invalid whence"));
+    }
+
+    #[tokio::test]
+    async fn test_read_bytes_partial() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "abc").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/read-bytes-partial.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!("abc"), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_read_permission_denied_some() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+
+        let source = include_str!("../fixtures/bindings/fs/read-permission-denied-some.lua");
+        // Has permissions but the path is not in allowed set
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let msg = result.result.expect("result");
+        assert!(
+            msg.as_str()
+                .expect("string")
+                .contains("read permission denied")
+        );
+    }
 }
