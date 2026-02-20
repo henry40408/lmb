@@ -15,7 +15,7 @@ Lmb currently uses Luau from Roblox.
 --name = "Luau Version"
 --]]
 function luau_version()
-  local version = "0.706"
+  local version = "0.708"
   assert(_G._VERSION == "Luau " .. version, "Expected Luau version " .. version .. ", but got " .. _G._VERSION)
 end
 
@@ -234,6 +234,166 @@ function getenv()
 end
 
 return getenv
+```
+
+## Filesystem
+
+The `@lmb/fs` module provides Lua-native file I/O operations. All operations require explicit permission flags (`--allow-read`, `--allow-write`) to access the filesystem.
+
+### Reading and writing files
+
+```lua
+--[[
+--name = "Filesystem - write and read"
+--allow_read = true
+--allow_write = true
+--assert_return = "hello world"
+--]]
+function write_and_read(ctx)
+  local fs = require("@lmb/fs")
+  local path = ctx.state.temp_dir .. "/hello.txt"
+
+  -- Write to a file
+  local f = fs:open(path, "w")
+  f:write("hello world")
+  f:close()
+
+  -- Read from a file
+  local f2 = fs:open(path, "r")
+  local content = f2:read("*a")
+  f2:close()
+  return content
+end
+
+return write_and_read
+```
+
+### Supported file modes
+
+| Mode | Read | Write | Creates | Truncates | File must exist |
+|------|:----:|:-----:|:-------:|:---------:|:---------------:|
+| `"r"` | O | | | | O |
+| `"w"` | | O | O | O | |
+| `"a"` | | O (append) | O | | |
+| `"r+"` | O | O | | | O |
+| `"w+"` | O | O | O | O | |
+| `"a+"` | O | O (append) | O | | |
+
+### Iterating lines
+
+```lua
+--[[
+--name = "Filesystem - iterate lines"
+--allow_read = true
+--allow_write = true
+--]]
+function iterate_lines(ctx)
+  local fs = require("@lmb/fs")
+  local path = ctx.state.temp_dir .. "/lines.txt"
+
+  -- Create a file with multiple lines
+  local f = fs:open(path, "w")
+  f:write("alpha\nbeta\ngamma")
+  f:close()
+
+  -- Iterate with module-level shorthand
+  local lines = {}
+  for line in fs:lines(path) do
+    table.insert(lines, line)
+  end
+  assert(#lines == 3, "Expected 3 lines, got " .. #lines)
+  assert(lines[1] == "alpha", "Expected 'alpha', got '" .. lines[1] .. "'")
+  assert(lines[2] == "beta", "Expected 'beta', got '" .. lines[2] .. "'")
+
+  -- Iterate with handle-level iterator
+  local f2 = fs:open(path, "r")
+  local count = 0
+  for line in f2:lines() do
+    count = count + 1
+  end
+  f2:close()
+  assert(count == 3, "Expected 3 lines from handle iterator")
+end
+
+return iterate_lines
+```
+
+### File operations
+
+```lua
+--[[
+--name = "Filesystem - file operations"
+--allow_read = true
+--allow_write = true
+--]]
+function file_operations(ctx)
+  local fs = require("@lmb/fs")
+  local dir = ctx.state.temp_dir
+
+  -- Create a file and check existence
+  local path = dir .. "/exists.txt"
+  local f = fs:open(path, "w")
+  f:write("test")
+  f:close()
+  assert(fs:exists(path), "Expected file to exist")
+
+  -- Check file handle type
+  local f2 = fs:open(path, "r")
+  assert(fs.type(f2) == "file", "Expected 'file' for open handle")
+  f2:close()
+  assert(fs.type(f2) == "closed file", "Expected 'closed file'")
+  assert(fs.type("str") == nil, "Expected nil for non-file")
+
+  -- List directory contents
+  local entries = fs:list(dir)
+  assert(#entries >= 1, "Expected at least 1 entry")
+
+  -- Rename
+  local new_path = dir .. "/renamed.txt"
+  fs:rename(path, new_path)
+  assert(not fs:exists(path), "Old path should not exist")
+  assert(fs:exists(new_path), "New path should exist")
+
+  -- Remove
+  fs:remove(new_path)
+  assert(not fs:exists(new_path), "Removed file should not exist")
+end
+
+return file_operations
+```
+
+### Permission denied
+
+Without permission flags, all filesystem operations are denied:
+
+```lua
+--[[
+--name = "Filesystem - permission denied"
+--]]
+function permission_denied()
+  local fs = require("@lmb/fs")
+  local f, err = fs:open("/tmp/test.txt", "r")
+  assert(f == nil, "Expected nil handle")
+  assert(string.find(err, "permission denied"), "Expected permission denied error")
+end
+
+return permission_denied
+```
+
+To use filesystem operations, you must grant explicit permissions:
+
+```bash
+# Allow reading from a directory
+$ lmb --allow-read /data eval --file script.lua
+
+# Allow reading and writing to specific paths
+$ lmb --allow-read /data --allow-write /tmp eval --file script.lua
+
+# Allow all filesystem access
+$ lmb --allow-all-read --allow-all-write eval --file script.lua
+
+# Deny specific paths while allowing all others
+$ lmb --allow-all-read --deny-read /etc/shadow eval --file script.lua
 ```
 
 ## Modules

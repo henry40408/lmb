@@ -15,10 +15,11 @@ use clio::Input;
 use lmb::{
     LmbError, Runner,
     error::{ErrorReport, build_report, render_report},
-    permission::{EnvPermissions, NetPermissions, Permissions},
+    permission::{EnvPermissions, NetPermissions, Permissions, ReadPermissions, WritePermissions},
 };
 use no_color::is_no_color;
 use rusqlite::Connection;
+use rustc_hash::FxHashSet;
 use serde_json::{Value, json};
 use tracing::{Instrument, Level, debug, debug_span, info, warn};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
@@ -50,7 +51,13 @@ EXAMPLES:
         lmb --allow-env API_KEY eval --file script.lua
 
     Allow network access to specific hosts:
-        lmb --allow-net api.example.com eval --file script.lua";
+        lmb --allow-net api.example.com eval --file script.lua
+
+    Allow reading from a directory:
+        lmb --allow-read /tmp eval --file script.lua
+
+    Allow reading and writing to specific paths:
+        lmb --allow-read /data --allow-write /tmp eval --file script.lua";
 
 #[derive(Debug, Parser)]
 #[clap(author, version=VERSION, about, long_about = LONG_ABOUT, after_help = AFTER_HELP)]
@@ -76,6 +83,24 @@ struct Opts {
     /// Denied network addresses. These take precedence over allowed addresses
     #[clap(long, value_delimiter = ',', env = "DENY_NET")]
     deny_net: Vec<String>,
+    /// Allow all filesystem read access
+    #[clap(long, env = "ALLOW_ALL_READ")]
+    allow_all_read: bool,
+    /// Allowed read paths
+    #[clap(long, value_delimiter = ',', env = "ALLOW_READ")]
+    allow_read: Vec<PathBuf>,
+    /// Denied read paths. These take precedence over allowed paths
+    #[clap(long, value_delimiter = ',', env = "DENY_READ")]
+    deny_read: Vec<PathBuf>,
+    /// Allow all filesystem write access
+    #[clap(long, env = "ALLOW_ALL_WRITE")]
+    allow_all_write: bool,
+    /// Allowed write paths
+    #[clap(long, value_delimiter = ',', env = "ALLOW_WRITE")]
+    allow_write: Vec<PathBuf>,
+    /// Denied write paths. These take precedence over allowed paths
+    #[clap(long, value_delimiter = ',', env = "DENY_WRITE")]
+    deny_write: Vec<PathBuf>,
     /// Enable debug mode
     #[clap(long, short = 'd', env = "DEBUG")]
     debug: bool,
@@ -175,11 +200,21 @@ pub(crate) fn open_store_connection(
     }
 }
 
+/// Canonicalize a list of paths, skipping any that fail to canonicalize.
+fn canonicalize_paths(paths: &[PathBuf]) -> FxHashSet<PathBuf> {
+    paths
+        .iter()
+        .filter_map(|p| std::fs::canonicalize(p).ok())
+        .collect()
+}
+
 fn permissions_from_opts(opts: &Opts) -> Permissions {
     if opts.allow_all {
         Permissions::All {
             denied_env: opts.deny_env.iter().cloned().collect(),
             denied_net: opts.deny_net.iter().cloned().collect(),
+            denied_read: canonicalize_paths(&opts.deny_read),
+            denied_write: canonicalize_paths(&opts.deny_write),
         }
     } else {
         Permissions::Some {
@@ -201,6 +236,26 @@ fn permissions_from_opts(opts: &Opts) -> Permissions {
                 NetPermissions::Some {
                     allowed: opts.allow_net.iter().cloned().collect(),
                     denied: opts.deny_net.iter().cloned().collect(),
+                }
+            },
+            read: if opts.allow_all_read {
+                ReadPermissions::All {
+                    denied: canonicalize_paths(&opts.deny_read),
+                }
+            } else {
+                ReadPermissions::Some {
+                    allowed: canonicalize_paths(&opts.allow_read),
+                    denied: canonicalize_paths(&opts.deny_read),
+                }
+            },
+            write: if opts.allow_all_write {
+                WritePermissions::All {
+                    denied: canonicalize_paths(&opts.deny_write),
+                }
+            } else {
+                WritePermissions::Some {
+                    allowed: canonicalize_paths(&opts.allow_write),
+                    denied: canonicalize_paths(&opts.deny_write),
                 }
             },
         }

@@ -34,6 +34,7 @@ pub(crate) use define_codec_binding;
 
 pub(crate) mod coroutine;
 pub(crate) mod crypto;
+pub(crate) mod fs;
 pub(crate) mod globals;
 pub(crate) mod http;
 pub(crate) mod io;

@@ -2,14 +2,21 @@ use std::{io::Cursor, str::FromStr, time::Duration};
 
 use curl_parser::ParsedRequest;
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
-use lmb::{Runner, State};
+use lmb::{
+    Runner, State,
+    permission::{EnvPermissions, NetPermissions, Permissions, ReadPermissions, WritePermissions},
+};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use rusqlite::Connection;
+use rustc_hash::FxHashSet;
 use serde_json::{Value, json};
+use tempfile::TempDir;
 use toml::Table;
 
 #[derive(Default)]
 struct CommentVisitor {
+    allow_read: bool,
+    allow_write: bool,
     curl: Option<String>,
     name: String,
     assert_return: Option<Value>,
@@ -59,6 +66,12 @@ impl Visitor for CommentVisitor {
         }
         if let Some(toml::Value::String(curl)) = parsed.get("curl") {
             self.curl = Some(curl.clone());
+        }
+        if let Some(toml::Value::Boolean(allow_read)) = parsed.get("allow_read") {
+            self.allow_read = *allow_read;
+        }
+        if let Some(toml::Value::Boolean(allow_write)) = parsed.get("allow_write") {
+            self.allow_write = *allow_write;
         }
     }
 }
@@ -124,6 +137,55 @@ async fn test_guided_tour() {
             None
         };
 
+        // Create temp dir and permissions when fs access is requested
+        let _temp_dir: Option<TempDir> = if visitor.allow_read || visitor.allow_write {
+            Some(TempDir::new().expect("failed to create temp dir"))
+        } else {
+            None
+        };
+        let permissions = if visitor.allow_read || visitor.allow_write {
+            let temp_path = std::fs::canonicalize(_temp_dir.as_ref().unwrap().path())
+                .expect("failed to canonicalize temp dir");
+            // Inject temp_dir into state
+            let state = visitor.state.get_or_insert_with(|| json!({}));
+            if let Some(obj) = state.as_object_mut() {
+                obj.insert("temp_dir".to_string(), json!(temp_path.to_string_lossy()));
+            }
+            let read = if visitor.allow_read {
+                ReadPermissions::All {
+                    denied: FxHashSet::default(),
+                }
+            } else {
+                ReadPermissions::Some {
+                    allowed: FxHashSet::default(),
+                    denied: FxHashSet::default(),
+                }
+            };
+            let write = if visitor.allow_write {
+                WritePermissions::Some {
+                    allowed: [temp_path].into_iter().collect(),
+                    denied: FxHashSet::default(),
+                }
+            } else {
+                WritePermissions::Some {
+                    allowed: FxHashSet::default(),
+                    denied: FxHashSet::default(),
+                }
+            };
+            Some(Permissions::Some {
+                env: EnvPermissions::All {
+                    denied: FxHashSet::default(),
+                },
+                net: NetPermissions::All {
+                    denied: FxHashSet::default(),
+                },
+                read,
+                write,
+            })
+        } else {
+            None
+        };
+
         let (request, input) = match &visitor.curl {
             Some(curl) => {
                 let parsed = ParsedRequest::from_str(curl).unwrap();
@@ -144,6 +206,7 @@ async fn test_guided_tour() {
             None => (None, Cursor::new(visitor.input)),
         };
         let runner = Runner::builder(&source, input)
+            .maybe_permissions(permissions)
             .maybe_store(conn)
             .maybe_timeout(visitor.timeout)
             .build()
