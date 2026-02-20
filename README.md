@@ -29,7 +29,7 @@ For more information, please read [the guided tour](docs/guided-tour.md).
 
 ## Features
 
-- Batteries included: Comes with handy libraries such as `crypto`, `http`, and `json`.
+- Batteries included: Comes with handy libraries such as `crypto`, `fs`, `http`, and `json`.
 - Easy to use: Run Lua scripts and functions from the command line.
 - Fast: Optimized for quick execution, making it suitable for low-end hardware.
 - Secure: Runs Lua code in a sandboxed environment provided by Luau to prevent unwanted side effects.

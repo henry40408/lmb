@@ -236,6 +236,111 @@ end
 return getenv
 ```
 
+## Filesystem
+
+The `@lmb/fs` module provides Lua-native file I/O operations. All operations require explicit permission flags (`--allow-read`, `--allow-write`) to access the filesystem.
+
+### Reading and writing files
+
+```text
+local fs = require("@lmb/fs")
+
+-- Write to a file
+local f = fs:open("/tmp/hello.txt", "w")
+f:write("hello world\n")
+f:close()
+
+-- Read from a file
+local f = fs:open("/tmp/hello.txt", "r")
+local content = f:read("*a")  -- read all
+f:close()
+
+-- Read line by line
+local f = fs:open("/tmp/hello.txt", "r")
+local line = f:read("*l")     -- read one line
+f:close()
+
+-- Read N bytes
+local f = fs:open("/tmp/hello.txt", "r")
+local bytes = f:read(5)       -- read 5 bytes
+f:close()
+```
+
+### File modes
+
+| Mode | Description |
+|------|-------------|
+| `"r"` | Read only (default) |
+| `"w"` | Write only (creates/truncates) |
+| `"a"` | Append only (creates if needed) |
+| `"r+"` | Read and write |
+| `"w+"` | Read and write (creates/truncates) |
+| `"a+"` | Read and append (creates if needed) |
+
+### Iterating lines
+
+```text
+local fs = require("@lmb/fs")
+
+-- Module-level shorthand
+for line in fs:lines("/tmp/data.txt") do
+    print(line)
+end
+
+-- Handle-level iterator
+local f = fs:open("/tmp/data.txt", "r")
+for line in f:lines() do
+    print(line)
+end
+f:close()
+```
+
+### File operations
+
+```text
+local fs = require("@lmb/fs")
+
+-- Check if a path exists
+if fs:exists("/tmp/data.txt") then
+    print("file exists")
+end
+
+-- List directory contents
+local entries = fs:list("/tmp")
+for _, name in ipairs(entries) do
+    print(name)
+end
+
+-- Remove a file
+fs:remove("/tmp/old.txt")
+
+-- Rename a file
+fs:rename("/tmp/old.txt", "/tmp/new.txt")
+
+-- Check file handle type
+local f = fs:open("/tmp/data.txt", "r")
+print(fs.type(f))     -- "file"
+f:close()
+print(fs.type(f))     -- "closed file"
+print(fs.type("str")) -- nil
+```
+
+### Permission flags
+
+```bash
+# Allow reading from a directory
+$ lmb --allow-read /data eval --file script.lua
+
+# Allow reading and writing to specific paths
+$ lmb --allow-read /data --allow-write /tmp eval --file script.lua
+
+# Allow all filesystem access
+$ lmb --allow-all-read --allow-all-write eval --file script.lua
+
+# Deny specific paths while allowing all others
+$ lmb --allow-all-read --deny-read /etc/shadow eval --file script.lua
+```
+
 ## Modules
 
 ### Coroutines
