@@ -76,11 +76,12 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde_json::{Value, json};
+use std::sync::OnceLock;
 use tokio::sync::Mutex;
 use tracing::{Instrument, debug_span};
 use url::Url;
 
-use crate::{LmbResult, Permissions};
+use crate::Permissions;
 
 pub(crate) struct ResponseBinding {
     headers: Value,
@@ -114,25 +115,29 @@ impl LuaUserData for ResponseBinding {
 }
 
 pub(crate) struct HttpBinding {
-    client: reqwest::Client,
+    client: OnceLock<reqwest::Client>,
     permissions: Option<Permissions>,
+    timeout: Option<Duration>,
 }
 
 #[bon]
 impl HttpBinding {
     #[builder]
-    pub(crate) fn new(
-        permissions: Option<Permissions>,
-        timeout: Option<Duration>,
-    ) -> LmbResult<Self> {
-        let mut client = reqwest::Client::builder();
-        if let Some(timeout) = timeout {
-            client = client.timeout(timeout);
-        }
-        let client = client.build()?;
-        Ok(Self {
-            client,
+    pub(crate) fn new(permissions: Option<Permissions>, timeout: Option<Duration>) -> Self {
+        Self {
+            client: OnceLock::new(),
             permissions,
+            timeout,
+        }
+    }
+
+    fn client(&self) -> &reqwest::Client {
+        self.client.get_or_init(|| {
+            let mut builder = reqwest::Client::builder();
+            if let Some(timeout) = self.timeout {
+                builder = builder.timeout(timeout);
+            }
+            builder.build().expect("failed to build HTTP client")
         })
     }
 }
@@ -171,7 +176,7 @@ impl LuaUserData for HttpBinding {
                     return Err(LuaError::runtime("URL is not allowed"));
                 }
 
-                let mut built = this.client.request(method.clone(), url.clone());
+                let mut built = this.client().request(method.clone(), url.clone());
                 if let Some(headers) = headers {
                     built = built.headers(headers);
                 }
@@ -195,7 +200,7 @@ impl LuaUserData for HttpBinding {
                 let request = built.build().into_lua_err()?;
                 let response = {
                     let span = debug_span!("send_http_request", method = %method, url = %url);
-                    this.client
+                    this.client()
                         .execute(request)
                         .instrument(span)
                         .await

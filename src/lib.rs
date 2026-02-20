@@ -246,7 +246,7 @@ impl Runner {
                 bindings::http::HttpBinding::builder()
                     .maybe_permissions(permissions.clone())
                     .maybe_timeout(http_timeout)
-                    .build()?,
+                    .build(),
             )?;
             vm.register_module("@lmb/json", bindings::json::JsonBinding {})?;
             vm.register_module("@lmb/json-path", bindings::json_path::JsonPathBinding {})?;
