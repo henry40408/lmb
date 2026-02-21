@@ -18,7 +18,6 @@ cbc = { version = "0.1.2", features = ["alloc"] }
 clap = { version = "4.5.58", features = ["derive", "env"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 crc32fast = "1.5.0"
-crypto-common = "0.1.6"
 deadpool = "0.12.3"
 des = "0.8.1"
 ecb = "0.1.2"
@@ -126,7 +125,7 @@ checked_conversions = "warn"
 dbg_macro = "warn"
 debug_assert_with_mut_call = "warn"
 doc_markdown = "warn"
-empty_enum = "warn"
+empty_enums = "warn"
 enum_glob_use = "warn"
 exit = "warn"
 expl_impl_clone_on_copy = "warn"
