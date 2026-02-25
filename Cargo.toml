@@ -18,7 +18,7 @@ cbc = { version = "0.1.2", features = ["alloc"] }
 clap = { version = "4.5.58", features = ["derive", "env"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 crc32fast = "1.5.0"
-deadpool = "0.12.3"
+deadpool = "0.13.0"
 des = "0.8.1"
 ecb = "0.1.2"
 futures = "0.3.31"
