@@ -62,9 +62,9 @@ pub type Pool<S> = managed::Pool<RunnerManager<S>>;
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{cell::RefCell, sync::Arc};
 
-    use parking_lot::Mutex;
+    use parking_lot::ReentrantMutex;
     use rusqlite::Connection;
     use serde_json::json;
     use tokio::io::empty;
@@ -80,7 +80,9 @@ mod tests {
         let source = include_str!("./fixtures/bindings/store/store.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
-        let store = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
+        let store = Arc::new(ReentrantMutex::new(RefCell::new(
+            Connection::open_in_memory().unwrap(),
+        )));
         let manager = RunnerManager::builder(source, reader)
             .store(store.clone())
             .build();

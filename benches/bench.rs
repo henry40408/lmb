@@ -80,7 +80,7 @@ fn lmb_call(c: &mut Criterion) {
         });
     }
     {
-        let source = include_str!("../src/fixtures/bindings/store/store.lua");
+        let source = include_str!("fixtures/store-minimal.lua");
         let conn = Connection::open_in_memory().unwrap();
         let runner = Runner::builder(source, empty())
             .store(conn)
@@ -98,7 +98,7 @@ fn lmb_call(c: &mut Criterion) {
             .store(conn)
             .build()
             .unwrap();
-        c.bench_function("store update", |b| {
+        c.bench_function("store tx", |b| {
             b.to_async(&rt)
                 .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
         });
