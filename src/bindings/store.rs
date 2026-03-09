@@ -10,7 +10,7 @@ use crate::{
     store::Store,
 };
 
-/// Lua UserData for transactional operations within `store.tx()`.
+/// Lua `UserData` for transactional operations within `store.tx()`.
 /// Holds a clone of the `LmbStore` Arc; the outer `tx()` method holds the
 /// reentrant lock for the entire transaction, so `TxBinding` can re-enter
 /// the same lock from the same thread without deadlocking.
@@ -69,24 +69,26 @@ pub(crate) struct StoreBinding {
 
 impl LuaUserData for StoreBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("get", |vm, this, (key, opts): (String, Option<LuaTable>)| {
-            let _ = debug_span!("store_get", %key).entered();
-            let Some(store) = &this.store else {
-                return Ok(LuaNil);
-            };
-            if let Some(value) = &store.get(&key).into_lua_err()? {
-                return vm.to_value(value);
-            }
-            // Return default if provided
-            if let Some(opts) = opts {
-                if let Ok(default) = opts.get::<LuaValue>("default") {
-                    if default != LuaNil {
-                        return Ok(default);
-                    }
+        methods.add_method(
+            "get",
+            |vm, this, (key, opts): (String, Option<LuaTable>)| {
+                let _ = debug_span!("store_get", %key).entered();
+                let Some(store) = &this.store else {
+                    return Ok(LuaNil);
+                };
+                if let Some(value) = &store.get(&key).into_lua_err()? {
+                    return vm.to_value(value);
                 }
-            }
-            Ok(LuaNil)
-        });
+                // Return default if provided
+                if let Some(opts) = opts
+                    && let Ok(default) = opts.get::<LuaValue>("default")
+                    && default != LuaNil
+                {
+                    return Ok(default);
+                }
+                Ok(LuaNil)
+            },
+        );
 
         methods.add_method("set", |vm, this, (key, value): (String, LuaValue)| {
             let _ = debug_span!("store_set", %key).entered();

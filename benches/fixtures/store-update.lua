@@ -1,9 +1,11 @@
-function store_update(ctx)
-  ctx.store:update({ a = 0, b = 0 }, function(values)
-    values.a = values.a - 1
-    values.b = values.b + 1
+function store_tx(ctx)
+  ctx.store:tx(function(tx)
+    local a = tx:get("a") or 0
+    local b = tx:get("b") or 0
+    tx:set("a", a - 1)
+    tx:set("b", b + 1)
   end)
-  assert(ctx.store.a + ctx.store.b == 0, "Expected a + b to be 0 after update")
+  assert(ctx.store:get("a") + ctx.store:get("b") == 0, "Expected a + b to be 0 after tx")
 end
 
-return store_update
+return store_tx

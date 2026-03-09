@@ -78,20 +78,17 @@ impl Store {
         let guard = self.inner.lock();
         let conn = guard.borrow();
         let mut keys = Vec::new();
-        match pattern {
-            Some(pat) => {
-                let mut stmt = conn.prepare_cached(SQL_KEYS)?;
-                let mut rows = stmt.query(params![pat])?;
-                while let Some(row) = rows.next()? {
-                    keys.push(row.get(0)?);
-                }
+        if let Some(pat) = pattern {
+            let mut stmt = conn.prepare_cached(SQL_KEYS)?;
+            let mut rows = stmt.query(params![pat])?;
+            while let Some(row) = rows.next()? {
+                keys.push(row.get(0)?);
             }
-            None => {
-                let mut stmt = conn.prepare_cached(SQL_KEYS_ALL)?;
-                let mut rows = stmt.query([])?;
-                while let Some(row) = rows.next()? {
-                    keys.push(row.get(0)?);
-                }
+        } else {
+            let mut stmt = conn.prepare_cached(SQL_KEYS_ALL)?;
+            let mut rows = stmt.query([])?;
+            while let Some(row) = rows.next()? {
+                keys.push(row.get(0)?);
             }
         }
         Ok(keys)
