@@ -24,7 +24,7 @@ ecb = "0.1.2"
 futures = "0.3.31"
 hex = "0.4.3"
 hmac = "0.12.1"
-jiff = { version = "0.2.21", default-features = false, features = ["std"] }
+jiff = { version = "0.2.22", default-features = false, features = ["std"] }
 lazy-regex = "3.6.0"
 matchit = "0.9"
 md-5 = "0.10.6"
