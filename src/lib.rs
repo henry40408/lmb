@@ -3,6 +3,7 @@
 //! A library for running Lua scripts.
 
 use std::{
+    cell::RefCell,
     error::Error,
     fmt,
     sync::{
@@ -14,7 +15,7 @@ use std::{
 
 use bon::{Builder, bon};
 use mlua::{AsChunk, prelude::*};
-use parking_lot::Mutex;
+use parking_lot::ReentrantMutex;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -104,7 +105,7 @@ pub enum LmbError {
 
 /// Type alias for the shared reader used in the library.
 pub type LmbInput = Arc<SharedReader>;
-type LmbStore = Arc<Mutex<Connection>>;
+type LmbStore = Arc<ReentrantMutex<RefCell<Connection>>>;
 
 /// Result type for the library
 pub type LmbResult<T> = Result<T, LmbError>;
@@ -171,7 +172,7 @@ impl Runner {
         R: AsyncRead + Send + Unpin + 'static,
     {
         let reader = Arc::new(SharedReader::new(reader));
-        let store = store.map(|s| Arc::new(Mutex::new(s)));
+        let store = store.map(|s| Arc::new(ReentrantMutex::new(RefCell::new(s))));
         Self::from_shared_reader(source, reader)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
@@ -256,7 +257,8 @@ impl Runner {
         }
         let func = vm.load(WRAP_FUNC).eval::<LuaFunction>()?.bind(func)?;
         if let Some(store) = &store {
-            let conn = store.lock();
+            let guard = store.lock();
+            let conn = guard.borrow();
             {
                 let _ = debug_span!("set_pragmas").entered();
                 conn.pragma_update(None, "busy_timeout", 5000)?;

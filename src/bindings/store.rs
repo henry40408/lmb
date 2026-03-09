@@ -1,47 +1,64 @@
-use std::{collections::HashMap, sync::Arc};
-
-use bon::{Builder, bon};
+use bon::Builder;
 use mlua::prelude::*;
-use parking_lot::Mutex as PlMutex;
 use rusqlite::params;
 use serde_json::Value;
 use tracing::debug_span;
 
 use crate::{
-    stmt::{SQL_GET, SQL_PUT},
+    LmbStore,
+    stmt::{SQL_DEL, SQL_GET, SQL_PUT},
     store::Store,
 };
 
-pub(crate) struct StoreSnapshotBinding {
-    inner: Arc<PlMutex<HashMap<String, Value>>>,
+/// Lua UserData for transactional operations within `store.tx()`.
+/// Holds a clone of the `LmbStore` Arc; the outer `tx()` method holds the
+/// reentrant lock for the entire transaction, so `TxBinding` can re-enter
+/// the same lock from the same thread without deadlocking.
+pub(crate) struct TxBinding {
+    inner: LmbStore,
 }
 
-#[bon]
-impl StoreSnapshotBinding {
-    #[builder]
-    pub(crate) fn new(#[builder(start_fn)] inner: Arc<PlMutex<HashMap<String, Value>>>) -> Self {
-        Self { inner }
-    }
-}
-
-impl LuaUserData for StoreSnapshotBinding {
+impl LuaUserData for TxBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
-            let _ = debug_span!("store_snapshot_index", %key).entered();
-            if let Some(value) = this.inner.lock().get(&key) {
-                return vm.to_value(value);
+        methods.add_method("get", |vm, this, key: String| {
+            let _ = debug_span!("tx_get", %key).entered();
+            let guard = this.inner.lock();
+            let conn = guard.borrow();
+            let mut stmt = conn.prepare_cached(SQL_GET).into_lua_err()?;
+            let mut rows = stmt.query(params![&key]).into_lua_err()?;
+            if let Some(row) = rows.next().into_lua_err()? {
+                let value: Vec<u8> = row.get(0).into_lua_err()?;
+                let value: Value = rmp_serde::from_slice(&value).into_lua_err()?;
+                vm.to_value(&value)
+            } else {
+                Ok(LuaNil)
             }
+        });
+
+        methods.add_method("set", |vm, this, (key, value): (String, LuaValue)| {
+            let _ = debug_span!("tx_set", %key).entered();
+            let value: Value = vm.from_value(value)?;
+            let serialized = rmp_serde::to_vec(&value).into_lua_err()?;
+            let guard = this.inner.lock();
+            let conn = guard.borrow();
+            conn.prepare_cached(SQL_PUT)
+                .into_lua_err()?
+                .execute(params![&key, serialized])
+                .into_lua_err()?;
             Ok(LuaNil)
         });
-        methods.add_meta_method(
-            LuaMetaMethod::NewIndex,
-            |vm, this, (key, value): (String, LuaValue)| {
-                let _ = debug_span!("store_snapshot_new_index", %key).entered();
-                let value = vm.from_value::<Value>(value)?;
-                this.inner.lock().insert(key, value);
-                Ok(LuaNil)
-            },
-        );
+
+        methods.add_method("del", |_vm, this, key: String| {
+            let _ = debug_span!("tx_del", %key).entered();
+            let guard = this.inner.lock();
+            let conn = guard.borrow();
+            let affected = conn
+                .prepare_cached(SQL_DEL)
+                .into_lua_err()?
+                .execute(params![&key])
+                .into_lua_err()?;
+            Ok(affected > 0)
+        });
     }
 }
 
@@ -52,102 +69,106 @@ pub(crate) struct StoreBinding {
 
 impl LuaUserData for StoreBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_method(
-            LuaMetaMethod::NewIndex,
-            |vm, this, (key, value): (String, LuaValue)| {
-                let _ = debug_span!("store_new_index", %key).entered();
-                let Some(store) = &this.store else {
-                    return Ok(LuaNil);
-                };
-                let value = vm.from_value(value)?;
-                store.put(key, &value).into_lua_err()?;
-                Ok(LuaNil)
-            },
-        );
-
-        methods.add_meta_method(LuaMetaMethod::Index, |vm, this, key: String| {
-            let _ = debug_span!("store_index", %key).entered();
+        methods.add_method("get", |vm, this, (key, opts): (String, Option<LuaTable>)| {
+            let _ = debug_span!("store_get", %key).entered();
             let Some(store) = &this.store else {
                 return Ok(LuaNil);
             };
-            if let Some(value) = &store.get(key).into_lua_err()? {
+            if let Some(value) = &store.get(&key).into_lua_err()? {
                 return vm.to_value(value);
+            }
+            // Return default if provided
+            if let Some(opts) = opts {
+                if let Ok(default) = opts.get::<LuaValue>("default") {
+                    if default != LuaNil {
+                        return Ok(default);
+                    }
+                }
             }
             Ok(LuaNil)
         });
 
-        methods.add_method(
-            "update",
-            |vm, this, (keys_defaults, f): (LuaTable, LuaFunction)| {
-                let span = debug_span!("store_update").entered();
-                let Some(store) = &this.store else {
-                    return Ok(LuaNil);
-                };
+        methods.add_method("set", |vm, this, (key, value): (String, LuaValue)| {
+            let _ = debug_span!("store_set", %key).entered();
+            let Some(store) = &this.store else {
+                return Ok(LuaNil);
+            };
+            let value: Value = vm.from_value(value)?;
+            store.put(key, &value).into_lua_err()?;
+            Ok(LuaNil)
+        });
 
-                fn parse_key_default(k: LuaValue, v: LuaValue) -> LuaResult<(String, LuaValue)> {
-                    match (k.is_integer(), k.as_string(), v.as_string()) {
-                        // key is string, value is default value e.g. { a = 1 }
-                        (false, Some(k), _) => Ok((k.to_str().into_lua_err()?.to_string(), v)),
-                        // key is integer (unused), value is key e.g. { "a" }
-                        (true, _, Some(k)) => Ok((k.to_str().into_lua_err()?.to_string(), LuaNil)),
-                        _ => {
-                            let k_type = k.type_name();
-                            Err(LuaError::external(format!(
-                                "Key is either a number or a string, got {k_type}"
-                            )))
-                        }
-                    }
+        methods.add_method("del", |_vm, this, key: String| {
+            let _ = debug_span!("store_del", %key).entered();
+            let Some(store) = &this.store else {
+                return Ok(false);
+            };
+            store.del(key).into_lua_err()
+        });
+
+        methods.add_method("has", |_vm, this, key: String| {
+            let _ = debug_span!("store_has", %key).entered();
+            let Some(store) = &this.store else {
+                return Ok(false);
+            };
+            store.has(key).into_lua_err()
+        });
+
+        methods.add_method("keys", |vm, this, pattern: Option<String>| {
+            let _ = debug_span!("store_keys").entered();
+            let Some(store) = &this.store else {
+                return vm.create_table().map(LuaValue::Table);
+            };
+            let keys = store.keys(pattern.as_deref()).into_lua_err()?;
+            let table = vm.create_table()?;
+            for (i, key) in keys.into_iter().enumerate() {
+                table.set(i + 1, key)?;
+            }
+            Ok(LuaValue::Table(table))
+        });
+
+        methods.add_method("tx", |_vm, this, f: LuaFunction| {
+            let span = debug_span!("store_tx").entered();
+            let Some(store) = &this.store else {
+                return Err(LuaError::runtime("store is not available"));
+            };
+
+            let inner = store.inner().clone();
+            let guard = inner.lock();
+
+            // Begin transaction using manual SQL (not rusqlite's Transaction struct)
+            // because Transaction<'conn> has a lifetime and can't be stored in UserData.
+            {
+                let _ = debug_span!(parent: &span, "begin").entered();
+                guard
+                    .borrow()
+                    .execute_batch("BEGIN IMMEDIATE")
+                    .into_lua_err()?;
+            }
+
+            let tx_binding = TxBinding {
+                inner: inner.clone(),
+            };
+
+            let result = {
+                let _ = debug_span!(parent: &span, "call").entered();
+                f.call::<LuaValue>(tx_binding)
+            };
+
+            match result {
+                Ok(val) => {
+                    let _ = debug_span!(parent: &span, "commit").entered();
+                    guard.borrow().execute_batch("COMMIT").into_lua_err()?;
+                    Ok(val)
                 }
-
-                let mut conn = store.lock();
-                let tx = conn.transaction().into_lua_err()?;
-
-                let mut snapshot = HashMap::new();
-                {
-                    let _ = debug_span!(parent: &span, "create_snapshot").entered();
-                    let mut stmt = tx.prepare_cached(SQL_GET).into_lua_err()?;
-                    for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
-                        let (k, v) = pair?;
-                        let (key, default) = parse_key_default(k, v)?;
-                        let mut rows = stmt.query(params![&key]).into_lua_err()?;
-                        if let Some(row) = rows.next().into_lua_err()? {
-                            let val: Vec<u8> = row.get(0).into_lua_err()?;
-                            let val: Value = rmp_serde::from_slice(&val).into_lua_err()?;
-                            snapshot.insert(key, val);
-                        } else {
-                            snapshot.insert(key, vm.from_value(default)?);
-                        }
-                    }
+                Err(e) => {
+                    let _ = debug_span!(parent: &span, "rollback").entered();
+                    // Best-effort rollback; if this fails too, we still return the original error
+                    let _ = guard.borrow().execute_batch("ROLLBACK");
+                    Err(e)
                 }
-
-                let snapshot = Arc::new(PlMutex::new(snapshot));
-                let snapshot_binding = StoreSnapshotBinding::builder(snapshot.clone()).build();
-
-                let returned = {
-                    let _ = debug_span!(parent: &span, "call").entered();
-                    f.call::<LuaValue>(snapshot_binding)?
-                };
-
-                {
-                    let _ = debug_span!(parent: &span, "write_snapshot").entered();
-                    let snapshot = snapshot.lock();
-                    for pair in keys_defaults.pairs::<LuaValue, LuaValue>() {
-                        let (k, v) = pair?;
-                        let (key, _) = parse_key_default(k, v)?;
-                        if let Some(value) = snapshot.get(&key) {
-                            let serialized = rmp_serde::to_vec(value).into_lua_err()?;
-                            tx.prepare_cached(SQL_PUT)
-                                .into_lua_err()?
-                                .execute(params![&key, serialized])
-                                .into_lua_err()?;
-                        }
-                    }
-                }
-                tx.commit().into_lua_err()?;
-
-                Ok(returned)
-            },
-        );
+            }
+        });
     }
 }
 
@@ -171,9 +192,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_store_update() {
+    async fn test_store_tx() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("../fixtures/bindings/store/store-update.lua");
+        let source = include_str!("../fixtures/bindings/store/store-tx.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
@@ -182,20 +203,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_store_update_with_missing_keys() {
+    async fn test_store_tx_rollback() {
         let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("../fixtures/bindings/store/store-update-missing-keys.lua");
-        let runner = Runner::builder(source, empty())
-            .store(conn)
-            .build()
-            .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_store_update_preserves_unmodified() {
-        let conn = Connection::open_in_memory().unwrap();
-        let source = include_str!("../fixtures/bindings/store/store-update-preserves.lua");
+        let source = include_str!("../fixtures/bindings/store/store-tx-rollback.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()
@@ -206,7 +216,6 @@ mod tests {
     #[tokio::test]
     async fn test_store_without_connection() {
         let source = include_str!("../fixtures/bindings/store/store-without-connection.lua");
-        // Build runner without store connection
         let runner = Runner::builder(source, empty()).build().unwrap();
         let result = runner.invoke().call().await.unwrap().result.unwrap();
         assert_eq!(json!(true), result);
@@ -216,6 +225,28 @@ mod tests {
     async fn test_store_unicode_keys() {
         let conn = Connection::open_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store-unicode-keys.lua");
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_keys() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = include_str!("../fixtures/bindings/store/store-keys.lua");
+        let runner = Runner::builder(source, empty())
+            .store(conn)
+            .build()
+            .unwrap();
+        runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_store_del() {
+        let conn = Connection::open_in_memory().unwrap();
+        let source = include_str!("../fixtures/bindings/store/store-del.lua");
         let runner = Runner::builder(source, empty())
             .store(conn)
             .build()

@@ -169,10 +169,10 @@ return state
 
 ## Store
 
-In this section, we demonstrate how to use a store to manage state across different parts of your application. The store allows you to update and retrieve values in a structured way.
+In this section, we demonstrate how to use a store to manage state across different parts of your application. The store allows you to get, set, and delete values, and perform atomic transactions.
 
-- Value can be fetched or stored with `ctx.store`, which is a table-like object.
-- Values can be updated using the `ctx.store:update` method, which takes a table of keys and optional default values and a function to modify the values. If the function returns an error, the update will not be applied because a transaction is used under the hood.
+- Use `ctx.store:get(key)`, `ctx.store:set(key, value)`, `ctx.store:del(key)`, `ctx.store:has(key)`, and `ctx.store:keys(pattern?)` for basic operations.
+- Use `ctx.store:tx(function(tx) ... end)` for atomic transactions. If the function errors, all changes within the transaction are rolled back.
 
 ```lua
 --[[
@@ -180,26 +180,30 @@ In this section, we demonstrate how to use a store to manage state across differ
 --store = true
 --]]
 function store(ctx)
-  assert(not ctx.store.a, "Expected ctx.store.a to be nil")
-  ctx.store.a = 20
-  assert(20 == ctx.store.a, "Expected ctx.store.a to be 20, got " .. tostring(ctx.store.a))
+  assert(ctx.store:get("a") == nil, "Expected ctx.store:get('a') to be nil")
+  ctx.store:set("a", 20)
+  assert(20 == ctx.store:get("a"), "Expected ctx.store:get('a') to be 20, got " .. tostring(ctx.store:get("a")))
 
-  ctx.store:update({ "a", b = 0 }, function(values)
-    assert(values.a == 20, "Expected values.a to be 20, got " .. values.a)
-    assert(values.b == 0, "Expected values.b to be 0, got " .. values.b)
+  ctx.store:set("b", 0)
 
-    values.a = values.a - 10
-    values.b = values.b + 10
+  ctx.store:tx(function(tx)
+    local a = tx:get("a")
+    local b = tx:get("b")
+    assert(a == 20, "Expected a to be 20, got " .. a)
+    assert(b == 0, "Expected b to be 0, got " .. b)
+
+    tx:set("a", a - 10)
+    tx:set("b", b + 10)
   end)
 
-  assert(ctx.store.a == 10, "Expected ctx.store.a to be 10, got " .. tostring(ctx.store.a))
-  assert(ctx.store.b == 10, "Expected ctx.store.b to be 10, got " .. tostring(ctx.store.b))
+  assert(ctx.store:get("a") == 10, "Expected ctx.store:get('a') to be 10, got " .. tostring(ctx.store:get("a")))
+  assert(ctx.store:get("b") == 10, "Expected ctx.store:get('b') to be 10, got " .. tostring(ctx.store:get("b")))
 
   local ok, err = pcall(function()
-    ctx.store:update({ "a", "b" }, function(values)
+    ctx.store:tx(function(tx)
       error("prevent a and b from being updated")
-      values.a = values.a + 5
-      values.b = values.b - 5
+      tx:set("a", tx:get("a") + 5)
+      tx:set("b", tx:get("b") - 5)
     end)
   end)
   assert(not ok, "Expected error when trying to update a and b")

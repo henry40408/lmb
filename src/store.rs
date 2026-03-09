@@ -1,11 +1,10 @@
 use bon::bon;
-use parking_lot::MutexGuard;
-use rusqlite::{Connection, params};
+use rusqlite::params;
 use serde_json::Value;
 
 use crate::{
     LmbResult, LmbStore,
-    stmt::{SQL_GET, SQL_PUT},
+    stmt::{SQL_DEL, SQL_GET, SQL_HAS, SQL_KEYS, SQL_KEYS_ALL, SQL_PUT},
 };
 
 /// Represents a key-value store for Lua scripts.
@@ -15,9 +14,9 @@ pub struct Store {
 }
 
 impl Store {
-    /// Acquires a lock on the underlying database connection.
-    pub fn lock(&self) -> MutexGuard<'_, Connection> {
-        self.inner.lock()
+    /// Returns a reference to the underlying store connection.
+    pub fn inner(&self) -> &LmbStore {
+        &self.inner
     }
 }
 
@@ -31,7 +30,8 @@ impl Store {
 
     /// Retrieves a value from the store by key
     pub fn get<S: AsRef<str>>(&self, key: S) -> LmbResult<Option<Value>> {
-        let conn = self.inner.lock();
+        let guard = self.inner.lock();
+        let conn = guard.borrow();
         let mut stmt = conn.prepare_cached(SQL_GET)?;
         let mut rows = stmt.query(params![key.as_ref()])?;
         if let Some(row) = rows.next()? {
@@ -44,21 +44,65 @@ impl Store {
     }
 
     /// Puts a value into the store by key
-    pub fn put<'a, S: AsRef<str>>(&'a self, key: S, value: &'a Value) -> LmbResult<()> {
-        let conn = self.inner.lock();
-        let key = key.as_ref();
-        let serialized = rmp_serde::to_vec(&value)?;
+    pub fn put<S: AsRef<str>>(&self, key: S, value: &Value) -> LmbResult<()> {
+        let guard = self.inner.lock();
+        let conn = guard.borrow();
+        let serialized = rmp_serde::to_vec(value)?;
         conn.prepare_cached(SQL_PUT)?
-            .execute(params![key, serialized])?;
+            .execute(params![key.as_ref(), serialized])?;
         Ok(())
+    }
+
+    /// Deletes a key from the store. Returns true if the key existed.
+    pub fn del<S: AsRef<str>>(&self, key: S) -> LmbResult<bool> {
+        let guard = self.inner.lock();
+        let conn = guard.borrow();
+        let affected = conn
+            .prepare_cached(SQL_DEL)?
+            .execute(params![key.as_ref()])?;
+        Ok(affected > 0)
+    }
+
+    /// Returns true if the key exists in the store.
+    pub fn has<S: AsRef<str>>(&self, key: S) -> LmbResult<bool> {
+        let guard = self.inner.lock();
+        let conn = guard.borrow();
+        let mut stmt = conn.prepare_cached(SQL_HAS)?;
+        let mut rows = stmt.query(params![key.as_ref()])?;
+        Ok(rows.next()?.is_some())
+    }
+
+    /// Returns all keys matching the given pattern, or all keys if no pattern is given.
+    /// Pattern uses SQL LIKE syntax: `%` matches any sequence, `_` matches one character.
+    pub fn keys(&self, pattern: Option<&str>) -> LmbResult<Vec<String>> {
+        let guard = self.inner.lock();
+        let conn = guard.borrow();
+        let mut keys = Vec::new();
+        match pattern {
+            Some(pat) => {
+                let mut stmt = conn.prepare_cached(SQL_KEYS)?;
+                let mut rows = stmt.query(params![pat])?;
+                while let Some(row) = rows.next()? {
+                    keys.push(row.get(0)?);
+                }
+            }
+            None => {
+                let mut stmt = conn.prepare_cached(SQL_KEYS_ALL)?;
+                let mut rows = stmt.query([])?;
+                while let Some(row) = rows.next()? {
+                    keys.push(row.get(0)?);
+                }
+            }
+        }
+        Ok(keys)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{cell::RefCell, sync::Arc};
 
-    use parking_lot::Mutex;
+    use parking_lot::ReentrantMutex;
     use rusqlite::Connection;
     use serde_json::json;
 
@@ -70,7 +114,7 @@ mod tests {
         for migration in MIGRATIONS.iter() {
             conn.execute_batch(migration).unwrap();
         }
-        Store::builder(Arc::new(Mutex::new(conn))).build()
+        Store::builder(Arc::new(ReentrantMutex::new(RefCell::new(conn)))).build()
     }
 
     #[test]
@@ -137,5 +181,38 @@ mod tests {
         });
         store.put(key, &value).unwrap();
         assert_eq!(Some(value), store.get(key).unwrap());
+    }
+
+    #[test]
+    fn test_del() {
+        let store = create_test_store();
+        store.put("key1", &json!("val")).unwrap();
+        assert!(store.del("key1").unwrap());
+        assert!(!store.del("key1").unwrap());
+        assert!(store.get("key1").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_has() {
+        let store = create_test_store();
+        assert!(!store.has("key1").unwrap());
+        store.put("key1", &json!("val")).unwrap();
+        assert!(store.has("key1").unwrap());
+    }
+
+    #[test]
+    fn test_keys() {
+        let store = create_test_store();
+        store.put("user:1", &json!("a")).unwrap();
+        store.put("user:2", &json!("b")).unwrap();
+        store.put("item:1", &json!("c")).unwrap();
+
+        let mut all = store.keys(None).unwrap();
+        all.sort();
+        assert_eq!(vec!["item:1", "user:1", "user:2"], all);
+
+        let mut users = store.keys(Some("user:%")).unwrap();
+        users.sort();
+        assert_eq!(vec!["user:1", "user:2"], users);
     }
 }
