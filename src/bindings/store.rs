@@ -255,4 +255,18 @@ mod tests {
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_store_no_store() {
+        use mlua::Lua;
+
+        use super::StoreBinding;
+
+        let vm = Lua::new();
+        let ctx = vm.create_table().unwrap();
+        ctx.set("store", StoreBinding::builder().build()).unwrap();
+        let source = include_str!("../fixtures/bindings/store/store-no-store.lua");
+        let func: mlua::Function = vm.load(source).eval().unwrap();
+        func.call_async::<mlua::Value>(ctx).await.unwrap();
+    }
 }
