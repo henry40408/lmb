@@ -195,7 +195,7 @@ mod tests {
         let source = include_str!("./fixtures/serve/serve.lua");
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         let res = server.get("/").await;
         assert_eq!(201, res.status_code());
@@ -208,7 +208,7 @@ mod tests {
         let source = include_str!("./fixtures/serve/serve-echo.lua");
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         let res = server
             .post("/a/b/c?a=1&b=2")
@@ -233,7 +233,7 @@ mod tests {
         let source = include_str!("./fixtures/serve/serve-base64.lua");
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         let res = server.get("/").await;
         assert_eq!(200, res.status_code());
@@ -246,7 +246,7 @@ mod tests {
         let app_state = Arc::new(AppState::builder().source(source).pool_size(2).build());
         let pool = create_pool(&app_state).unwrap();
         let router = build_router(app_state, Some(Arc::new(pool)));
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         // Make multiple requests to exercise pool
         for _ in 0..4 {
@@ -261,7 +261,7 @@ mod tests {
         let source = r#"return function() return "plain text" end"#;
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         let res = server.get("/").await;
         assert_eq!(200, res.status_code());
@@ -273,7 +273,7 @@ mod tests {
         let source = r#"return function() return 42 end"#;
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         let res = server.get("/").await;
         assert_eq!(200, res.status_code());
@@ -285,7 +285,7 @@ mod tests {
         let source = r#"return function() error("test error") end"#;
         let app_state = Arc::new(AppState::builder().source(source).build());
         let router = build_router(app_state, None);
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router);
 
         let res = server.get("/").await;
         assert_eq!(500, res.status_code());
