@@ -86,7 +86,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-benchmark-
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.20.7
+        uses: benchmark-action/github-action-benchmark@v1.21.0
         with:
           tool: cargo
           output-file-path: output.txt
