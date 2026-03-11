@@ -58,7 +58,7 @@ string-offsets = "0.2.0"
 syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
 termimad = "0.34"
 thiserror = "2.0.12"
-tokio = { version = "1.47.0", default-features = false, features = [
+tokio = { version = "1.50.0", default-features = false, features = [
   "fs",
   "io-std",
   "io-util",
