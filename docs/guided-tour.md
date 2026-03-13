@@ -712,7 +712,7 @@ return parse_path
 
 ### Time
 
-The `@lmb/time` module provides time utilities not covered by Luau's built-in `os` library. While `os.time()` gives second-precision timestamps, `now_ms()` provides millisecond precision. The `parse()` function converts date strings to Unix timestamps using POSIX strptime format specifiers.
+The `@lmb/time` module provides time utilities not covered by Luau's built-in `os` library. While `os.time()` gives second-precision timestamps, `now_ms()` provides millisecond precision. The `parse()` function converts date strings to Unix timestamps — it auto-detects RFC 3339, ISO 8601, RFC 2822, and asctime formats, or accepts an explicit POSIX strptime format string.
 
 ```lua
 --[[
@@ -726,17 +726,17 @@ function time_example()
   assert(ms > 0, "Expected positive timestamp")
   assert(ms >= os.time() * 1000, "now_ms should be >= os.time() * 1000")
 
-  -- Parse date strings to Unix timestamps
-  local ts = time.parse("2026-02-09", "%Y-%m-%d")
-  assert(ts > 0, "Expected positive timestamp from parse")
+  -- Auto-detect format (RFC 3339 / ISO 8601)
+  local ts = time.parse("2026-02-09T12:00:00Z")
+  assert(ts > 0, "Expected positive timestamp from auto-detect")
 
-  -- Parse with time component
-  local ts2 = time.parse("2026-02-09 12:00:00", "%Y-%m-%d %H:%M:%S")
-  assert(ts2 > ts, "Timestamp with noon should be greater than midnight")
+  -- Auto-detect format (RFC 2822)
+  local ts2 = time.parse("Mon, 09 Feb 2026 12:00:00 +0000")
+  assert(ts2 == ts, "RFC 2822 should match RFC 3339")
 
-  -- Epoch check
-  local epoch = time.parse("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-  assert(epoch == 0, "1970-01-01 00:00:00 should be epoch 0")
+  -- Explicit format (strptime)
+  local ts3 = time.parse("2026-02-09", "%Y-%m-%d")
+  assert(ts3 > 0, "Expected positive timestamp from explicit format")
 end
 
 return time_example
