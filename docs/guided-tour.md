@@ -710,6 +710,38 @@ end
 return parse_path
 ```
 
+### Time
+
+The `@lmb/time` module provides time utilities not covered by Luau's built-in `os` library. While `os.time()` gives second-precision timestamps, `now_ms()` provides millisecond precision. The `parse()` function converts date strings to Unix timestamps using POSIX strptime format specifiers.
+
+```lua
+--[[
+--name = "Time"
+--]]
+function time_example()
+  local time = require("@lmb/time")
+
+  -- Millisecond precision timestamp
+  local ms = time.now_ms()
+  assert(ms > 0, "Expected positive timestamp")
+  assert(ms >= os.time() * 1000, "now_ms should be >= os.time() * 1000")
+
+  -- Parse date strings to Unix timestamps
+  local ts = time.parse("2026-02-09", "%Y-%m-%d")
+  assert(ts > 0, "Expected positive timestamp from parse")
+
+  -- Parse with time component
+  local ts2 = time.parse("2026-02-09 12:00:00", "%Y-%m-%d %H:%M:%S")
+  assert(ts2 > ts, "Timestamp with noon should be greater than midnight")
+
+  -- Epoch check
+  local epoch = time.parse("1970-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+  assert(epoch == 0, "1970-01-01 00:00:00 should be epoch 0")
+end
+
+return time_example
+```
+
 ## Encoding and decoding
 
 ### JSON
