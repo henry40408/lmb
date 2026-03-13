@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(
             json!({
                 "body": { "foo": 1, "bar": 2 },
-                "headers": { "content-type": "application/json", "i-am": "teapot" },
+                "headers": { "content-type": "application/json", "host": "localhost", "i-am": "teapot" },
                 "method": "POST",
                 "path": "/a/b/c",
                 "query": { "a": "1", "b": "2" }
