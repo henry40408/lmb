@@ -66,16 +66,15 @@ fn parse_auto(input: &str) -> Result<i64, String> {
     if let Ok(ts) = input.parse::<jiff::Timestamp>() {
         return Ok(ts.as_second());
     }
-    // Also try civil::DateTime for inputs without offset (e.g. "2026-02-09" or "2026-02-09 12:00:00")
+    // Also try civil::DateTime for inputs without offset (e.g. "2026-02-09 12:00:00")
     if let Ok(dt) = input.parse::<jiff::civil::DateTime>() {
-        if let Ok(z) = dt.to_zoned(TimeZone::UTC) {
-            return Ok(z.timestamp().as_second());
-        }
+        let z = dt.to_zoned(TimeZone::UTC).map_err(|e| e.to_string())?;
+        return Ok(z.timestamp().as_second());
     }
+    // Also try civil::Date for date-only inputs (e.g. "2026-02-09")
     if let Ok(d) = input.parse::<jiff::civil::Date>() {
-        if let Ok(z) = d.to_zoned(TimeZone::UTC) {
-            return Ok(z.timestamp().as_second());
-        }
+        let z = d.to_zoned(TimeZone::UTC).map_err(|e| e.to_string())?;
+        return Ok(z.timestamp().as_second());
     }
 
     // 2-3. Try strptime with known formats

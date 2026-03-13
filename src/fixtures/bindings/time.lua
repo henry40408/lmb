@@ -43,4 +43,12 @@ assert(rfc2822 == ts2, "RFC 2822 should match UTC noon, got " .. tostring(rfc282
 local asctime = time.parse("Mon Feb  9 12:00:00 2026")
 assert(asctime == ts2, "asctime should match UTC noon, got " .. tostring(asctime))
 
+-- error: auto-detect with invalid input
+local ok, err = pcall(time.parse, "not-a-date")
+assert(not ok, "parse should fail on invalid input")
+
+-- error: explicit format with invalid input
+local ok2, err2 = pcall(time.parse, "not-a-date", "%Y-%m-%d")
+assert(not ok2, "parse should fail with mismatched format")
+
 return true
