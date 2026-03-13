@@ -108,8 +108,7 @@ impl LuaUserData for TimeBinding {
         methods.add_function("parse", |_, (input, format): (String, Option<String>)| {
             let ts = match format {
                 Some(fmt) => {
-                    let tm = jiff::fmt::strtime::parse(&fmt, &input)
-                        .map_err(LuaError::external)?;
+                    let tm = jiff::fmt::strtime::parse(&fmt, &input).map_err(LuaError::external)?;
                     broken_down_to_timestamp(&tm).ok_or_else(|| {
                         LuaError::external(format!(
                             "failed to convert parsed date '{input}' to timestamp"
