@@ -97,6 +97,20 @@ jobs:
   coverage:
     needs: [lint, check]
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: lmb
+          POSTGRES_PASSWORD: lmb
+          POSTGRES_DB: lmb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.2
@@ -117,6 +131,8 @@ jobs:
         with:
           tool: cargo-llvm-cov@0.6.14,cargo-nextest@0.9.87
       - name: Run tests with coverage
+        env:
+          DATABASE_URL: postgres://lmb:lmb@localhost:5432/lmb
         run: cargo llvm-cov nextest --all-features --workspace --ignore-filename-regex main.rs --lcov --output-path lcov.info
       - name: Upload coverage report
         uses: codecov/codecov-action@v5.5.2
