@@ -43,8 +43,13 @@ where
     type Error = LmbError;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
+        let store = self
+            .store
+            .as_ref()
+            .map(|s| s.fork())
+            .transpose()?;
         Runner::from_shared_reader(self.source.clone(), self.reader.clone())
-            .maybe_store(self.store.clone())
+            .maybe_store(store)
             .call()
     }
 

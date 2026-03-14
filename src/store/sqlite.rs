@@ -150,6 +150,12 @@ impl StoreBackend for SqliteBackend {
         }
         Ok(())
     }
+
+    fn fork(&self) -> LmbResult<std::sync::Arc<dyn StoreBackend>> {
+        Ok(std::sync::Arc::new(Self {
+            conn: self.conn.clone(),
+        }))
+    }
 }
 
 #[cfg(test)]
