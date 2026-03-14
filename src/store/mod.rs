@@ -1,11 +1,15 @@
+/// Store backend trait definition.
+pub mod backend;
+/// `SQLite` store backend implementation.
+pub mod sqlite;
+
+pub use backend::StoreBackend;
+pub use sqlite::SqliteBackend;
+
 use bon::bon;
-use rusqlite::params;
 use serde_json::Value;
 
-use crate::{
-    LmbResult, LmbStore,
-    stmt::{SQL_DEL, SQL_GET, SQL_HAS, SQL_KEYS, SQL_KEYS_ALL, SQL_PUT},
-};
+use crate::{LmbResult, LmbStore};
 
 /// Represents a key-value store for Lua scripts.
 #[derive(Debug)]
@@ -14,7 +18,7 @@ pub struct Store {
 }
 
 impl Store {
-    /// Returns a reference to the underlying store connection.
+    /// Returns a reference to the underlying store backend.
     pub fn inner(&self) -> &LmbStore {
         &self.inner
     }
@@ -30,88 +34,41 @@ impl Store {
 
     /// Retrieves a value from the store by key
     pub fn get<S: AsRef<str>>(&self, key: S) -> LmbResult<Option<Value>> {
-        let guard = self.inner.lock();
-        let conn = guard.borrow();
-        let mut stmt = conn.prepare_cached(SQL_GET)?;
-        let mut rows = stmt.query(params![key.as_ref()])?;
-        if let Some(row) = rows.next()? {
-            let value: Vec<u8> = row.get(0)?;
-            let value: Value = rmp_serde::from_slice(&value)?;
-            Ok(Some(value))
-        } else {
-            Ok(None)
-        }
+        self.inner.get(key.as_ref())
     }
 
     /// Puts a value into the store by key
     pub fn put<S: AsRef<str>>(&self, key: S, value: &Value) -> LmbResult<()> {
-        let guard = self.inner.lock();
-        let conn = guard.borrow();
-        let serialized = rmp_serde::to_vec(value)?;
-        conn.prepare_cached(SQL_PUT)?
-            .execute(params![key.as_ref(), serialized])?;
-        Ok(())
+        self.inner.put(key.as_ref(), value)
     }
 
     /// Deletes a key from the store. Returns true if the key existed.
     pub fn del<S: AsRef<str>>(&self, key: S) -> LmbResult<bool> {
-        let guard = self.inner.lock();
-        let conn = guard.borrow();
-        let affected = conn
-            .prepare_cached(SQL_DEL)?
-            .execute(params![key.as_ref()])?;
-        Ok(affected > 0)
+        self.inner.del(key.as_ref())
     }
 
     /// Returns true if the key exists in the store.
     pub fn has<S: AsRef<str>>(&self, key: S) -> LmbResult<bool> {
-        let guard = self.inner.lock();
-        let conn = guard.borrow();
-        let mut stmt = conn.prepare_cached(SQL_HAS)?;
-        let mut rows = stmt.query(params![key.as_ref()])?;
-        Ok(rows.next()?.is_some())
+        self.inner.has(key.as_ref())
     }
 
     /// Returns all keys matching the given pattern, or all keys if no pattern is given.
     /// Pattern uses SQL LIKE syntax: `%` matches any sequence, `_` matches one character.
     pub fn keys(&self, pattern: Option<&str>) -> LmbResult<Vec<String>> {
-        let guard = self.inner.lock();
-        let conn = guard.borrow();
-        let mut keys = Vec::new();
-        if let Some(pat) = pattern {
-            let mut stmt = conn.prepare_cached(SQL_KEYS)?;
-            let mut rows = stmt.query(params![pat])?;
-            while let Some(row) = rows.next()? {
-                keys.push(row.get(0)?);
-            }
-        } else {
-            let mut stmt = conn.prepare_cached(SQL_KEYS_ALL)?;
-            let mut rows = stmt.query([])?;
-            while let Some(row) = rows.next()? {
-                keys.push(row.get(0)?);
-            }
-        }
-        Ok(keys)
+        self.inner.keys(pattern)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, sync::Arc};
-
-    use parking_lot::ReentrantMutex;
-    use rusqlite::Connection;
     use serde_json::json;
 
-    use super::Store;
-    use crate::stmt::MIGRATIONS;
+    use super::{SqliteBackend, Store, StoreBackend};
 
     fn create_test_store() -> Store {
-        let conn = Connection::open_in_memory().unwrap();
-        for migration in MIGRATIONS.iter() {
-            conn.execute_batch(migration).unwrap();
-        }
-        Store::builder(Arc::new(ReentrantMutex::new(RefCell::new(conn)))).build()
+        let backend = SqliteBackend::new_in_memory().unwrap();
+        backend.migrate().unwrap();
+        Store::builder(std::sync::Arc::new(backend)).build()
     }
 
     #[test]

@@ -13,9 +13,10 @@ use byte_unit::Byte;
 use clap::{Parser, Subcommand};
 use clio::Input;
 use lmb::{
-    LmbError, Runner,
+    LmbError, LmbStore, Runner,
     error::{ErrorReport, build_report, render_report},
     permission::{EnvPermissions, NetPermissions, Permissions, ReadPermissions, WritePermissions},
+    store::SqliteBackend,
 };
 use no_color::is_no_color;
 use rusqlite::Connection;
@@ -192,10 +193,16 @@ fn parse_timeout(span: Option<jiff::Span>) -> anyhow::Result<Option<Duration>> {
 pub(crate) fn open_store_connection(
     store_path: Option<PathBuf>,
     no_store: bool,
-) -> anyhow::Result<Option<Connection>> {
+) -> anyhow::Result<Option<LmbStore>> {
     match (store_path, no_store) {
-        (None, false) => Ok(Some(Connection::open_in_memory()?)),
-        (Some(path), false) => Ok(Some(Connection::open(path)?)),
+        (None, false) => {
+            let backend = SqliteBackend::new(Connection::open_in_memory()?);
+            Ok(Some(Arc::new(backend)))
+        }
+        (Some(path), false) => {
+            let backend = SqliteBackend::new(Connection::open(path)?);
+            Ok(Some(Arc::new(backend)))
+        }
         _ => Ok(None),
     }
 }
