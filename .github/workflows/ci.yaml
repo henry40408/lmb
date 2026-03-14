@@ -58,6 +58,9 @@ jobs:
           key: ${{ runner.os }}-cargo-check-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Check code linting
         run: cargo clippy
+      - name: Check code linting (all features)
+        if: runner.os == 'Linux'
+        run: cargo clippy --all-features
   bench:
     needs: [lint, check]
     runs-on: ubuntu-latest
