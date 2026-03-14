@@ -7,7 +7,7 @@ use tracing::debug_span;
 
 use crate::LmbResult;
 
-use super::backend::StoreBackend;
+use super::StoreBackend;
 
 static MIGRATIONS: &[&str] = &[include_str!("../migrations/0001-initial.sql")];
 
