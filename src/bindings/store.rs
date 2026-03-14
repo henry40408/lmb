@@ -1,19 +1,13 @@
 use bon::Builder;
 use mlua::prelude::*;
-use rusqlite::params;
 use serde_json::Value;
 use tracing::debug_span;
 
-use crate::{
-    LmbStore,
-    stmt::{SQL_DEL, SQL_GET, SQL_PUT},
-    store::Store,
-};
+use crate::LmbStore;
 
 /// Lua `UserData` for transactional operations within `store.tx()`.
 /// Holds a clone of the `LmbStore` Arc; the outer `tx()` method holds the
-/// reentrant lock for the entire transaction, so `TxBinding` can re-enter
-/// the same lock from the same thread without deadlocking.
+/// transaction open for the duration of the callback.
 pub(crate) struct TxBinding {
     inner: LmbStore,
 }
@@ -22,14 +16,9 @@ impl LuaUserData for TxBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("get", |vm, this, key: String| {
             let _ = debug_span!("tx_get", %key).entered();
-            let guard = this.inner.lock();
-            let conn = guard.borrow();
-            let mut stmt = conn.prepare_cached(SQL_GET).into_lua_err()?;
-            let mut rows = stmt.query(params![&key]).into_lua_err()?;
-            if let Some(row) = rows.next().into_lua_err()? {
-                let value: Vec<u8> = row.get(0).into_lua_err()?;
-                let value: Value = rmp_serde::from_slice(&value).into_lua_err()?;
-                vm.to_value(&value)
+            let value = this.inner.get(&key).into_lua_err()?;
+            if let Some(value) = &value {
+                vm.to_value(value)
             } else {
                 Ok(LuaNil)
             }
@@ -38,33 +27,20 @@ impl LuaUserData for TxBinding {
         methods.add_method("set", |vm, this, (key, value): (String, LuaValue)| {
             let _ = debug_span!("tx_set", %key).entered();
             let value: Value = vm.from_value(value)?;
-            let serialized = rmp_serde::to_vec(&value).into_lua_err()?;
-            let guard = this.inner.lock();
-            let conn = guard.borrow();
-            conn.prepare_cached(SQL_PUT)
-                .into_lua_err()?
-                .execute(params![&key, serialized])
-                .into_lua_err()?;
+            this.inner.put(&key, &value).into_lua_err()?;
             Ok(LuaNil)
         });
 
         methods.add_method("del", |_vm, this, key: String| {
             let _ = debug_span!("tx_del", %key).entered();
-            let guard = this.inner.lock();
-            let conn = guard.borrow();
-            let affected = conn
-                .prepare_cached(SQL_DEL)
-                .into_lua_err()?
-                .execute(params![&key])
-                .into_lua_err()?;
-            Ok(affected > 0)
+            this.inner.del(&key).into_lua_err()
         });
     }
 }
 
 #[derive(Builder)]
 pub(crate) struct StoreBinding {
-    store: Option<Store>,
+    store: Option<LmbStore>,
 }
 
 impl LuaUserData for StoreBinding {
@@ -96,7 +72,7 @@ impl LuaUserData for StoreBinding {
                 return Ok(LuaNil);
             };
             let value: Value = vm.from_value(value)?;
-            store.put(key, &value).into_lua_err()?;
+            store.put(&key, &value).into_lua_err()?;
             Ok(LuaNil)
         });
 
@@ -105,7 +81,7 @@ impl LuaUserData for StoreBinding {
             let Some(store) = &this.store else {
                 return Ok(false);
             };
-            store.del(key).into_lua_err()
+            store.del(&key).into_lua_err()
         });
 
         methods.add_method("has", |_vm, this, key: String| {
@@ -113,7 +89,7 @@ impl LuaUserData for StoreBinding {
             let Some(store) = &this.store else {
                 return Ok(false);
             };
-            store.has(key).into_lua_err()
+            store.has(&key).into_lua_err()
         });
 
         methods.add_method("keys", |vm, this, pattern: Option<String>| {
@@ -135,21 +111,13 @@ impl LuaUserData for StoreBinding {
                 return Err(LuaError::runtime("store is not available"));
             };
 
-            let inner = store.inner().clone();
-            let guard = inner.lock();
-
-            // Begin transaction using manual SQL (not rusqlite's Transaction struct)
-            // because Transaction<'conn> has a lifetime and can't be stored in UserData.
             {
                 let _ = debug_span!(parent: &span, "begin").entered();
-                guard
-                    .borrow()
-                    .execute_batch("BEGIN IMMEDIATE")
-                    .into_lua_err()?;
+                store.begin_tx().into_lua_err()?;
             }
 
             let tx_binding = TxBinding {
-                inner: inner.clone(),
+                inner: store.clone(),
             };
 
             let result = {
@@ -160,13 +128,13 @@ impl LuaUserData for StoreBinding {
             match result {
                 Ok(val) => {
                     let _ = debug_span!(parent: &span, "commit").entered();
-                    guard.borrow().execute_batch("COMMIT").into_lua_err()?;
+                    store.commit_tx().into_lua_err()?;
                     Ok(val)
                 }
                 Err(e) => {
                     let _ = debug_span!(parent: &span, "rollback").entered();
                     // Best-effort rollback; if this fails too, we still return the original error
-                    let _ = guard.borrow().execute_batch("ROLLBACK");
+                    let _ = store.rollback_tx();
                     Err(e)
                 }
             }
@@ -176,18 +144,19 @@ impl LuaUserData for StoreBinding {
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::Connection;
+    use std::sync::Arc;
+
     use serde_json::json;
     use tokio::io::empty;
 
-    use crate::Runner;
+    use crate::{Runner, store::SqliteBackend};
 
     #[tokio::test]
     async fn test_store_binding() {
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = SqliteBackend::new_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store.lua");
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
@@ -195,10 +164,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_tx() {
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = SqliteBackend::new_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store-tx.lua");
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
@@ -206,10 +175,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_tx_rollback() {
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = SqliteBackend::new_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store-tx-rollback.lua");
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
@@ -225,10 +194,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_unicode_keys() {
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = SqliteBackend::new_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store-unicode-keys.lua");
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
@@ -236,10 +205,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_keys() {
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = SqliteBackend::new_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store-keys.lua");
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
@@ -247,10 +216,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_del() {
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = SqliteBackend::new_in_memory().unwrap();
         let source = include_str!("../fixtures/bindings/store/store-del.lua");
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();

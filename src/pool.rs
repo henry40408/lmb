@@ -62,17 +62,15 @@ pub type Pool<S> = managed::Pool<RunnerManager<S>>;
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, sync::Arc};
+    use std::sync::Arc;
 
-    use parking_lot::ReentrantMutex;
-    use rusqlite::Connection;
     use serde_json::json;
     use tokio::io::empty;
 
     use crate::{
         pool::{Pool, RunnerManager},
         reader::SharedReader,
-        store::Store,
+        store::{SqliteBackend, StoreBackend},
     };
 
     #[tokio::test]
@@ -80,11 +78,9 @@ mod tests {
         let source = include_str!("./fixtures/bindings/store/store.lua");
         let reader = Arc::new(SharedReader::new(empty()));
 
-        let store = Arc::new(ReentrantMutex::new(RefCell::new(
-            Connection::open_in_memory().unwrap(),
-        )));
+        let backend: Arc<dyn StoreBackend> = Arc::new(SqliteBackend::new_in_memory().unwrap());
         let manager = RunnerManager::builder(source, reader)
-            .store(store.clone())
+            .store(backend.clone())
             .build();
 
         let pool = Pool::builder(manager).build().unwrap();
@@ -99,8 +95,7 @@ mod tests {
 
         futures::future::join_all(tasks).await;
 
-        let store = Store::builder(store).build();
-        let value = store.get("a").unwrap().unwrap();
+        let value = backend.get("a").unwrap().unwrap();
         assert_eq!(json!(true), value);
     }
 

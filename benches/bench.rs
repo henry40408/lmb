@@ -2,9 +2,10 @@
 
 use std::io::Cursor;
 
+use std::sync::Arc;
+
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use lmb::{Runner, State};
-use rusqlite::Connection;
+use lmb::{Runner, State, store::SqliteBackend};
 use serde_json::json;
 use tokio::io::empty;
 
@@ -81,9 +82,9 @@ fn lmb_call(c: &mut Criterion) {
     }
     {
         let source = include_str!("fixtures/store-minimal.lua");
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = Arc::new(SqliteBackend::new_in_memory().unwrap());
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(backend)
             .build()
             .unwrap();
         c.bench_function("store set get", |b| {
@@ -93,9 +94,9 @@ fn lmb_call(c: &mut Criterion) {
     }
     {
         let source = include_str!("fixtures/store-update.lua");
-        let conn = Connection::open_in_memory().unwrap();
+        let backend = Arc::new(SqliteBackend::new_in_memory().unwrap());
         let runner = Runner::builder(source, empty())
-            .store(conn)
+            .store(backend)
             .build()
             .unwrap();
         c.bench_function("store tx", |b| {

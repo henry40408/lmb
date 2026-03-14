@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, io::Cursor, str::FromStr as _, sync::Arc};
+use std::{collections::HashMap, io::Cursor, str::FromStr as _, sync::Arc};
 
 use axum::{
     body::{Body, to_bytes},
@@ -9,7 +9,6 @@ use axum::{
 use base64::prelude::*;
 use lmb::{LmbResult, Runner, pool::Pool, reader::SharedReader};
 use mlua::ExternalResult;
-use parking_lot::ReentrantMutex;
 use serde_json::{Value, json};
 use tokio::io::empty;
 use tracing::{Instrument as _, debug, debug_span, error};
@@ -26,8 +25,7 @@ pub(crate) fn create_pool(app_state: &AppState) -> anyhow::Result<RunnerPool> {
     let store = open_store_connection(
         app_state.store_path.clone(),
         app_state.no_store.unwrap_or(false),
-    )?
-    .map(|conn| Arc::new(ReentrantMutex::new(RefCell::new(conn))));
+    )?;
 
     let manager = lmb::pool::RunnerManager::builder(app_state.source.clone(), reader)
         .maybe_store(store)

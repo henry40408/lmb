@@ -2,12 +2,12 @@ use std::{io::Cursor, str::FromStr, time::Duration};
 
 use curl_parser::ParsedRequest;
 use full_moon::{tokenizer::TokenType, visitors::Visitor};
+use lmb::store::SqliteBackend;
 use lmb::{
     Runner, State,
     permission::{EnvPermissions, NetPermissions, Permissions, ReadPermissions, WritePermissions},
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
-use rusqlite::Connection;
 use rustc_hash::FxHashSet;
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -131,8 +131,8 @@ async fn test_guided_tour() {
             state.insert("url".to_string(), json!(server.url()));
         }
 
-        let conn = if visitor.store {
-            Some(Connection::open_in_memory().unwrap())
+        let conn: Option<std::sync::Arc<dyn lmb::store::StoreBackend>> = if visitor.store {
+            Some(std::sync::Arc::new(SqliteBackend::new_in_memory().unwrap()))
         } else {
             None
         };

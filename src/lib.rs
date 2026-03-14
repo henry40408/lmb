@@ -3,7 +3,6 @@
 //! A library for running Lua scripts.
 
 use std::{
-    cell::RefCell,
     error::Error,
     fmt,
     sync::{
@@ -15,8 +14,6 @@ use std::{
 
 use bon::{Builder, bon};
 use mlua::{AsChunk, prelude::*};
-use parking_lot::ReentrantMutex;
-use rusqlite::Connection;
 use serde_json::{Value, json};
 use thiserror::Error;
 use tokio::io::AsyncRead;
@@ -26,8 +23,7 @@ use crate::{
     bindings::{Binding, store::StoreBinding},
     permission::Permissions,
     reader::SharedReader,
-    stmt::MIGRATIONS,
-    store::Store,
+    store::StoreBackend,
 };
 
 /// Error handling module
@@ -46,7 +42,6 @@ pub mod reader;
 pub mod store;
 
 mod bindings;
-mod stmt;
 
 /// Represents a timeout error when executing a Lua script
 #[derive(Clone, Debug)]
@@ -98,6 +93,9 @@ pub enum LmbError {
     /// Error from rusqlite crate
     #[error("SQLite error: {0}")]
     SQLite(#[from] rusqlite::Error),
+    /// Generic store backend error
+    #[error("Store error: {0}")]
+    Store(Box<dyn std::error::Error + Send + Sync>),
     /// Error when the Lua script times out
     #[error("Timeout: {0}")]
     Timeout(#[from] Timeout),
@@ -105,7 +103,8 @@ pub enum LmbError {
 
 /// Type alias for the shared reader used in the library.
 pub type LmbInput = Arc<SharedReader>;
-type LmbStore = Arc<ReentrantMutex<RefCell<Connection>>>;
+/// Type alias for the shared store backend.
+pub type LmbStore = Arc<dyn StoreBackend>;
 
 /// Result type for the library
 pub type LmbResult<T> = Result<T, LmbError>;
@@ -164,7 +163,7 @@ impl Runner {
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
-        store: Option<Connection>,
+        store: Option<Arc<dyn StoreBackend>>,
         timeout: Option<Duration>,
     ) -> LmbResult<Self>
     where
@@ -172,7 +171,6 @@ impl Runner {
         R: AsyncRead + Send + Unpin + 'static,
     {
         let reader = Arc::new(SharedReader::new(reader));
-        let store = store.map(|s| Arc::new(ReentrantMutex::new(RefCell::new(s))));
         Self::from_shared_reader(source, reader)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
@@ -258,37 +256,7 @@ impl Runner {
         }
         let func = vm.load(WRAP_FUNC).eval::<LuaFunction>()?.bind(func)?;
         if let Some(store) = &store {
-            let guard = store.lock();
-            let conn = guard.borrow();
-            {
-                let _ = debug_span!("set_pragmas").entered();
-                conn.pragma_update(None, "busy_timeout", 5000)?;
-                conn.pragma_update(None, "journal_mode", "WAL")?;
-                conn.pragma_update(None, "foreign_keys", "OFF")?;
-                conn.pragma_update(None, "synchronous", "NORMAL")?;
-            }
-            {
-                // Use user_version to track which migrations have been executed
-                let current_version: i32 =
-                    conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-                let migrations_to_run = MIGRATIONS.len() as i32;
-
-                if current_version < migrations_to_run {
-                    let span =
-                        debug_span!("run_migrations", current_version, total = migrations_to_run)
-                            .entered();
-                    for (idx, migration) in MIGRATIONS.iter().enumerate() {
-                        let version = idx as i32 + 1;
-                        if version > current_version {
-                            let _ = debug_span!(parent: &span, "run_migration", version, migration)
-                                .entered();
-                            conn.execute_batch(migration)?;
-                        }
-                    }
-                    // Update user_version to the latest migration number
-                    conn.pragma_update(None, "user_version", migrations_to_run)?;
-                }
-            }
+            store.migrate()?;
         }
         let mut runner = Self {
             func,
@@ -346,9 +314,7 @@ impl Runner {
         if let Some(lmb_store) = &self.store {
             ctx.set(
                 "store",
-                StoreBinding::builder()
-                    .store(Store::builder(lmb_store.clone()).build())
-                    .build(),
+                StoreBinding::builder().store(lmb_store.clone()).build(),
             )?;
         }
 
