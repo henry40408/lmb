@@ -21,6 +21,7 @@ static SQL_KEYS_ALL: &str = "SELECT key FROM store";
 /// PostgreSQL-backed implementation of [`StoreBackend`].
 pub struct PostgresBackend {
     client: Mutex<Client>,
+    url: String,
 }
 
 impl fmt::Debug for PostgresBackend {
@@ -30,17 +31,13 @@ impl fmt::Debug for PostgresBackend {
 }
 
 impl PostgresBackend {
-    /// Creates a new `PostgresBackend` wrapping the given client.
-    pub fn new(client: Client) -> Self {
-        Self {
-            client: Mutex::new(client),
-        }
-    }
-
     /// Creates a new `PostgresBackend` by connecting to the given URL.
     pub fn connect(url: &str) -> LmbResult<Self> {
         let client = Client::connect(url, NoTls).map_err(|e| LmbError::Store(Box::new(e)))?;
-        Ok(Self::new(client))
+        Ok(Self {
+            client: Mutex::new(client),
+            url: url.to_string(),
+        })
     }
 }
 
@@ -170,6 +167,10 @@ impl StoreBackend for PostgresBackend {
             .map_err(|e| LmbError::Store(Box::new(e)))?;
 
         Ok(())
+    }
+
+    fn fork(&self) -> LmbResult<std::sync::Arc<dyn StoreBackend>> {
+        Ok(std::sync::Arc::new(Self::connect(&self.url)?))
     }
 }
 
