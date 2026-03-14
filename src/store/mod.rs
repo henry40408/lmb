@@ -1,6 +1,11 @@
+/// `PostgreSQL` store backend implementation.
+#[cfg(feature = "postgres")]
+pub mod postgres;
 /// `SQLite` store backend implementation.
 pub mod sqlite;
 
+#[cfg(feature = "postgres")]
+pub use self::postgres::PostgresBackend;
 pub use sqlite::SqliteBackend;
 
 use serde_json::Value;
