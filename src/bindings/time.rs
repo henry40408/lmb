@@ -79,10 +79,10 @@ fn parse_auto(input: &str) -> Result<i64, String> {
 
     // 2-3. Try strptime with known formats
     for fmt in AUTO_FORMATS {
-        if let Ok(tm) = jiff::fmt::strtime::parse(fmt, input) {
-            if let Some(ts) = broken_down_to_timestamp(&tm) {
-                return Ok(ts);
-            }
+        if let Ok(tm) = jiff::fmt::strtime::parse(fmt, input)
+            && let Some(ts) = broken_down_to_timestamp(&tm)
+        {
+            return Ok(ts);
         }
     }
 
