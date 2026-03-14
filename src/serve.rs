@@ -24,6 +24,8 @@ pub(crate) fn create_pool(app_state: &AppState) -> anyhow::Result<RunnerPool> {
 
     let store = open_store_connection(
         app_state.store_path.clone(),
+        #[cfg(feature = "postgres")]
+        app_state.store_url.clone(),
         app_state.no_store.unwrap_or(false),
     )?;
 
@@ -103,6 +105,8 @@ async fn try_request_handler(
         let reader = Cursor::new(bytes);
         let conn = open_store_connection(
             app_state.store_path.clone(),
+            #[cfg(feature = "postgres")]
+            app_state.store_url.clone(),
             app_state.no_store.unwrap_or(false),
         )?;
 
