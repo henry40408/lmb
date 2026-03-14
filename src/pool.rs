@@ -70,7 +70,7 @@ mod tests {
     use crate::{
         pool::{Pool, RunnerManager},
         reader::SharedReader,
-        store::{SqliteBackend, Store, StoreBackend},
+        store::{SqliteBackend, StoreBackend},
     };
 
     #[tokio::test]
@@ -95,8 +95,7 @@ mod tests {
 
         futures::future::join_all(tasks).await;
 
-        let store = Store::builder(backend).build();
-        let value = store.get("a").unwrap().unwrap();
+        let value = backend.get("a").unwrap().unwrap();
         assert_eq!(json!(true), value);
     }
 

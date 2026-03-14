@@ -23,7 +23,7 @@ use crate::{
     bindings::{Binding, store::StoreBinding},
     permission::Permissions,
     reader::SharedReader,
-    store::{Store, StoreBackend},
+    store::StoreBackend,
 };
 
 /// Error handling module
@@ -314,9 +314,7 @@ impl Runner {
         if let Some(lmb_store) = &self.store {
             ctx.set(
                 "store",
-                StoreBinding::builder()
-                    .store(Store::builder(lmb_store.clone()).build())
-                    .build(),
+                StoreBinding::builder().store(lmb_store.clone()).build(),
             )?;
         }
 

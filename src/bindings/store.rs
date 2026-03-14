@@ -3,7 +3,7 @@ use mlua::prelude::*;
 use serde_json::Value;
 use tracing::debug_span;
 
-use crate::{LmbStore, store::Store};
+use crate::LmbStore;
 
 /// Lua `UserData` for transactional operations within `store.tx()`.
 /// Holds a clone of the `LmbStore` Arc; the outer `tx()` method holds the
@@ -40,7 +40,7 @@ impl LuaUserData for TxBinding {
 
 #[derive(Builder)]
 pub(crate) struct StoreBinding {
-    store: Option<Store>,
+    store: Option<LmbStore>,
 }
 
 impl LuaUserData for StoreBinding {
@@ -72,7 +72,7 @@ impl LuaUserData for StoreBinding {
                 return Ok(LuaNil);
             };
             let value: Value = vm.from_value(value)?;
-            store.put(key, &value).into_lua_err()?;
+            store.put(&key, &value).into_lua_err()?;
             Ok(LuaNil)
         });
 
@@ -81,7 +81,7 @@ impl LuaUserData for StoreBinding {
             let Some(store) = &this.store else {
                 return Ok(false);
             };
-            store.del(key).into_lua_err()
+            store.del(&key).into_lua_err()
         });
 
         methods.add_method("has", |_vm, this, key: String| {
@@ -89,7 +89,7 @@ impl LuaUserData for StoreBinding {
             let Some(store) = &this.store else {
                 return Ok(false);
             };
-            store.has(key).into_lua_err()
+            store.has(&key).into_lua_err()
         });
 
         methods.add_method("keys", |vm, this, pattern: Option<String>| {
@@ -111,15 +111,13 @@ impl LuaUserData for StoreBinding {
                 return Err(LuaError::runtime("store is not available"));
             };
 
-            let inner = store.inner().clone();
-
             {
                 let _ = debug_span!(parent: &span, "begin").entered();
-                inner.begin_tx().into_lua_err()?;
+                store.begin_tx().into_lua_err()?;
             }
 
             let tx_binding = TxBinding {
-                inner: inner.clone(),
+                inner: store.clone(),
             };
 
             let result = {
@@ -130,13 +128,13 @@ impl LuaUserData for StoreBinding {
             match result {
                 Ok(val) => {
                     let _ = debug_span!(parent: &span, "commit").entered();
-                    inner.commit_tx().into_lua_err()?;
+                    store.commit_tx().into_lua_err()?;
                     Ok(val)
                 }
                 Err(e) => {
                     let _ = debug_span!(parent: &span, "rollback").entered();
                     // Best-effort rollback; if this fails too, we still return the original error
-                    let _ = inner.rollback_tx();
+                    let _ = store.rollback_tx();
                     Err(e)
                 }
             }
