@@ -11,7 +11,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
         with:
-          toolchain: 1.92.0
+          toolchain: 1.94.0
           components: rustfmt
       - name: Cache Cargo
         uses: actions/cache@v5.0.3
@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        toolchain: [1.88.0, 1.92.0]
+        toolchain: [1.88.0, 1.94.0]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -65,7 +65,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.92.0
+        uses: dtolnay/rust-toolchain@1.94.0
       - name: Cache Cargo
         uses: actions/cache@v5.0.3
         with:
@@ -101,7 +101,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.92.0
+        uses: dtolnay/rust-toolchain@1.94.0
       - name: Cache Cargo
         uses: actions/cache@v5.0.3
         with:
