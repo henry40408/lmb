@@ -197,127 +197,148 @@ impl StoreBackend for PostgresBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex as StdMutex;
-
     use serde_json::json;
 
     use super::*;
 
-    // Serialize all PG tests since they share a single database
-    static TEST_LOCK: StdMutex<()> = StdMutex::new(());
-
-    fn create_test_backend() -> std::sync::MutexGuard<'static, ()> {
-        let guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://lmb:lmb@localhost:5432/lmb".to_string());
-        let backend = PostgresBackend::connect(&url).expect("Failed to connect to PostgreSQL");
-        backend.migrate().expect("Failed to run migrations");
-        backend
-            .client
-            .lock()
-            .batch_execute("DELETE FROM store")
-            .expect("Failed to clean up store table");
-        drop(backend);
-        guard
+    /// Guard that holds a PG advisory lock for the lifetime of a test,
+    /// ensuring tests don't interfere with each other even when run in
+    /// separate processes (e.g. nextest).
+    struct PgTestGuard {
+        backend: PostgresBackend,
     }
 
-    fn connect() -> PostgresBackend {
-        let url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://lmb:lmb@localhost:5432/lmb".to_string());
-        PostgresBackend::connect(&url).expect("Failed to connect to PostgreSQL")
+    impl PgTestGuard {
+        fn new() -> Self {
+            let url = std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://lmb:lmb@localhost:5432/lmb".to_string());
+            let backend = PostgresBackend::connect(&url).expect("Failed to connect to PostgreSQL");
+            backend.migrate().expect("Failed to run migrations");
+            // Acquire a cross-process advisory lock to serialize tests
+            backend
+                .client
+                .lock()
+                .batch_execute("SELECT pg_advisory_lock(hashtext('lmb_test'))")
+                .expect("Failed to acquire test advisory lock");
+            backend
+                .client
+                .lock()
+                .batch_execute("DELETE FROM store")
+                .expect("Failed to clean up store table");
+            Self { backend }
+        }
+
+        fn backend(&self) -> &PostgresBackend {
+            &self.backend
+        }
+    }
+
+    impl Drop for PgTestGuard {
+        fn drop(&mut self) {
+            let _ = self
+                .client
+                .lock()
+                .batch_execute("SELECT pg_advisory_unlock(hashtext('lmb_test'))");
+        }
+    }
+
+    // Deref to PostgresBackend so the guard's own connection can be
+    // forwarded through the `client` field when needed.
+    impl std::ops::Deref for PgTestGuard {
+        type Target = PostgresBackend;
+        fn deref(&self) -> &Self::Target {
+            &self.backend
+        }
     }
 
     #[test]
     fn test_get_nonexistent_key() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        let result = backend.get("nonexistent").unwrap();
+        let guard = PgTestGuard::new();
+        let result = guard.backend().get("nonexistent").unwrap();
         assert!(result.is_none());
     }
 
     #[test]
     fn test_put_and_get() {
-        let _guard = create_test_backend();
-        let backend = connect();
+        let guard = PgTestGuard::new();
         let value = json!({"hello": "world"});
-        backend.put("key1", &value).unwrap();
-        let result = backend.get("key1").unwrap();
+        guard.backend().put("key1", &value).unwrap();
+        let result = guard.backend().get("key1").unwrap();
         assert_eq!(Some(value), result);
     }
 
     #[test]
     fn test_overwrite_value() {
-        let _guard = create_test_backend();
-        let backend = connect();
+        let guard = PgTestGuard::new();
         let value1 = json!(1);
         let value2 = json!(2);
-        backend.put("counter", &value1).unwrap();
-        assert_eq!(Some(value1), backend.get("counter").unwrap());
-        backend.put("counter", &value2).unwrap();
-        assert_eq!(Some(value2), backend.get("counter").unwrap());
+        guard.backend().put("counter", &value1).unwrap();
+        assert_eq!(Some(value1), guard.backend().get("counter").unwrap());
+        guard.backend().put("counter", &value2).unwrap();
+        assert_eq!(Some(value2), guard.backend().get("counter").unwrap());
     }
 
     #[test]
     fn test_del() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        backend.put("key1", &json!("val")).unwrap();
-        assert!(backend.del("key1").unwrap());
-        assert!(!backend.del("key1").unwrap());
-        assert!(backend.get("key1").unwrap().is_none());
+        let guard = PgTestGuard::new();
+        guard.backend().put("key1", &json!("val")).unwrap();
+        assert!(guard.backend().del("key1").unwrap());
+        assert!(!guard.backend().del("key1").unwrap());
+        assert!(guard.backend().get("key1").unwrap().is_none());
     }
 
     #[test]
     fn test_has() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        assert!(!backend.has("key1").unwrap());
-        backend.put("key1", &json!("val")).unwrap();
-        assert!(backend.has("key1").unwrap());
+        let guard = PgTestGuard::new();
+        assert!(!guard.backend().has("key1").unwrap());
+        guard.backend().put("key1", &json!("val")).unwrap();
+        assert!(guard.backend().has("key1").unwrap());
     }
 
     #[test]
     fn test_keys() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        backend.put("user:1", &json!("a")).unwrap();
-        backend.put("user:2", &json!("b")).unwrap();
-        backend.put("item:1", &json!("c")).unwrap();
+        let guard = PgTestGuard::new();
+        guard.backend().put("user:1", &json!("a")).unwrap();
+        guard.backend().put("user:2", &json!("b")).unwrap();
+        guard.backend().put("item:1", &json!("c")).unwrap();
 
-        let mut all = backend.keys(None).unwrap();
+        let mut all = guard.backend().keys(None).unwrap();
         all.sort();
         assert_eq!(vec!["item:1", "user:1", "user:2"], all);
 
-        let mut users = backend.keys(Some("user:%")).unwrap();
+        let mut users = guard.backend().keys(Some("user:%")).unwrap();
         users.sort();
         assert_eq!(vec!["user:1", "user:2"], users);
     }
 
     #[test]
     fn test_transaction_commit() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        backend.begin_tx().unwrap();
-        backend.put("tx_key", &json!("tx_val")).unwrap();
-        backend.commit_tx().unwrap();
-        assert_eq!(Some(json!("tx_val")), backend.get("tx_key").unwrap());
+        let guard = PgTestGuard::new();
+        guard.backend().begin_tx().unwrap();
+        guard.backend().put("tx_key", &json!("tx_val")).unwrap();
+        guard.backend().commit_tx().unwrap();
+        assert_eq!(
+            Some(json!("tx_val")),
+            guard.backend().get("tx_key").unwrap()
+        );
     }
 
     #[test]
     fn test_transaction_rollback() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        backend.put("existing", &json!("before")).unwrap();
-        backend.begin_tx().unwrap();
-        backend.put("existing", &json!("during")).unwrap();
-        backend.rollback_tx().unwrap();
-        assert_eq!(Some(json!("before")), backend.get("existing").unwrap());
+        let guard = PgTestGuard::new();
+        guard.backend().put("existing", &json!("before")).unwrap();
+        guard.backend().begin_tx().unwrap();
+        guard.backend().put("existing", &json!("during")).unwrap();
+        guard.backend().rollback_tx().unwrap();
+        assert_eq!(
+            Some(json!("before")),
+            guard.backend().get("existing").unwrap()
+        );
     }
 
     #[test]
     fn test_complex_json_value() {
-        let _guard = create_test_backend();
-        let backend = connect();
+        let guard = PgTestGuard::new();
         let value = json!({
             "string": "hello",
             "number": 42,
@@ -329,30 +350,28 @@ mod tests {
                 "a": {"b": {"c": "deep"}}
             }
         });
-        backend.put("complex", &value).unwrap();
-        assert_eq!(Some(value), backend.get("complex").unwrap());
+        guard.backend().put("complex", &value).unwrap();
+        assert_eq!(Some(value), guard.backend().get("complex").unwrap());
     }
 
     #[test]
     fn test_unicode_key_and_value() {
-        let _guard = create_test_backend();
-        let backend = connect();
+        let guard = PgTestGuard::new();
         let key = "你好世界";
         let value = json!({
             "greeting": "こんにちは",
             "emoji": "🎉🚀",
             "arabic": "مرحبا"
         });
-        backend.put(key, &value).unwrap();
-        assert_eq!(Some(value), backend.get(key).unwrap());
+        guard.backend().put(key, &value).unwrap();
+        assert_eq!(Some(value), guard.backend().get(key).unwrap());
     }
 
     #[test]
     fn test_migrate_idempotent() {
-        let _guard = create_test_backend();
-        let backend = connect();
-        backend.migrate().unwrap();
-        backend.put("key", &json!("val")).unwrap();
-        assert_eq!(Some(json!("val")), backend.get("key").unwrap());
+        let guard = PgTestGuard::new();
+        guard.backend().migrate().unwrap();
+        guard.backend().put("key", &json!("val")).unwrap();
+        assert_eq!(Some(json!("val")), guard.backend().get("key").unwrap());
     }
 }
