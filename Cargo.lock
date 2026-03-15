@@ -3022,7 +3022,6 @@ dependencies = [
  "bytes",
  "encoding_rs",
  "futures-core",
- "h2",
  "http",
  "http-body",
  "http-body-util",
