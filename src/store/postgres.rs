@@ -124,7 +124,7 @@ impl StoreBackend for PostgresBackend {
 
         // Use advisory lock to prevent concurrent migration runs
         client
-            .batch_execute("SELECT pg_advisory_lock(42)")
+            .batch_execute("SELECT pg_advisory_lock(hashtext('lmb_migration'))")
             .map_err(|e| LmbError::Store(Box::new(e)))?;
 
         // Create migrations tracking table
@@ -143,27 +143,47 @@ impl StoreBackend for PostgresBackend {
         if current_version < migrations_to_run {
             let span =
                 debug_span!("run_migrations", current_version, total = migrations_to_run).entered();
-            for (idx, migration) in MIGRATIONS.iter().enumerate() {
-                let version = idx as i32 + 1;
-                if version > current_version {
-                    let _ =
-                        debug_span!(parent: &span, "run_migration", version, migration).entered();
-                    client
-                        .batch_execute(migration)
-                        .map_err(|e| LmbError::Store(Box::new(e)))?;
-                    client
-                        .execute(
-                            "INSERT INTO lmb_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING",
-                            &[&version],
-                        )
-                        .map_err(|e| LmbError::Store(Box::new(e)))?;
+
+            // Wrap all migrations in a transaction so a partial failure rolls back cleanly
+            client
+                .batch_execute("BEGIN")
+                .map_err(|e| LmbError::Store(Box::new(e)))?;
+
+            let result = (|| -> LmbResult<()> {
+                for (idx, migration) in MIGRATIONS.iter().enumerate() {
+                    let version = idx as i32 + 1;
+                    if version > current_version {
+                        let _ = debug_span!(parent: &span, "run_migration", version, migration)
+                            .entered();
+                        client
+                            .batch_execute(migration)
+                            .map_err(|e| LmbError::Store(Box::new(e)))?;
+                        client
+                            .execute(
+                                "INSERT INTO lmb_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING",
+                                &[&version],
+                            )
+                            .map_err(|e| LmbError::Store(Box::new(e)))?;
+                    }
                 }
+                Ok(())
+            })();
+
+            if result.is_err() {
+                let _ = client.batch_execute("ROLLBACK");
+                // Release advisory lock before returning error
+                let _ = client.batch_execute("SELECT pg_advisory_unlock(hashtext('lmb_migration'))");
+                return result;
             }
+
+            client
+                .batch_execute("COMMIT")
+                .map_err(|e| LmbError::Store(Box::new(e)))?;
         }
 
         // Release advisory lock
         client
-            .batch_execute("SELECT pg_advisory_unlock(42)")
+            .batch_execute("SELECT pg_advisory_unlock(hashtext('lmb_migration'))")
             .map_err(|e| LmbError::Store(Box::new(e)))?;
 
         Ok(())
