@@ -172,7 +172,8 @@ impl StoreBackend for PostgresBackend {
             if result.is_err() {
                 let _ = client.batch_execute("ROLLBACK");
                 // Release advisory lock before returning error
-                let _ = client.batch_execute("SELECT pg_advisory_unlock(hashtext('lmb_migration'))");
+                let _ =
+                    client.batch_execute("SELECT pg_advisory_unlock(hashtext('lmb_migration'))");
                 return result;
             }
 
