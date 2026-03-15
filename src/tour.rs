@@ -319,7 +319,6 @@ fn render_colored<W: Write>(writer: &mut W, content: &str) -> io::Result<()> {
     writer.flush()
 }
 
-
 /// Display the full guided tour
 pub fn display_tour(color_mode: ColorMode) -> anyhow::Result<()> {
     render(GUIDED_TOUR, color_mode)
