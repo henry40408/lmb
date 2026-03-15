@@ -2,8 +2,12 @@
 name = "lmb"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88.0"
+rust-version = "1.93.0"
 license = "MIT"
+
+[features]
+default = []
+postgres = ["dep:postgres"]
 
 [dependencies]
 aes = "0.8.4"
@@ -39,6 +43,7 @@ mlua = { version = "0.11.1", features = [
 ] }
 no_color = "0.2.0"
 parking_lot = "0.12.4"
+postgres = { version = "0.19", optional = true }
 pulldown-cmark = "0.13.1"
 reqwest = { version = "0.12.22", default-features = false, features = [
   "charset",
@@ -108,7 +113,7 @@ harness = false
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }
 rust_2018_idioms = { level = "warn", priority = -1 }
-unexpected_cfgs = "deny"
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(feature, values("postgres"))'] }
 unsafe_code = "deny"
 
 [lints.clippy]

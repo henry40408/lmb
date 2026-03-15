@@ -1,6 +1,11 @@
+/// `PostgreSQL` store backend implementation.
+#[cfg(feature = "postgres")]
+pub mod postgres;
 /// `SQLite` store backend implementation.
 pub mod sqlite;
 
+#[cfg(feature = "postgres")]
+pub use self::postgres::PostgresBackend;
 pub use sqlite::SqliteBackend;
 
 use serde_json::Value;
@@ -28,4 +33,10 @@ pub trait StoreBackend: Send + Sync + std::fmt::Debug {
     fn rollback_tx(&self) -> LmbResult<()>;
     /// Runs any pending migrations.
     fn migrate(&self) -> LmbResult<()>;
+    /// Creates an independent backend instance suitable for concurrent use.
+    ///
+    /// For connection-per-thread backends (e.g. `PostgreSQL`), this opens a new
+    /// connection. For backends with built-in concurrency control (e.g. `SQLite`),
+    /// this may share the underlying connection.
+    fn fork(&self) -> LmbResult<std::sync::Arc<dyn StoreBackend>>;
 }

@@ -117,6 +117,10 @@ struct Opts {
     /// Path to `SQLite` file for persistent key-value storage
     #[clap(long, value_parser, group = "store_group", env = "STORE_PATH")]
     store_path: Option<PathBuf>,
+    /// `PostgreSQL` connection URL for persistent key-value storage
+    #[cfg(feature = "postgres")]
+    #[clap(long, group = "store_group", env = "STORE_URL")]
+    store_url: Option<String>,
     /// Script execution timeout (e.g., 30s, 1m). Default: 30s, use 0 for unlimited
     #[clap(long, env = "TIMEOUT")]
     timeout: Option<jiff::Span>,
@@ -192,8 +196,14 @@ fn parse_timeout(span: Option<jiff::Span>) -> anyhow::Result<Option<Duration>> {
 
 pub(crate) fn open_store_connection(
     store_path: Option<PathBuf>,
+    #[cfg(feature = "postgres")] store_url: Option<String>,
     no_store: bool,
 ) -> anyhow::Result<Option<LmbStore>> {
+    #[cfg(feature = "postgres")]
+    if let Some(url) = store_url {
+        let backend = lmb::store::PostgresBackend::connect(&url)?;
+        return Ok(Some(Arc::new(backend)));
+    }
     match (store_path, no_store) {
         (None, false) => {
             let backend = SqliteBackend::new(Connection::open_in_memory()?);
@@ -349,9 +359,19 @@ async fn try_main() -> anyhow::Result<()> {
             debug!("Using timeout: {timeout:?}");
 
             if opts.store_path.is_none() && !opts.no_store {
+                #[cfg(feature = "postgres")]
+                if opts.store_url.is_none() {
+                    warn!("No store path specified, using in-memory store");
+                }
+                #[cfg(not(feature = "postgres"))]
                 warn!("No store path specified, using in-memory store");
             }
-            let conn = open_store_connection(opts.store_path, opts.no_store)?;
+            let conn = open_store_connection(
+                opts.store_path,
+                #[cfg(feature = "postgres")]
+                opts.store_url,
+                opts.no_store,
+            )?;
 
             let runner = if let Some(source) = &source {
                 debug!("Evaluating Lua code from stdin or a string input");
@@ -450,20 +470,20 @@ async fn try_main() -> anyhow::Result<()> {
                 );
             }
 
-            let app_state = Arc::new(
-                AppState::builder()
-                    .source(source)
-                    .maybe_http_timeout(http_timeout)
-                    .max_body_size(max_body_size)
-                    .name(name)
-                    .no_store(opts.no_store)
-                    .permissions(permissions)
-                    .maybe_pool_size(pool_size)
-                    .maybe_state(state)
-                    .maybe_store_path(opts.store_path)
-                    .maybe_timeout(timeout)
-                    .build(),
-            );
+            let app_state_builder = AppState::builder()
+                .source(source)
+                .maybe_http_timeout(http_timeout)
+                .max_body_size(max_body_size)
+                .name(name)
+                .no_store(opts.no_store)
+                .permissions(permissions)
+                .maybe_pool_size(pool_size)
+                .maybe_state(state)
+                .maybe_store_path(opts.store_path)
+                .maybe_timeout(timeout);
+            #[cfg(feature = "postgres")]
+            let app_state_builder = app_state_builder.maybe_store_url(opts.store_url);
+            let app_state = Arc::new(app_state_builder.build());
 
             let pool = if pool_size.is_some() {
                 Some(Arc::new(serve::create_pool(&app_state)?))
@@ -500,6 +520,8 @@ struct AppState {
     pool_size: Option<usize>,
     state: Option<Value>,
     store_path: Option<PathBuf>,
+    #[cfg(feature = "postgres")]
+    store_url: Option<String>,
     timeout: Option<Duration>,
 }
 
