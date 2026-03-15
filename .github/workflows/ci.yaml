@@ -34,7 +34,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        toolchain: [1.88.0, 1.94.0]
+        toolchain: [1.93.0, 1.94.0]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
