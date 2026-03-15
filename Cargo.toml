@@ -12,7 +12,7 @@ postgres = ["dep:postgres"]
 [dependencies]
 aes = "0.8.4"
 anyhow = "1.0.101"
-axum = { version = "0.8.4", features = ["http2"] }
+axum = "0.8.4"
 base16ct = { version = "1.0.0", features = ["alloc"] }
 base64 = "0.22.1"
 bon = "3.9.0"
@@ -47,7 +47,6 @@ postgres = { version = "0.19", optional = true }
 pulldown-cmark = "0.13.1"
 reqwest = { version = "0.12.22", default-features = false, features = [
   "charset",
-  "http2",
   "rustls-tls",
   "system-proxy",
 ] }
@@ -61,7 +60,6 @@ sha1 = "0.10.6"
 sha2 = "0.10.9"
 string-offsets = "0.2.0"
 syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
-termimad = "0.34"
 thiserror = "2.0.12"
 tokio = { version = "1.50.0", default-features = false, features = [
   "fs",
