@@ -12,7 +12,6 @@ use syntect::{
     parsing::SyntaxSet,
     util::as_24_bit_terminal_escaped,
 };
-use termimad::{MadSkin, crossterm::style::Color};
 
 /// Embedded guided tour documentation
 const GUIDED_TOUR: &str = include_str!("../docs/guided-tour.md");
@@ -223,8 +222,6 @@ fn render_colored<W: Write>(writer: &mut W, content: &str) -> io::Result<()> {
     let mut code_content = String::new();
     let mut code_lang = String::new();
 
-    let _skin = create_skin();
-
     for event in parser {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
@@ -322,17 +319,6 @@ fn render_colored<W: Write>(writer: &mut W, content: &str) -> io::Result<()> {
     writer.flush()
 }
 
-/// Create a termimad skin for rendering (kept for potential future use)
-fn create_skin() -> MadSkin {
-    let mut skin = MadSkin::default();
-    skin.headers[0].set_fg(Color::Cyan);
-    skin.headers[1].set_fg(Color::Yellow);
-    skin.headers[2].set_fg(Color::Green);
-    skin.bold.set_fg(Color::White);
-    skin.italic.set_fg(Color::Magenta);
-    skin.code_block.set_bg(Color::AnsiValue(235));
-    skin
-}
 
 /// Display the full guided tour
 pub fn display_tour(color_mode: ColorMode) -> anyhow::Result<()> {
@@ -698,13 +684,6 @@ Even more content.
         assert!(result.contains("italic text"));
         // Should have italic escape code
         assert!(result.contains("\x1b[3m"));
-    }
-
-    #[test]
-    fn test_create_skin() {
-        let skin = create_skin();
-        // Just verify it doesn't panic and returns a valid skin
-        assert!(!skin.headers.is_empty());
     }
 
     #[test]
