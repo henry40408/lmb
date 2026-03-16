@@ -29,6 +29,10 @@ Transform LMB from a standalone Luau runtime into a distributed P2P network wher
 
 Phase 2 and Phase 3 can be developed in parallel after Phase 1 is complete.
 
+### Backward Compatibility
+
+When network features are not enabled (no `config.toml`, no `lmb network start`), the existing `lmb eval` and `lmb serve` commands work exactly as before with zero behavior change. The network module is feature-gated at compile time (`--features network`) and opt-in at runtime (only activates when `lmb network start` is called or network configuration is present).
+
 ---
 
 ## POSIX Compliance
@@ -47,10 +51,10 @@ All phases adhere to the following POSIX conventions.
 
 ```
 $XDG_CONFIG_HOME/lmb/             # Default: ~/.config/lmb/
-├── config.toml                    # Node configuration (roles, listen address, bootstrap nodes)
-└── identity.key                   # Ed25519 private key
+└── config.toml                    # Node configuration (roles, listen address, bootstrap nodes)
 
 $XDG_DATA_HOME/lmb/               # Default: ~/.local/share/lmb/
+├── identity.key                   # Ed25519 private key (loss = loss of node identity)
 ├── node.crt                       # CA-signed node certificate
 ├── ca.crt                         # CA root certificate (received when joining network)
 ├── ca.key                         # CA private key (manager nodes only)
@@ -63,8 +67,9 @@ $XDG_STATE_HOME/lmb/              # Default: ~/.local/state/lmb/
 
 **Data vs State distinction:**
 
-- **Data** (`$XDG_DATA_HOME`) — Persistent, should be backed up. Loss means re-joining the network or losing user data. Examples: certificates, identity key, store database.
-- **State** (`$XDG_STATE_HOME`) — Rebuildable, no backup needed. Loss is merely inconvenient. Examples: CRL cache (re-fetched from manager), peers cache (re-discovered via mDNS/bootstrap).
+- **Config** (`$XDG_CONFIG_HOME`) — User-editable configuration. Can be recreated by the user or regenerated with defaults. Example: `config.toml`.
+- **Data** (`$XDG_DATA_HOME`) — Persistent, should be backed up. Loss means re-joining the network or losing user data. Examples: identity key (loss = loss of node identity), certificates, store database.
+- **State** (`$XDG_STATE_HOME`) — Rebuildable, no backup needed. Loss is merely inconvenient — the data can be re-fetched or re-discovered automatically. Examples: CRL cache (re-fetched from manager), peers cache (re-discovered via mDNS/bootstrap).
 
 All paths can be overridden via environment variables:
 
@@ -111,7 +116,7 @@ storage-a    7Qp2YmRk      storage              connected
 Each LMB node has an identity based on an Ed25519 key pair:
 
 - **NodeId** derived from libp2p `PeerId`
-- Key pair generated on first startup, stored at `$XDG_CONFIG_HOME/lmb/identity.key`
+- Key pair generated on first startup, stored at `$XDG_DATA_HOME/lmb/identity.key`
 - CA-issued X.509 certificate binds the `PeerId` to the node's identity
 
 ### 1.2 Transport Layer
@@ -404,13 +409,22 @@ strategy = "round-robin"    # round-robin | least-loaded | random
 max_retries = 3             # Retries on other Workers after rejection
 ```
 
-### 2.8 Security
+### 2.8 Async Runtime and Thread Safety
+
+The existing `Runner` holds a `Lua` VM instance that is `!Send` (cannot be transferred between threads). This affects the Worker executor design:
+
+- **Job execution** must happen on a dedicated thread (or `spawn_local` on a `LocalSet`) since the Lua VM cannot cross thread boundaries
+- **Worker executor** uses `tokio::task::spawn_blocking` or a dedicated thread pool where each thread owns its Lua VM
+- **libp2p** and `openraft` both integrate with Tokio — the existing Tokio runtime is reused with no conflicts
+- **Concurrency model**: The network event loop runs on Tokio async tasks, while Lua script execution is offloaded to blocking threads. Job requests and results are passed between the two via channels.
+
+### 2.9 Security
 
 - **Script transport**: Payloads encrypted in QUIC + mTLS channel
 - **Execution sandbox**: Reuses existing LMB Luau sandbox (`vm.sandbox(true)`)
 - **Permission isolation**: Each Job carries its own `Permissions`, Worker enforces against its ceiling
 
-### 2.9 CLI Extensions
+### 2.10 CLI Extensions
 
 ```
 lmb network dispatch [--file <script.lua>] [--state <json>] [--sync] [--timeout <duration>]
@@ -419,7 +433,7 @@ lmb network job <job-id>              # Query async job result
 lmb network workers [-v]              # List workers and their capacity
 ```
 
-### 2.10 Luau API Extensions
+### 2.11 Luau API Extensions
 
 New `@lmb/network` module:
 
@@ -447,7 +461,7 @@ local status = net.job(job_id)
 -- status.error: error message (when failed)
 ```
 
-### 2.11 Module Architecture
+### 2.12 Module Architecture
 
 ```
 src/network/
@@ -466,14 +480,13 @@ src/network/
 │   └── work.rs               # Work dispatch protocol (Request/Response/Ack/Query)
 ```
 
-### 2.12 Integration with Existing Architecture
+### 2.13 Integration with Existing Architecture
 
 | Existing Component | Integration |
 |-------------------|-------------|
-| **Runner** | Worker executor creates Runner instances for received Jobs |
-| **Pool** | Worker's `max_concurrent` can optionally use existing Pool for Runner reuse |
+| **Runner** | Worker executor creates new Runner instances per Job via `Runner::builder()`. The existing `Pool`/`RunnerManager` cannot be directly reused because it requires a compile-time source (`AsChunk + Clone`), while Jobs carry dynamic script payloads. A new `JobExecutor` manages concurrency limits independently using a semaphore. |
 | **StoreBackend** | Jobs can access local Store (if permissions allow) |
-| **Permission** | Job Permissions reuse existing Permission struct |
+| **Permission** | Job Permissions reuse existing Permission struct. A new `Permissions::intersect()` method is needed to compute the effective permissions (intersection of Job-requested permissions and Worker ceiling). The existing `All { denied }` / `Some { allowed, denied }` variants require explicit intersection semantics: the result uses the more restrictive of the two for each permission category, with deny always taking precedence. |
 | **serve** | Can coexist with network — HTTP serves local requests, network handles distributed work |
 
 ---
@@ -530,42 +543,61 @@ store:get offers two consistency levels:
 
 ### 3.4 Raft Network Layer Integration
 
-Raft inter-node communication uses libp2p request-response directly (no separate TCP connections):
+Raft inter-node communication uses libp2p request-response directly (no separate TCP connections).
 
-`openraft` requires implementing `RaftNetwork` trait, backed by libp2p request-response:
+`openraft` requires implementing `RaftNetworkFactory` (which creates per-target `RaftNetwork` instances) backed by libp2p request-response. The following is simplified pseudocode — the actual `openraft` API uses `RaftTypeConfig` generics:
 
 ```rust
-impl RaftNetwork<StoreRequest> for LibP2pRaftNetwork {
-    async fn append_entries(&mut self, target: NodeId, rpc: AppendEntriesRequest)
-        -> Result<AppendEntriesResponse>;
-    async fn vote(&mut self, target: NodeId, rpc: VoteRequest)
-        -> Result<VoteResponse>;
-    async fn install_snapshot(&mut self, target: NodeId, rpc: InstallSnapshotRequest)
-        -> Result<InstallSnapshotResponse>;
+// Factory creates a network connection per target node
+impl RaftNetworkFactory<TypeConfig> for LibP2pNetworkFactory {
+    type Network = LibP2pRaftNetwork;
+
+    async fn new_client(&mut self, target: NodeId, node: &Node)
+        -> Self::Network {
+        // Return a libp2p-backed network client for the target node
+        LibP2pRaftNetwork { swarm: self.swarm.clone(), target }
+    }
+}
+
+// Per-target network handles Raft RPCs via libp2p request-response
+impl RaftNetwork<TypeConfig> for LibP2pRaftNetwork {
+    async fn append_entries(&mut self, rpc: AppendEntriesRequest<TypeConfig>)
+        -> Result<AppendEntriesResponse<TypeConfig>>;
+    async fn vote(&mut self, rpc: VoteRequest<TypeConfig>)
+        -> Result<VoteResponse<TypeConfig>>;
+    async fn install_snapshot(&mut self, vote: Vote<TypeConfig>, snapshot: Snapshot)
+        -> Result<InstallSnapshotResponse<TypeConfig>>;
 }
 ```
 
 ### 3.5 State Machine
 
-`openraft`'s `RaftStateMachine` backed by existing `StoreBackend` trait:
+`openraft`'s `RaftStateMachine` backed by existing `StoreBackend` trait.
+
+**Sync/async impedance mismatch:** The existing `StoreBackend` trait methods are synchronous (`fn get`, `fn put`, `fn del`), while `openraft`'s state machine trait uses async methods. The implementation bridges this via `spawn_blocking` to run synchronous store operations on the blocking thread pool, preventing them from blocking the Tokio async runtime.
+
+Simplified pseudocode:
 
 ```rust
-impl RaftStateMachine for StoreStateMachine {
+impl RaftStateMachine<TypeConfig> for StoreStateMachine {
     async fn apply(entries: Vec<Entry>) -> Vec<Response> {
-        for entry in entries {
-            match entry {
-                Put(key, value) => self.store.put(key, value),
-                Del(key)        => self.store.del(key),
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            for entry in entries {
+                match entry {
+                    Put(key, value) => store.put(key, value),
+                    Del(key)        => store.del(key),
+                }
             }
-        }
+        }).await
     }
 
     async fn snapshot() -> Snapshot {
-        // Export all key-value pairs as snapshot
+        // Export all key-value pairs as snapshot (via spawn_blocking)
     }
 
     async fn install_snapshot(snapshot: Snapshot) {
-        // Clear local store, import snapshot
+        // Clear local store, import snapshot (via spawn_blocking)
     }
 }
 ```
@@ -593,22 +625,28 @@ Each Storage node still uses SQLite or PostgreSQL as local storage engine. Raft 
 
 ### 3.7 Distributed Transactions
 
-Transactions are implemented as batch-applied Raft log entries:
+Transactions are implemented as batch-applied Raft log entries.
+
+**Reconciling with existing tx API:** The current `store:tx(function(tx) ... end)` Luau API executes operations eagerly within the callback via `begin_tx()` / `commit_tx()` / `rollback_tx()`. In distributed mode, this must change to deferred execution:
+
+1. When Raft is active, the `tx` object inside the callback records operations into a write buffer instead of executing them immediately
+2. Reads within a transaction (`tx:get`) read from the buffer first (read-your-writes), falling back to the underlying store
+3. When the callback completes without error, the buffered operations are packaged as a single `BatchWrite` Raft log entry
+4. If the callback errors, the buffer is discarded (no Raft entry submitted)
+
+This means the `store.rs` Luau binding needs a `TransactionBuffer` layer that intercepts `StoreBackend` calls when in distributed mode:
 
 ```lua
 store:tx(function(tx)
-    tx:set("a", 1)
-    tx:set("b", 2)
+    tx:set("a", 1)        -- buffered, not yet written
+    tx:set("b", 2)        -- buffered
+    local a = tx:get("a") -- reads from buffer -> returns 1
 end)
+-- callback completed -> submit BatchWrite([Put("a",1), Put("b",2)]) to Raft
+-- Raft replicates to majority -> atomic apply on all nodes
 ```
 
-```
--> Collect all operations within tx
--> Package as single Raft log entry: BatchWrite([Put("a",1), Put("b",2)])
--> Submit to Leader
--> Replicate to majority, then atomic apply
--> All-or-nothing guarantee
-```
+In single-node mode (no Raft), the existing eager `begin_tx()` / `commit_tx()` / `rollback_tx()` behavior is preserved unchanged.
 
 ### 3.8 Snapshots and Recovery
 
@@ -636,7 +674,10 @@ end)
 local v = store:get("key")
 
 -- Eventual consistency read (low latency)
+-- Note: store:get already accepts an optional second argument (options table
+-- with `default` key). The `consistency` key is added to the same options table.
 local v = store:get("key", { consistency = "eventual" })
+local v = store:get("key", { default = "fallback", consistency = "eventual" })
 
 -- Query cluster status
 local net = require("@lmb/network")
