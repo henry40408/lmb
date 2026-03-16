@@ -144,9 +144,17 @@ impl HttpBinding {
 
 impl LuaUserData for HttpBinding {
     fn add_methods<M: LuaUserDataMethods<Self>>(methods: &mut M) {
-        methods.add_async_method(
+        // Use add_async_function instead of add_async_method to avoid holding
+        // a userdata borrow across await points, which causes UserDataBorrowError
+        // when multiple coroutines call fetch concurrently on the same http object.
+        methods.add_async_function(
             "fetch",
-            |_, this, (url, options): (String, Option<LuaTable>)| async move {
+            |_, (ud, url, options): (LuaAnyUserData, String, Option<LuaTable>)| async move {
+                let (client, permissions) = {
+                    let this = ud.borrow::<HttpBinding>()?;
+                    (this.client().clone(), this.permissions.clone())
+                };
+
                 let options = serde_json::to_value(&options).into_lua_err()?;
                 let method = options
                     .pointer("/method")
@@ -170,13 +178,13 @@ impl LuaUserData for HttpBinding {
                 let body = options.pointer("/body").and_then(|v| v.as_str());
 
                 let url = Url::parse(&url).into_lua_err()?;
-                if let Some(perm) = &this.permissions
+                if let Some(perm) = &permissions
                     && !perm.is_url_allowed(&url)
                 {
                     return Err(LuaError::runtime("URL is not allowed"));
                 }
 
-                let mut built = this.client().request(method.clone(), url.clone());
+                let mut built = client.request(method.clone(), url.clone());
                 if let Some(headers) = headers {
                     built = built.headers(headers);
                 }
@@ -200,7 +208,7 @@ impl LuaUserData for HttpBinding {
                 let request = built.build().into_lua_err()?;
                 let response = {
                     let span = debug_span!("send_http_request", method = %method, url = %url);
-                    this.client()
+                    client
                         .execute(request)
                         .instrument(span)
                         .await
@@ -304,5 +312,36 @@ mod tests {
         let source = include_str!("../fixtures/bindings/http-parse-path.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         runner.invoke().call().await.unwrap().result.unwrap();
+    }
+
+    /// Regression test: concurrent fetch calls via coroutine.race/join_all
+    /// on the same http object must not cause UserDataBorrowError.
+    #[tokio::test]
+    async fn test_concurrent_fetch() {
+        let mut server = mockito::Server::new_async().await;
+
+        let url = server.url();
+        let mock_a = server
+            .mock(Method::GET.as_str(), "/a")
+            .with_status(200)
+            .with_body("response_a")
+            .create_async()
+            .await;
+        let mock_b = server
+            .mock(Method::GET.as_str(), "/b")
+            .with_status(200)
+            .with_body("response_b")
+            .create_async()
+            .await;
+
+        let source = include_str!("../fixtures/bindings/http-concurrent-fetch.lua");
+        let runner = Runner::builder(source, empty()).build().unwrap();
+        let state = State::builder().state(json!(url)).build();
+        let result = runner.invoke().state(state).call().await.unwrap();
+
+        assert_eq!(json!(["response_a", "response_b"]), result.result.unwrap());
+
+        mock_a.assert_async().await;
+        mock_b.assert_async().await;
     }
 }
