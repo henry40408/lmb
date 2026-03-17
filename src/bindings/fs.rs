@@ -1652,4 +1652,31 @@ mod tests {
             result.result.expect("result")
         );
     }
+
+    #[tokio::test]
+    async fn test_tail_break() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "a\nb\nc\nd\ne\n").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-break.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(["a", "b"]), result.result.expect("result"));
+    }
 }
