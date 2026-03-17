@@ -608,25 +608,22 @@ impl LuaUserData for FsBinding {
                 from_end,
             )));
 
-            vm.create_async_function(move |vm, ()| {
-                let state = state.clone();
-                async move {
-                    loop {
-                        let (result, poll_ms) = {
-                            let mut st = state.lock();
-                            st.check_rotation();
-                            st.ensure_open();
-                            (st.read_line(), st.poll_interval)
-                        };
-                        // Lock released before await
-
-                        match result {
-                            Some(line) => return vm.create_string(&line).map(LuaValue::String),
-                            None => {
-                                tokio::time::sleep(Duration::from_millis(poll_ms)).await;
-                            }
-                        }
+            // Use sync closure (not async) because Luau's `for...in` loop
+            // calls the iterator via a C-call boundary that does not allow yields.
+            // std::thread::sleep blocks the current tokio worker thread, which is
+            // acceptable: a tail script is expected to be long-running and already
+            // monopolizes one worker thread for the Lua VM's lifetime.
+            vm.create_function(move |vm, ()| {
+                loop {
+                    let mut st = state.lock();
+                    st.check_rotation();
+                    st.ensure_open();
+                    if let Some(line) = st.read_line() {
+                        return vm.create_string(&line).map(LuaValue::String);
                     }
+                    let poll_ms = st.poll_interval;
+                    drop(st);
+                    std::thread::sleep(Duration::from_millis(poll_ms));
                 }
             })
         });
@@ -636,6 +633,9 @@ impl LuaUserData for FsBinding {
 #[cfg(test)]
 mod tests {
     use std::io::Write as _;
+
+    use std::fs::{File, OpenOptions};
+    use std::time::Duration;
 
     use serde_json::json;
     use tempfile::{NamedTempFile, TempDir};
@@ -1693,5 +1693,54 @@ mod tests {
         let state = State::builder().state(json!(path)).build();
         let result = runner.invoke().state(state).call().await.expect("invoke");
         assert_eq!(json!(true), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_tail_wait_new_lines() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "first\n").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-wait-new-lines.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+
+        let write_path = tmp.path().to_path_buf();
+        // Use OS thread (not tokio::spawn) because the tail iterator uses
+        // std::thread::sleep which blocks the tokio worker thread.
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            let mut f = OpenOptions::new()
+                .append(true)
+                .open(&write_path)
+                .expect("open for append");
+            writeln!(f, "second").expect("write second");
+            writeln!(f, "third").expect("write third");
+        });
+
+        let state = State::builder()
+            .state(json!({"path": path, "expected": 3}))
+            .build();
+
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+
+        writer.join().expect("writer thread");
+        assert_eq!(
+            json!(["first", "second", "third"]),
+            result.result.expect("result")
+        );
     }
 }
