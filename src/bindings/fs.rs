@@ -1743,4 +1743,56 @@ mod tests {
             result.result.expect("result")
         );
     }
+
+    #[tokio::test]
+    async fn test_tail_rotation() {
+        let dir = TempDir::new().expect("create temp dir");
+        let file_path = dir.path().join("test.log");
+        {
+            let mut f = File::create(&file_path).expect("create file");
+            writeln!(f, "old1").expect("write");
+            writeln!(f, "old2").expect("write");
+        }
+        let path_str = file_path.to_string_lossy().to_string();
+        let dir_path = dir.path().to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-rotation.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir_path].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+
+        let rotate_path = file_path.clone();
+        let rotator = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            let rotated = rotate_path.with_extension("log.1");
+            std::fs::rename(&rotate_path, &rotated).expect("rename");
+            std::thread::sleep(Duration::from_millis(100));
+            let mut f = File::create(&rotate_path).expect("create new file");
+            writeln!(f, "new1").expect("write new");
+            writeln!(f, "new2").expect("write new");
+        });
+
+        let state = State::builder()
+            .state(json!({"path": path_str, "expected": 4}))
+            .build();
+
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+
+        rotator.join().expect("rotator thread");
+        assert_eq!(
+            json!(["old1", "old2", "new1", "new2"]),
+            result.result.expect("result")
+        );
+    }
 }
