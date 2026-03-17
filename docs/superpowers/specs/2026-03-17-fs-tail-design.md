@@ -47,7 +47,7 @@ Returns a Lua iterator function for use in `for...in` loops. The iterator yields
 | File does not exist yet | Wait (polling) until the file appears, then start reading |
 | File temporarily missing (rotate gap) | Keep waiting, resume when file reappears |
 | `break` in for loop | Exit loop normally. The `TailState` (including open `File` handle) is held by `Arc<Mutex<...>>` inside the closure; it is released when the closure is garbage-collected. This is non-deterministic but safe — consistent with how `fs.lines()` handles its file handle. |
-| Permission denied | Check the **parent directory** for read permission at call time (before iterator starts). The file itself may not exist yet, so we cannot canonicalize it. If the parent directory is not readable, return an error immediately. |
+| Permission denied | Call `check_read_permission(path)` at call time (before iterator starts). The existing `canonicalize_for_check` already handles non-existent files by canonicalizing the parent directory and appending the filename. |
 
 ## Rotation Detection
 
@@ -82,10 +82,9 @@ New method added to `FsBinding::add_methods` in `src/bindings/fs.rs`:
 
 ```rust
 methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>)| {
-    // Permission check: verify parent directory is readable (file may not exist yet)
-    let parent = Path::new(&path).parent().unwrap_or(Path::new("."));
-    this.check_read_permission(&parent.to_string_lossy())
-        .map_err(LuaError::runtime)?;
+    // Permission check: pass full file path. check_read_permission -> canonicalize_for_check
+    // already handles non-existent files by canonicalizing the parent dir and appending filename.
+    this.check_read_permission(&path).map_err(LuaError::runtime)?;
 
     let poll_interval = /* extract from options, default 100 */;
     let from_end = /* extract from options, default true */;
@@ -124,7 +123,9 @@ methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>
 });
 ```
 
-**Important:** The `Mutex` lock is released before the `.await` point to avoid holding it across the async sleep. This prevents deadlocks and allows other Lua coroutines to make progress.
+**Important:**
+- The `parking_lot::Mutex` lock (consistent with the rest of `fs.rs`) is released before the `.await` point to avoid holding it across the async sleep. This prevents deadlocks and allows other Lua coroutines to make progress.
+- `fs.tail()` requires the Lua script to be executed via `call_async` (the normal execution path in LMB). The async iterator function will panic if called from a synchronous Lua context. This is the same precondition that applies to `io.read` and other async bindings in LMB.
 
 ### `TailState` Struct
 
@@ -148,7 +149,7 @@ struct TailState {
 
 | Aspect | Approach |
 |--------|----------|
-| **Permission check** | Checks **parent directory** read permission at call time (file may not exist yet). Uses existing `check_read_permission()`. |
+| **Permission check** | Reuses `check_read_permission(path)` at call time. `canonicalize_for_check` already handles non-existent files by canonicalizing the parent and appending the filename. |
 | **Method registration** | `add_method("tail", ...)` returns an async closure via `vm.create_async_function`, alongside existing methods in `FsBinding::add_methods` |
 | **Line trimming** | Strips trailing `\n` and `\r`, consistent with `fs.lines()` and `FileHandleBinding::read("*l")` |
 | **Error handling** | IO errors during read are reported via `LuaError`, consistent with other fs methods |
