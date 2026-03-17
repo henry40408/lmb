@@ -46,8 +46,8 @@ Returns a Lua iterator function for use in `for...in` loops. The iterator yields
 | File rotated (inode change or size shrink) | Reopen the file at the same path, read from beginning |
 | File does not exist yet | Wait (polling) until the file appears, then start reading |
 | File temporarily missing (rotate gap) | Keep waiting, resume when file reappears |
-| `break` in for loop | Exit loop normally, no cleanup needed |
-| Permission denied | Error at call time (before iterator starts), consistent with `fs.lines()` |
+| `break` in for loop | Exit loop normally. The `TailState` (including open `File` handle) is held by `Arc<Mutex<...>>` inside the closure; it is released when the closure is garbage-collected. This is non-deterministic but safe — consistent with how `fs.lines()` handles its file handle. |
+| Permission denied | Check the **parent directory** for read permission at call time (before iterator starts). The file itself may not exist yet, so we cannot canonicalize it. If the parent directory is not readable, return an error immediately. |
 
 ## Rotation Detection
 
@@ -60,11 +60,15 @@ On each poll cycle (when EOF is reached and before sleeping):
 
 This matches the behavior of `tail -F` (capital F) in GNU coreutils.
 
+**Known limitation (TOCTOU race):** There is a small window between stat and read where rotation could occur. If the file is rotated between these two operations, we may briefly read from the old file descriptor. This is the same race condition that GNU `tail -F` has and is acceptable — the next poll cycle will detect the inode change and correct itself. After reopening, we re-stat to verify the inode matches the newly opened file.
+
 ## Implementation
 
-### Approach: Polling with Sleep
+### Approach: Polling with Async Sleep
 
-Uses a synchronous polling loop inside the iterator closure. This matches the existing `fs.lines()` pattern (synchronous `add_method`, closure returning lines).
+Uses `add_async_function` with `tokio::time::sleep` for the polling wait. This is critical because LMB runs Lua scripts directly on the Tokio runtime via `call_async` — there is no `spawn_blocking` or dedicated thread pool. Using `std::thread::sleep` would block a Tokio worker thread indefinitely.
+
+The iterator closure is registered as an async function so that `tokio::time::sleep` yields control back to the runtime between poll cycles. The existing `fs.lines()` uses synchronous `add_method` because it terminates at EOF; `fs.tail` runs indefinitely and must not monopolize a runtime thread.
 
 **Why polling over inotify/notify:**
 - No new dependencies, no impact on binary size (LMB targets lightweight deployments)
@@ -78,28 +82,41 @@ New method added to `FsBinding::add_methods` in `src/bindings/fs.rs`:
 
 ```rust
 methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>)| {
-    this.check_read_permission(&path).map_err(LuaError::runtime)?;
+    // Permission check: verify parent directory is readable (file may not exist yet)
+    let parent = Path::new(&path).parent().unwrap_or(Path::new("."));
+    this.check_read_permission(&parent.to_string_lossy())
+        .map_err(LuaError::runtime)?;
 
     let poll_interval = /* extract from options, default 100 */;
     let from_end = /* extract from options, default true */;
 
     let state = Arc::new(Mutex::new(TailState::new(path, poll_interval, from_end)));
 
-    vm.create_function(move |vm, ()| {
-        let mut state = state.lock();
-        loop {
-            // 1. Ensure file is open (wait if not exists)
-            state.ensure_open();
+    // Use async function so tokio::time::sleep yields the runtime thread
+    vm.create_async_function(move |vm, ()| {
+        let state = state.clone();
+        async move {
+            loop {
+                let result = {
+                    let mut state = state.lock();
 
-            // 2. Check for rotation (inode/size change)
-            state.check_rotation();
+                    // 1. Ensure file is open (if not exists, will return None)
+                    state.ensure_open();
 
-            // 3. Try to read a line
-            match state.read_line() {
-                Some(line) => return vm.create_string(&line).map(LuaValue::String),
-                None => {
-                    // EOF — sleep and retry
-                    std::thread::sleep(Duration::from_millis(state.poll_interval));
+                    // 2. Check for rotation (inode/size change)
+                    state.check_rotation();
+
+                    // 3. Try to read a line
+                    state.read_line()
+                };
+                // Lock released before await point
+
+                match result {
+                    Some(line) => return vm.create_string(&line).map(LuaValue::String),
+                    None => {
+                        // EOF or file not ready — async sleep, yield runtime thread
+                        tokio::time::sleep(Duration::from_millis(poll_interval)).await;
+                    }
                 }
             }
         }
@@ -107,18 +124,23 @@ methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>
 });
 ```
 
+**Important:** The `Mutex` lock is released before the `.await` point to avoid holding it across the async sleep. This prevents deadlocks and allows other Lua coroutines to make progress.
+
 ### `TailState` Struct
 
 ```rust
 struct TailState {
     path: PathBuf,
     reader: Option<BufReader<File>>,
-    inode: u64,              // Last known inode (via std::os::unix::fs::MetadataExt on Unix)
+    inode: Option<u64>,      // Last known inode (None until first successful open)
+                             // Uses std::os::unix::fs::MetadataExt::ino() on Unix
     position: u64,           // Current read position
     poll_interval: u64,      // Milliseconds
     from_end: bool,          // Whether to seek to end on first open
 }
 ```
+
+**Initial state:** `inode` starts as `None`. The first successful `open` records the inode without triggering rotation detection. Subsequent opens compare against the stored value — a mismatch means rotation occurred.
 
 **Platform note:** Inode tracking uses `std::os::unix::fs::MetadataExt::ino()` which is Unix-only. On non-Unix platforms, rotation detection falls back to size-only checks (file size shrinking). This is acceptable since LMB's primary target is Linux.
 
@@ -126,11 +148,11 @@ struct TailState {
 
 | Aspect | Approach |
 |--------|----------|
-| **Permission check** | Reuses `check_read_permission()` at call time, same as `fs.lines()` |
-| **Method registration** | `add_method("tail", ...)` alongside existing methods in `FsBinding::add_methods` |
+| **Permission check** | Checks **parent directory** read permission at call time (file may not exist yet). Uses existing `check_read_permission()`. |
+| **Method registration** | `add_method("tail", ...)` returns an async closure via `vm.create_async_function`, alongside existing methods in `FsBinding::add_methods` |
 | **Line trimming** | Strips trailing `\n` and `\r`, consistent with `fs.lines()` and `FileHandleBinding::read("*l")` |
 | **Error handling** | IO errors during read are reported via `LuaError`, consistent with other fs methods |
-| **Thread blocking** | Uses `std::thread::sleep` in the polling loop. This blocks the current thread, which is acceptable because LMB runs Lua scripts on dedicated threads (or blocking tasks). The Tokio async runtime is not blocked. |
+| **Async runtime** | Uses `tokio::time::sleep` (not `std::thread::sleep`) because LMB runs Lua via `call_async` directly on Tokio worker threads. The Mutex lock is released before each await point. |
 
 ### Documentation Update
 
