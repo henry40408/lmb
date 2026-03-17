@@ -1795,4 +1795,48 @@ mod tests {
             result.result.expect("result")
         );
     }
+
+    #[tokio::test]
+    async fn test_tail_file_not_exists() {
+        let dir = TempDir::new().expect("create temp dir");
+        let file_path = dir.path().join("future.log");
+        let path_str = file_path.to_string_lossy().to_string();
+        let dir_path = dir.path().to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-file-not-exists.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir_path].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+
+        let create_path = file_path.clone();
+        let creator = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            let mut f = File::create(&create_path).expect("create file");
+            writeln!(f, "appeared1").expect("write");
+            writeln!(f, "appeared2").expect("write");
+        });
+
+        let state = State::builder()
+            .state(json!({"path": path_str, "expected": 2}))
+            .build();
+
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+
+        creator.join().expect("creator thread");
+        assert_eq!(
+            json!(["appeared1", "appeared2"]),
+            result.result.expect("result")
+        );
+    }
 }
