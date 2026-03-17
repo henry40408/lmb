@@ -176,10 +176,7 @@ impl TailState {
             Ok(0) => None, // EOF
             Ok(n) => {
                 self.position += n as u64;
-                let trimmed = self
-                    .line_buf
-                    .trim_end_matches('\n')
-                    .trim_end_matches('\r');
+                let trimmed = self.line_buf.trim_end_matches('\n').trim_end_matches('\r');
                 Some(trimmed.to_string())
             }
             Err(_) => {
@@ -581,47 +578,46 @@ impl LuaUserData for FsBinding {
             Ok(table)
         });
 
-        methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>)| {
-            this.check_read_permission(&path)
-                .map_err(LuaError::runtime)?;
+        methods.add_method(
+            "tail",
+            |vm, this, (path, options): (String, Option<LuaTable>)| {
+                this.check_read_permission(&path)
+                    .map_err(LuaError::runtime)?;
 
-            let poll_interval = match &options {
-                Some(t) => t.get::<u64>("poll_interval").unwrap_or(100),
-                None => 100,
-            };
-            let from_end = match &options {
-                Some(t) => {
-                    let from: Option<String> = t.get("from").ok();
-                    !matches!(from.as_deref(), Some("start"))
-                }
-                None => true,
-            };
-
-            let state = Arc::new(Mutex::new(TailState::new(
-                path,
-                poll_interval,
-                from_end,
-            )));
-
-            // Use sync closure (not async) because Luau's `for...in` loop
-            // calls the iterator via a C-call boundary that does not allow yields.
-            // std::thread::sleep blocks the current tokio worker thread, which is
-            // acceptable: a tail script is expected to be long-running and already
-            // monopolizes one worker thread for the Lua VM's lifetime.
-            vm.create_function(move |vm, ()| {
-                loop {
-                    let mut st = state.lock();
-                    st.check_rotation();
-                    st.ensure_open();
-                    if let Some(line) = st.read_line() {
-                        return vm.create_string(&line).map(LuaValue::String);
+                let poll_interval = match &options {
+                    Some(t) => t.get::<u64>("poll_interval").unwrap_or(100),
+                    None => 100,
+                };
+                let from_end = match &options {
+                    Some(t) => {
+                        let from: Option<String> = t.get("from").ok();
+                        !matches!(from.as_deref(), Some("start"))
                     }
-                    let poll_ms = st.poll_interval;
-                    drop(st);
-                    std::thread::sleep(Duration::from_millis(poll_ms));
-                }
-            })
-        });
+                    None => true,
+                };
+
+                let state = Arc::new(Mutex::new(TailState::new(path, poll_interval, from_end)));
+
+                // Use sync closure (not async) because Luau's `for...in` loop
+                // calls the iterator via a C-call boundary that does not allow yields.
+                // std::thread::sleep blocks the current tokio worker thread, which is
+                // acceptable: a tail script is expected to be long-running and already
+                // monopolizes one worker thread for the Lua VM's lifetime.
+                vm.create_function(move |vm, ()| {
+                    loop {
+                        let mut st = state.lock();
+                        st.check_rotation();
+                        st.ensure_open();
+                        if let Some(line) = st.read_line() {
+                            return vm.create_string(&line).map(LuaValue::String);
+                        }
+                        let poll_ms = st.poll_interval;
+                        drop(st);
+                        std::thread::sleep(Duration::from_millis(poll_ms));
+                    }
+                })
+            },
+        );
     }
 }
 
