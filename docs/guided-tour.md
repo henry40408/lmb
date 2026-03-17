@@ -400,6 +400,73 @@ $ lmb --allow-all-read --allow-all-write eval --file script.lua
 $ lmb --allow-all-read --deny-read /etc/shadow eval --file script.lua
 ```
 
+### Following files (tail -F)
+
+`fs:tail(path, options)` follows a file like `tail -F`, returning a line iterator
+that yields new lines as they are appended. It automatically detects file rotation
+(e.g., logrotate) and follows the new file.
+
+```lua
+--[[
+--name = "Filesystem - tail basic"
+--allow_read = true
+--allow_write = true
+--assert_return = ["line1","line2","line3"]
+--]]
+function tail_example(ctx)
+  local fs = require("@lmb/fs")
+  local dir = ctx.state.temp_dir
+
+  -- Write a file to tail
+  local path = dir .. "/app.log"
+  local f = fs:open(path, "w")
+  f:write("line1\nline2\nline3\n")
+  f:close()
+
+  -- Tail from the start and collect lines
+  local result = {}
+  for line in fs:tail(path, { from = "start" }) do
+    table.insert(result, line)
+    if #result >= 3 then
+      break  -- stop after 3 lines
+    end
+  end
+  return result
+end
+
+return tail_example
+```
+
+Options:
+
+- `from` — `"end"` (default) starts at the file tail, `"start"` reads from the beginning
+- `poll_interval` — milliseconds between checks for new data (default: 100)
+
+Typical usage for monitoring logs:
+
+```bash
+$ lmb --allow-read /var/log --allow-net pushover.example eval --file monitor.lua
+```
+
+```text
+-- monitor.lua
+function monitor()
+  local fs = require("@lmb/fs")
+  local http = require("@lmb/http")
+
+  for line in fs:tail("/var/log/nginx/access.log") do
+    if line:match(" 500 ") then
+      http:fetch("https://pushover.example/notify", {
+        method = "POST",
+        body = "Error: " .. line,
+      })
+    end
+  end
+end
+
+return monitor
+```
+
 ## Modules
 
 ### Coroutines
