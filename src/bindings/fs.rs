@@ -1679,4 +1679,19 @@ mod tests {
         let result = runner.invoke().state(state).call().await.expect("invoke");
         assert_eq!(json!(["a", "b"]), result.result.expect("result"));
     }
+
+    #[tokio::test]
+    async fn test_tail_permission_denied() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-permission-denied.lua");
+        // No permissions granted
+        let runner = Runner::builder(source, empty())
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(true), result.result.expect("result"));
+    }
 }
