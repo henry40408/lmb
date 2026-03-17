@@ -16,6 +16,8 @@
 //! - `rename(old, new)` - Rename a file.
 //! - `exists(path)` - Check if a path exists.
 //! - `list(path)` - List directory contents, returning a table of filenames.
+//! - `tail(path, options)` - Follow a file like `tail -F`, returning a line iterator that
+//!   yields new lines as they are appended. Automatically follows file rotations.
 //!
 //! # File Handle Methods
 //!
@@ -582,6 +584,51 @@ impl LuaUserData for FsBinding {
                 i += 1;
             }
             Ok(table)
+        });
+
+        methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>)| {
+            this.check_read_permission(&path)
+                .map_err(LuaError::runtime)?;
+
+            let poll_interval = match &options {
+                Some(t) => t.get::<u64>("poll_interval").unwrap_or(100),
+                None => 100,
+            };
+            let from_end = match &options {
+                Some(t) => {
+                    let from: Option<String> = t.get("from").ok();
+                    !matches!(from.as_deref(), Some("start"))
+                }
+                None => true,
+            };
+
+            let state = Arc::new(Mutex::new(TailState::new(
+                path,
+                poll_interval,
+                from_end,
+            )));
+
+            vm.create_async_function(move |vm, ()| {
+                let state = state.clone();
+                async move {
+                    loop {
+                        let (result, poll_ms) = {
+                            let mut st = state.lock();
+                            st.check_rotation();
+                            st.ensure_open();
+                            (st.read_line(), st.poll_interval)
+                        };
+                        // Lock released before await
+
+                        match result {
+                            Some(line) => return vm.create_string(&line).map(LuaValue::String),
+                            None => {
+                                tokio::time::sleep(Duration::from_millis(poll_ms)).await;
+                            }
+                        }
+                    }
+                }
+            })
         });
     }
 }
