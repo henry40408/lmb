@@ -149,21 +149,16 @@ impl TailState {
         if self.reader.is_none() {
             return;
         }
-        let metadata = match std::fs::metadata(&self.path) {
-            Ok(m) => m,
-            Err(_) => {
-                // File gone — close reader, enter waiting mode
-                self.reader = None;
-                return;
-            }
+        let Ok(metadata) = std::fs::metadata(&self.path) else {
+            // File gone — close reader, enter waiting mode
+            self.reader = None;
+            return;
         };
 
         #[cfg(unix)]
-        if let Some(prev_inode) = self.inode {
-            if metadata.ino() != prev_inode {
-                self.reader = None;
-                return;
-            }
+        if self.inode.is_some_and(|prev| metadata.ino() != prev) {
+            self.reader = None;
+            return;
         }
 
         if metadata.len() < self.position {
@@ -1698,7 +1693,7 @@ mod tests {
     #[tokio::test]
     async fn test_tail_wait_new_lines() {
         let mut tmp = NamedTempFile::new().expect("create temp file");
-        write!(tmp, "first\n").expect("write temp file");
+        writeln!(tmp, "first").expect("write temp file");
         let path = tmp.path().to_string_lossy().to_string();
         let dir = tmp.path().parent().expect("parent dir").to_path_buf();
 
