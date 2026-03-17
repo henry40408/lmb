@@ -16,6 +16,8 @@
 //! - `rename(old, new)` - Rename a file.
 //! - `exists(path)` - Check if a path exists.
 //! - `list(path)` - List directory contents, returning a table of filenames.
+//! - `tail(path, options)` - Follow a file like `tail -F`, returning a line iterator that
+//!   yields new lines as they are appended. Automatically follows file rotations.
 //!
 //! # File Handle Methods
 //!
@@ -71,13 +73,119 @@ use std::{
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 use bon::bon;
 use mlua::prelude::*;
 use parking_lot::Mutex;
 
 use crate::Permissions;
+
+/// Internal state for the `fs.tail()` iterator.
+/// Tracks file position, inode, and handles rotation detection.
+struct TailState {
+    path: PathBuf,
+    reader: Option<BufReader<File>>,
+    inode: Option<u64>,
+    position: u64,
+    poll_interval: u64,
+    from_end: bool,
+    line_buf: String,
+}
+
+impl TailState {
+    fn new(path: String, poll_interval: u64, from_end: bool) -> Self {
+        Self {
+            path: PathBuf::from(path),
+            reader: None,
+            inode: None,
+            position: 0,
+            poll_interval,
+            from_end,
+            line_buf: String::new(),
+        }
+    }
+
+    /// Try to open the file. If `from_end` is true on first open, seek to end.
+    /// Returns true if file is now open, false if file doesn't exist.
+    fn ensure_open(&mut self) -> bool {
+        if self.reader.is_some() {
+            return true;
+        }
+        let file = match File::open(&self.path) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        let metadata = match file.metadata() {
+            Ok(m) => m,
+            Err(_) => return false,
+        };
+        #[cfg(unix)]
+        let inode = Some(metadata.ino());
+        #[cfg(not(unix))]
+        let inode = None;
+
+        let mut reader = BufReader::new(file);
+        if self.from_end && self.inode.is_none() {
+            // First open with from_end: seek to end
+            let end = reader.seek(SeekFrom::End(0)).unwrap_or(0);
+            self.position = end;
+        } else if self.inode.is_some() {
+            // Reopened after rotation: read from beginning
+            self.position = 0;
+        }
+        self.inode = inode;
+        self.reader = Some(reader);
+        true
+    }
+
+    /// Check if the file has been rotated (inode change or size shrink).
+    /// If so, close current reader so `ensure_open` will reopen.
+    fn check_rotation(&mut self) {
+        if self.reader.is_none() {
+            return;
+        }
+        let Ok(metadata) = std::fs::metadata(&self.path) else {
+            // File gone — close reader, enter waiting mode
+            self.reader = None;
+            return;
+        };
+
+        #[cfg(unix)]
+        if self.inode.is_some_and(|prev| metadata.ino() != prev) {
+            self.reader = None;
+            return;
+        }
+
+        if metadata.len() < self.position {
+            // File truncated — close and reopen
+            self.reader = None;
+        }
+    }
+
+    /// Try to read one line. Returns Some(line) with trailing newline stripped,
+    /// or None if at EOF or file not open.
+    fn read_line(&mut self) -> Option<String> {
+        let reader = self.reader.as_mut()?;
+        self.line_buf.clear();
+        match reader.read_line(&mut self.line_buf) {
+            Ok(0) => None, // EOF
+            Ok(n) => {
+                self.position += n as u64;
+                let trimmed = self.line_buf.trim_end_matches('\n').trim_end_matches('\r');
+                Some(trimmed.to_string())
+            }
+            Err(_) => {
+                self.reader = None;
+                None
+            }
+        }
+    }
+}
 
 /// A file handle wrapping a buffered reader/writer.
 ///
@@ -469,12 +577,56 @@ impl LuaUserData for FsBinding {
             }
             Ok(table)
         });
+
+        methods.add_method(
+            "tail",
+            |vm, this, (path, options): (String, Option<LuaTable>)| {
+                this.check_read_permission(&path)
+                    .map_err(LuaError::runtime)?;
+
+                let poll_interval = match &options {
+                    Some(t) => t.get::<u64>("poll_interval").unwrap_or(100),
+                    None => 100,
+                };
+                let from_end = match &options {
+                    Some(t) => {
+                        let from: Option<String> = t.get("from").ok();
+                        !matches!(from.as_deref(), Some("start"))
+                    }
+                    None => true,
+                };
+
+                let state = Arc::new(Mutex::new(TailState::new(path, poll_interval, from_end)));
+
+                // Use sync closure (not async) because Luau's `for...in` loop
+                // calls the iterator via a C-call boundary that does not allow yields.
+                // std::thread::sleep blocks the current tokio worker thread, which is
+                // acceptable: a tail script is expected to be long-running and already
+                // monopolizes one worker thread for the Lua VM's lifetime.
+                vm.create_function(move |vm, ()| {
+                    loop {
+                        let mut st = state.lock();
+                        st.check_rotation();
+                        st.ensure_open();
+                        if let Some(line) = st.read_line() {
+                            return vm.create_string(&line).map(LuaValue::String);
+                        }
+                        let poll_ms = st.poll_interval;
+                        drop(st);
+                        std::thread::sleep(Duration::from_millis(poll_ms));
+                    }
+                })
+            },
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::Write as _;
+
+    use std::fs::{File, OpenOptions};
+    use std::time::Duration;
 
     use serde_json::json;
     use tempfile::{NamedTempFile, TempDir};
@@ -1459,6 +1611,223 @@ mod tests {
             msg.as_str()
                 .expect("string")
                 .contains("read permission denied")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tail_basic() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "line1\nline2\nline3\n").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-basic.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(
+            json!(["line1", "line2", "line3"]),
+            result.result.expect("result")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tail_break() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        write!(tmp, "a\nb\nc\nd\ne\n").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-break.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(["a", "b"]), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_tail_permission_denied() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-permission-denied.lua");
+        // No permissions granted
+        let runner = Runner::builder(source, empty())
+            .build()
+            .expect("build runner");
+        let state = State::builder().state(json!(path)).build();
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+        assert_eq!(json!(true), result.result.expect("result"));
+    }
+
+    #[tokio::test]
+    async fn test_tail_wait_new_lines() {
+        let mut tmp = NamedTempFile::new().expect("create temp file");
+        writeln!(tmp, "first").expect("write temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let dir = tmp.path().parent().expect("parent dir").to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-wait-new-lines.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+
+        let write_path = tmp.path().to_path_buf();
+        // Use OS thread (not tokio::spawn) because the tail iterator uses
+        // std::thread::sleep which blocks the tokio worker thread.
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            let mut f = OpenOptions::new()
+                .append(true)
+                .open(&write_path)
+                .expect("open for append");
+            writeln!(f, "second").expect("write second");
+            writeln!(f, "third").expect("write third");
+        });
+
+        let state = State::builder()
+            .state(json!({"path": path, "expected": 3}))
+            .build();
+
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+
+        writer.join().expect("writer thread");
+        assert_eq!(
+            json!(["first", "second", "third"]),
+            result.result.expect("result")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tail_rotation() {
+        let dir = TempDir::new().expect("create temp dir");
+        let file_path = dir.path().join("test.log");
+        {
+            let mut f = File::create(&file_path).expect("create file");
+            writeln!(f, "old1").expect("write");
+            writeln!(f, "old2").expect("write");
+        }
+        let path_str = file_path.to_string_lossy().to_string();
+        let dir_path = dir.path().to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-rotation.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir_path].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+
+        let rotate_path = file_path.clone();
+        let rotator = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            let rotated = rotate_path.with_extension("log.1");
+            std::fs::rename(&rotate_path, &rotated).expect("rename");
+            std::thread::sleep(Duration::from_millis(100));
+            let mut f = File::create(&rotate_path).expect("create new file");
+            writeln!(f, "new1").expect("write new");
+            writeln!(f, "new2").expect("write new");
+        });
+
+        let state = State::builder()
+            .state(json!({"path": path_str, "expected": 4}))
+            .build();
+
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+
+        rotator.join().expect("rotator thread");
+        assert_eq!(
+            json!(["old1", "old2", "new1", "new2"]),
+            result.result.expect("result")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tail_file_not_exists() {
+        let dir = TempDir::new().expect("create temp dir");
+        let file_path = dir.path().join("future.log");
+        let path_str = file_path.to_string_lossy().to_string();
+        let dir_path = dir.path().to_path_buf();
+
+        let source = include_str!("../fixtures/bindings/fs/tail-file-not-exists.lua");
+        let perm = fs_permissions(
+            ReadPermissions::Some {
+                allowed: [dir_path].into_iter().collect(),
+                denied: Default::default(),
+            },
+            WritePermissions::Some {
+                allowed: Default::default(),
+                denied: Default::default(),
+            },
+        );
+        let runner = Runner::builder(source, empty())
+            .permissions(perm)
+            .build()
+            .expect("build runner");
+
+        let create_path = file_path.clone();
+        let creator = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            let mut f = File::create(&create_path).expect("create file");
+            writeln!(f, "appeared1").expect("write");
+            writeln!(f, "appeared2").expect("write");
+        });
+
+        let state = State::builder()
+            .state(json!({"path": path_str, "expected": 2}))
+            .build();
+
+        let result = runner.invoke().state(state).call().await.expect("invoke");
+
+        creator.join().expect("creator thread");
+        assert_eq!(
+            json!(["appeared1", "appeared2"]),
+            result.result.expect("result")
         );
     }
 }
