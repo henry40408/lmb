@@ -71,13 +71,127 @@ use std::{
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 use bon::bon;
 use mlua::prelude::*;
 use parking_lot::Mutex;
 
 use crate::Permissions;
+
+/// Internal state for the `fs.tail()` iterator.
+/// Tracks file position, inode, and handles rotation detection.
+struct TailState {
+    path: PathBuf,
+    reader: Option<BufReader<File>>,
+    inode: Option<u64>,
+    position: u64,
+    poll_interval: u64,
+    from_end: bool,
+    line_buf: String,
+}
+
+impl TailState {
+    fn new(path: String, poll_interval: u64, from_end: bool) -> Self {
+        Self {
+            path: PathBuf::from(path),
+            reader: None,
+            inode: None,
+            position: 0,
+            poll_interval,
+            from_end,
+            line_buf: String::new(),
+        }
+    }
+
+    /// Try to open the file. If `from_end` is true on first open, seek to end.
+    /// Returns true if file is now open, false if file doesn't exist.
+    fn ensure_open(&mut self) -> bool {
+        if self.reader.is_some() {
+            return true;
+        }
+        let file = match File::open(&self.path) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        let metadata = match file.metadata() {
+            Ok(m) => m,
+            Err(_) => return false,
+        };
+        #[cfg(unix)]
+        let inode = Some(metadata.ino());
+        #[cfg(not(unix))]
+        let inode = None;
+
+        let mut reader = BufReader::new(file);
+        if self.from_end && self.inode.is_none() {
+            // First open with from_end: seek to end
+            let end = reader.seek(SeekFrom::End(0)).unwrap_or(0);
+            self.position = end;
+        } else if self.inode.is_some() {
+            // Reopened after rotation: read from beginning
+            self.position = 0;
+        }
+        self.inode = inode;
+        self.reader = Some(reader);
+        true
+    }
+
+    /// Check if the file has been rotated (inode change or size shrink).
+    /// If so, close current reader so `ensure_open` will reopen.
+    fn check_rotation(&mut self) {
+        if self.reader.is_none() {
+            return;
+        }
+        let metadata = match std::fs::metadata(&self.path) {
+            Ok(m) => m,
+            Err(_) => {
+                // File gone — close reader, enter waiting mode
+                self.reader = None;
+                return;
+            }
+        };
+
+        #[cfg(unix)]
+        if let Some(prev_inode) = self.inode {
+            if metadata.ino() != prev_inode {
+                self.reader = None;
+                return;
+            }
+        }
+
+        if metadata.len() < self.position {
+            // File truncated — close and reopen
+            self.reader = None;
+        }
+    }
+
+    /// Try to read one line. Returns Some(line) with trailing newline stripped,
+    /// or None if at EOF or file not open.
+    fn read_line(&mut self) -> Option<String> {
+        let reader = self.reader.as_mut()?;
+        self.line_buf.clear();
+        match reader.read_line(&mut self.line_buf) {
+            Ok(0) => None, // EOF
+            Ok(n) => {
+                self.position += n as u64;
+                let trimmed = self
+                    .line_buf
+                    .trim_end_matches('\n')
+                    .trim_end_matches('\r');
+                Some(trimmed.to_string())
+            }
+            Err(_) => {
+                self.reader = None;
+                None
+            }
+        }
+    }
+}
 
 /// A file handle wrapping a buffered reader/writer.
 ///
