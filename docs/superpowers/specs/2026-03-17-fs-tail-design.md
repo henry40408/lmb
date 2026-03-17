@@ -1,97 +1,97 @@
-# `fs.tail` — `@lmb/fs` 檔案追蹤功能
+# `fs.tail` — File Tail Follow for `@lmb/fs`
 
-## 概述
+## Overview
 
-在 `@lmb/fs` 模組中新增 `tail(path, options?)` 方法，回傳一個無限迭代器，持續追蹤檔案新增的行，類似 `tail -F`。自動偵測檔案輪替（logrotate）並跟隨新檔案。
+Add a `tail(path, options?)` method to the `@lmb/fs` module that returns a line iterator which follows a file indefinitely, similar to `tail -F`. The iterator yields new lines as they are appended and automatically follows file rotations (e.g., logrotate).
 
 ## API
 
 ```lua
 local fs = require("@lmb/fs")
 
--- 基本用法：從檔案尾端開始追蹤
+-- Basic usage: follow from end of file
 for line in fs.tail("/var/log/nginx/access.log") do
     if line:match("500") then
-        -- 處理錯誤行
+        -- handle error line
     end
 end
 
--- 帶選項
+-- With options
 for line in fs.tail("/var/log/nginx/access.log", {
-    poll_interval = 200,    -- 毫秒，預設 100
-    from = "end",           -- "end"（預設）= 從尾端開始 / "start" = 從頭開始
+    poll_interval = 200,    -- milliseconds, default: 100
+    from = "end",           -- "end" (default) = start from file tail / "start" = read from beginning
 }) do
     print(line)
 end
 ```
 
-### 參數
+### Parameters
 
-| 參數 | 型別 | 預設值 | 說明 |
-|------|------|--------|------|
-| `path` | string | 必填 | 要追蹤的檔案路徑 |
-| `options.poll_interval` | number | `100` | 無新資料時的輪詢間隔（毫秒） |
-| `options.from` | string | `"end"` | 起始位置：`"end"` 跳過既有內容，`"start"` 從頭讀取 |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | required | File path to tail |
+| `options.poll_interval` | number | `100` | Milliseconds to sleep when no new data is available |
+| `options.from` | string | `"end"` | Where to start reading: `"end"` skips existing content, `"start"` reads from beginning |
 
-### 回傳值
+### Return Value
 
-回傳一個 Lua 迭代器函數，供 `for...in` 迴圈使用。每次呼叫產出一行（string），尾端換行已去除（與 `fs.lines()` 行為一致）。
+Returns a Lua iterator function for use in `for...in` loops. The iterator yields one line (string) per call, with trailing newlines stripped (consistent with `fs.lines()`).
 
-## 行為
+## Behavior
 
-| 情境 | 行為 |
-|------|------|
-| 有新行可讀 | 立即回傳，不 sleep |
-| 到達 EOF（無新資料） | sleep `poll_interval` 毫秒後重試 |
-| 檔案被輪替（inode 變更或大小縮小） | 以同路徑重新開啟新檔案，從頭讀取 |
-| 檔案尚不存在 | 持續輪詢等待檔案出現，出現後開始讀取 |
-| 檔案暫時消失（輪替空窗期） | 持續等待，檔案重新出現後繼續 |
-| 迴圈中 `break` | 正常離開迴圈。`TailState`（含開啟的 `File` handle）由 `Arc<Mutex<...>>` 持有，在 closure 被 GC 回收時釋放。這是非確定性的，但安全——與 `fs.lines()` 處理方式一致。 |
-| 權限不足 | 在呼叫時（迭代器開始前）呼叫 `check_read_permission(path)`。既有的 `canonicalize_for_check` 已能處理檔案不存在的情況（透過正規化父目錄並附加檔名）。 |
+| Scenario | Behavior |
+|----------|----------|
+| New line available | Return immediately, no sleep |
+| At EOF (no new data) | Sleep `poll_interval` ms, then retry |
+| File rotated (inode change or size shrink) | Reopen the file at the same path, read from beginning |
+| File does not exist yet | Wait (polling) until the file appears, then start reading |
+| File temporarily missing (rotate gap) | Keep waiting, resume when file reappears |
+| `break` in for loop | Exit loop normally. The `TailState` (including open `File` handle) is held by `Arc<Mutex<...>>` inside the closure; it is released when the closure is garbage-collected. This is non-deterministic but safe — consistent with how `fs.lines()` handles its file handle. |
+| Permission denied | Call `check_read_permission(path)` at call time (before iterator starts). The existing `canonicalize_for_check` already handles non-existent files by canonicalizing the parent directory and appending the filename. |
 
-## 輪替偵測
+## Rotation Detection
 
-每次輪詢週期（到達 EOF 後、sleep 前）：
+On each poll cycle (when EOF is reached and before sleeping):
 
-1. 對路徑執行 stat 取得當前 inode 與檔案大小
-2. inode 與上次記錄不同 → 檔案已被輪替 → 重新開啟並從頭讀取
-3. 檔案大小小於當前讀取位置 → 檔案被截斷 → seek 回開頭
-4. stat 失敗（檔案消失）→ 進入等待模式，持續輪詢直到檔案重新出現
+1. Stat the path to get current inode and file size
+2. If inode differs from the last known inode → file has been rotated → reopen and read from beginning
+3. If file size is smaller than current read position → file has been truncated → seek to beginning
+4. If stat fails (file gone) → enter waiting mode, keep polling until file reappears
 
-此行為與 GNU coreutils 的 `tail -F`（大寫 F）一致。
+This matches the behavior of `tail -F` (capital F) in GNU coreutils.
 
-**已知限制（TOCTOU 競爭）：** stat 與 read 之間存在一個小窗口，期間可能發生輪替。如果檔案在這兩個操作之間被輪替，可能短暫地從舊的 file descriptor 讀取。這與 GNU `tail -F` 的已知限制相同，是可接受的——下一次輪詢週期會偵測到 inode 變化並自動修正。重新開啟後會再次 stat 以確認 inode 與新開啟的檔案一致。
+**Known limitation (TOCTOU race):** There is a small window between stat and read where rotation could occur. If the file is rotated between these two operations, we may briefly read from the old file descriptor. This is the same race condition that GNU `tail -F` has and is acceptable — the next poll cycle will detect the inode change and correct itself. After reopening, we re-stat to verify the inode matches the newly opened file.
 
-## 實作
+## Implementation
 
-### 方式：非同步輪詢
+### Approach: Polling with Async Sleep
 
-使用 `add_method` 搭配 `vm.create_async_function` 與 `tokio::time::sleep` 進行輪詢等待。這是必要的，因為 LMB 透過 `call_async` 直接在 Tokio runtime 上執行 Lua 腳本——沒有 `spawn_blocking` 或專用的執行緒池。使用 `std::thread::sleep` 會無限期阻塞 Tokio worker thread。
+Uses `add_async_function` with `tokio::time::sleep` for the polling wait. This is critical because LMB runs Lua scripts directly on the Tokio runtime via `call_async` — there is no `spawn_blocking` or dedicated thread pool. Using `std::thread::sleep` would block a Tokio worker thread indefinitely.
 
-迭代器 closure 註冊為 async function，使得 `tokio::time::sleep` 能在輪詢週期之間讓出 runtime thread。既有的 `fs.lines()` 使用同步 `add_method` 是因為它在 EOF 時終止；`fs.tail` 無限期運行，不可獨佔 runtime thread。
+The iterator closure is registered as an async function so that `tokio::time::sleep` yields control back to the runtime between poll cycles. The existing `fs.lines()` uses synchronous `add_method` because it terminates at EOF; `fs.tail` runs indefinitely and must not monopolize a runtime thread.
 
-**為何選擇輪詢而非 inotify/notify：**
-- 不引入新依賴，不影響 binary 大小（LMB 以輕量部署為目標）
-- 所有平台與檔案系統行為一致（包括 inotify 不工作的 NFS）
-- 100ms 輪詢間隔的 CPU 成本可忽略（閒置時每秒 10 次 syscall）
-- GNU `tail -f` 本身預設也使用輪詢
+**Why polling over inotify/notify:**
+- No new dependencies, no impact on binary size (LMB targets lightweight deployments)
+- Consistent behavior across all platforms and filesystems (including NFS where inotify does not work)
+- 100ms polling interval has negligible CPU cost (10 syscalls/second when idle)
+- GNU `tail -f` itself uses polling as its default strategy
 
-### Rust 實作
+### Rust Implementation
 
-在 `src/bindings/fs.rs` 的 `FsBinding::add_methods` 中新增方法：
+New method added to `FsBinding::add_methods` in `src/bindings/fs.rs`:
 
 ```rust
 methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>)| {
-    // 權限檢查：傳入完整路徑。check_read_permission -> canonicalize_for_check
-    // 已能處理不存在的檔案（正規化父目錄並附加檔名）。
+    // Permission check: pass full file path. check_read_permission -> canonicalize_for_check
+    // already handles non-existent files by canonicalizing the parent dir and appending filename.
     this.check_read_permission(&path).map_err(LuaError::runtime)?;
 
-    let poll_interval = /* 從 options 取得，預設 100 */;
-    let from_end = /* 從 options 取得，預設 true */;
+    let poll_interval = /* extract from options, default 100 */;
+    let from_end = /* extract from options, default true */;
 
     let state = Arc::new(Mutex::new(TailState::new(path, poll_interval, from_end)));
 
-    // 使用 async function 使 tokio::time::sleep 能讓出 runtime thread
+    // Use async function so tokio::time::sleep yields the runtime thread
     vm.create_async_function(move |vm, ()| {
         let state = state.clone();
         async move {
@@ -99,21 +99,21 @@ methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>
                 let result = {
                     let mut state = state.lock();
 
-                    // 1. 確保檔案已開啟（不存在則回傳 None）
+                    // 1. Ensure file is open (if not exists, will return None)
                     state.ensure_open();
 
-                    // 2. 檢查輪替（inode/大小變化）
+                    // 2. Check for rotation (inode/size change)
                     state.check_rotation();
 
-                    // 3. 嘗試讀取一行
+                    // 3. Try to read a line
                     state.read_line()
                 };
-                // await 前釋放鎖
+                // Lock released before await point
 
                 match result {
                     Some(line) => return vm.create_string(&line).map(LuaValue::String),
                     None => {
-                        // EOF 或檔案未就緒——非同步 sleep，讓出 runtime thread
+                        // EOF or file not ready — async sleep, yield runtime thread
                         tokio::time::sleep(Duration::from_millis(poll_interval)).await;
                     }
                 }
@@ -123,58 +123,58 @@ methods.add_method("tail", |vm, this, (path, options): (String, Option<LuaTable>
 });
 ```
 
-**重要事項：**
-- `parking_lot::Mutex` 鎖（與 `fs.rs` 其餘部分一致）在 `.await` 點前釋放，避免跨 async sleep 持有鎖。這防止死鎖並允許其他 Lua coroutine 繼續執行。
-- `fs.tail()` 要求 Lua 腳本透過 `call_async` 執行（LMB 的正常執行路徑）。若從同步上下文呼叫 async 迭代器會 panic。這與 `io.read` 及其他 async binding 的前提條件相同。
+**Important:**
+- The `parking_lot::Mutex` lock (consistent with the rest of `fs.rs`) is released before the `.await` point to avoid holding it across the async sleep. This prevents deadlocks and allows other Lua coroutines to make progress.
+- `fs.tail()` requires the Lua script to be executed via `call_async` (the normal execution path in LMB). The async iterator function will panic if called from a synchronous Lua context. This is the same precondition that applies to `io.read` and other async bindings in LMB.
 
-### `TailState` 結構
+### `TailState` Struct
 
 ```rust
 struct TailState {
     path: PathBuf,
     reader: Option<BufReader<File>>,
-    inode: Option<u64>,      // 上次已知的 inode（首次成功開啟前為 None）
-                             // Unix 上使用 std::os::unix::fs::MetadataExt::ino()
-    position: u64,           // 目前讀取位置
-    poll_interval: u64,      // 毫秒
-    from_end: bool,          // 首次開啟時是否 seek 到尾端
+    inode: Option<u64>,      // Last known inode (None until first successful open)
+                             // Uses std::os::unix::fs::MetadataExt::ino() on Unix
+    position: u64,           // Current read position
+    poll_interval: u64,      // Milliseconds
+    from_end: bool,          // Whether to seek to end on first open
 }
 ```
 
-**初始狀態：** `inode` 初始為 `None`。首次成功開啟時記錄 inode，不觸發「偵測到輪替」。後續開啟時比較已儲存的值——不一致表示發生了輪替。
+**Initial state:** `inode` starts as `None`. The first successful `open` records the inode without triggering rotation detection. Subsequent opens compare against the stored value — a mismatch means rotation occurred.
 
-**平台說明：** inode 追蹤使用 `std::os::unix::fs::MetadataExt::ino()`，僅限 Unix。非 Unix 平台上輪替偵測退化為僅檢查大小變化（檔案大小縮小）。這是可接受的，因為 LMB 主要目標平台是 Linux。
+**Platform note:** Inode tracking uses `std::os::unix::fs::MetadataExt::ino()` which is Unix-only. On non-Unix platforms, rotation detection falls back to size-only checks (file size shrinking). This is acceptable since LMB's primary target is Linux.
 
-### 與既有程式碼的整合
+### Integration with Existing Code
 
-| 面向 | 做法 |
-|------|------|
-| **權限檢查** | 在呼叫時使用 `check_read_permission(path)`。`canonicalize_for_check` 已能處理不存在的檔案（正規化父目錄並附加檔名）。 |
-| **方法註冊** | `add_method("tail", ...)` 回傳 async closure（透過 `vm.create_async_function`），與 `FsBinding::add_methods` 中的既有方法並列 |
-| **行尾處理** | 去除尾端 `\n` 和 `\r`，與 `fs.lines()` 及 `FileHandleBinding::read("*l")` 一致 |
-| **錯誤處理** | 讀取時的 IO 錯誤透過 `LuaError` 回報，與其他 fs 方法一致 |
-| **非同步 runtime** | 使用 `tokio::time::sleep`（非 `std::thread::sleep`），因為 LMB 透過 `call_async` 直接在 Tokio worker thread 上執行 Lua。`Mutex` 鎖在每個 await 點前釋放。 |
+| Aspect | Approach |
+|--------|----------|
+| **Permission check** | Reuses `check_read_permission(path)` at call time. `canonicalize_for_check` already handles non-existent files by canonicalizing the parent and appending the filename. |
+| **Method registration** | `add_method("tail", ...)` returns an async closure via `vm.create_async_function`, alongside existing methods in `FsBinding::add_methods` |
+| **Line trimming** | Strips trailing `\n` and `\r`, consistent with `fs.lines()` and `FileHandleBinding::read("*l")` |
+| **Error handling** | IO errors during read are reported via `LuaError`, consistent with other fs methods |
+| **Async runtime** | Uses `tokio::time::sleep` (not `std::thread::sleep`) because LMB runs Lua via `call_async` directly on Tokio worker threads. The Mutex lock is released before each await point. |
 
-### 文件更新
+### Documentation Update
 
-在 `fs.rs` 頂部的模組文件註解中新增：
+Add to the module doc comment at top of `fs.rs`:
 
 ```
 //! - `tail(path, options)` - Follow a file like `tail -F`, returning a line iterator that
 //!   yields new lines as they are appended. Automatically follows file rotations.
 ```
 
-## 測試
+## Testing
 
-所有測試位於 `src/bindings/fs.rs` 的 `mod tests` 中，使用 `tempfile` 建立測試檔案：
+All tests in `src/bindings/fs.rs` `mod tests`, using `tempfile` for test fixtures:
 
-1. **基本讀取** — 寫入行到檔案，以 `from = "start"` 呼叫 `tail`，驗證所有行都被產出
-2. **等待新行** — tail 一個既有檔案（到達 EOF），從另一個 thread 延遲寫入新行，驗證能收到新行
-3. **輪替偵測** — tail 一個檔案，重新命名它，在同路徑建立新檔案並寫入，驗證 tail 跟隨新檔案
-4. **檔案不存在** — tail 一個不存在的路徑，從另一個 thread 延遲建立檔案，驗證檔案出現後能收到行
-5. **break 正常離開** — tail 一個檔案，在 N 行後 break，驗證無 panic 或資源洩漏
-6. **權限不足** — 在沒有讀取權限的情況下 tail，驗證回傳錯誤
+1. **Basic read** — Write lines to a file, `tail` with `from = "start"`, verify all lines are yielded
+2. **Wait for new lines** — Tail an existing file (hits EOF), spawn a thread that writes new lines after a delay, verify the new lines are received
+3. **Rotation detection** — Tail a file, rename it, create a new file at the same path, write to the new file, verify tail follows the new file
+4. **File does not exist** — Tail a non-existent path, spawn a thread that creates the file after a delay, verify lines are received once the file appears
+5. **Break exits cleanly** — Tail a file, break after N lines, verify no panic or resource leak
+6. **Permission denied** — Tail a path without read permission, verify error is returned
 
-## 設定參考
+## Configuration Reference
 
-無新增 CLI 旗標或環境變數。設定透過 options table 逐次呼叫指定。
+No new CLI flags or environment variables. Configuration is per-call via the options table.
