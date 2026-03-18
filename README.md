@@ -3,7 +3,7 @@
 [![CI](https://github.com/henry40408/lmb/actions/workflows/ci.yaml/badge.svg)](https://github.com/henry40408/lmb/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/gh/henry40408/lmb/graph/badge.svg?token=O7WLYVEX0E)](https://codecov.io/gh/henry40408/lmb)
 [![License](https://img.shields.io/github/license/henry40408/lmb)](LICENSE.txt)
-[![Rust](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.93%2B-blue.svg)](https://www.rust-lang.org/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://ghcr.io/henry40408/lmb)
 [![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
 
@@ -29,7 +29,7 @@ For more information, please read [the guided tour](docs/guided-tour.md).
 
 ## Features
 
-- Batteries included: Comes with handy libraries such as `crypto`, `fs`, `http`, and `json`.
+- Batteries included: Comes with handy libraries such as `crypto`, `fs`, `http`, `json`, `time`, `toml`, `yaml`, and more.
 - Easy to use: Run Lua scripts and functions from the command line.
 - Fast: Optimized for quick execution, making it suitable for low-end hardware.
 - Secure: Runs Lua code in a sandboxed environment provided by Luau to prevent unwanted side effects.
