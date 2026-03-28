@@ -7,13 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # efa25f7f19611383d5b0ccf2d1c8914531636bf9
         with:
           toolchain: 1.94.0
       - name: Cache Cargo
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -25,7 +25,7 @@ jobs:
       - name: Check code formatting
         run: cargo fmt --check
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2.48.0
+        uses: taiki-e/install-action@0dfccb316f282b6d57b2993e6363d0f6f6fa53b4 # v2.48.0
         with:
           tool: cargo-deny@0.18.9
       - name: Check dependencies and licenses
@@ -38,15 +38,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Rust toolchain
         # Use a specific commit to install the toolchain with "toolchain" parameter
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # efa25f7f19611383d5b0ccf2d1c8914531636bf9
         with:
           toolchain: ${{ matrix.toolchain }}
           components: clippy
       - name: Cache Cargo
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -65,13 +65,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # efa25f7f19611383d5b0ccf2d1c8914531636bf9
         with:
           toolchain: 1.94.0
       - name: Cache Cargo
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -83,14 +83,14 @@ jobs:
       - name: Run benchmarks
         run: cargo bench --bench bench -- --output-format bencher | tee output.txt
       - name: Download previous benchmark data
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: ./cache-criterion
           key: ${{ runner.os }}-benchmark-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-benchmark-
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1.21.0
+        uses: benchmark-action/github-action-benchmark@a7bc2366eda11037936ea57d811a43b3418d3073 # v1.21.0
         with:
           tool: cargo
           output-file-path: output.txt
@@ -117,13 +117,13 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # efa25f7f19611383d5b0ccf2d1c8914531636bf9
         with:
           toolchain: 1.94.0
       - name: Cache Cargo
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -133,7 +133,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Install coverage tools
-        uses: taiki-e/install-action@v2.48.0
+        uses: taiki-e/install-action@0dfccb316f282b6d57b2993e6363d0f6f6fa53b4 # v2.48.0
         with:
           tool: cargo-llvm-cov@0.6.14,cargo-nextest@0.9.87
       - name: Run tests with coverage
@@ -141,16 +141,16 @@ jobs:
           DATABASE_URL: postgres://lmb:lmb@localhost:5432/lmb
         run: cargo llvm-cov nextest --all-features --workspace --ignore-filename-regex main.rs --lcov --output-path lcov.info
       - name: Upload coverage report
-        uses: codecov/codecov-action@v5.5.2
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
   msrv:
     needs: [lint, check]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Cache Cargo
-        uses: actions/cache@v5.0.3
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -159,7 +159,7 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
-      - uses: taiki-e/install-action@v2.48.0
+      - uses: taiki-e/install-action@0dfccb316f282b6d57b2993e6363d0f6f6fa53b4 # v2.48.0
         with:
           tool: cargo-hack@0.6.28
       - name: Check MSRV
