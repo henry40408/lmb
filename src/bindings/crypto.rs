@@ -61,10 +61,11 @@
 use std::{fmt, sync::Arc};
 
 use aes::cipher::{
-    BlockDecryptMut as _, BlockEncryptMut as _, KeyInit, KeyIvInit as _, block_padding::Pkcs7,
+    BlockDecryptMut as _, BlockEncryptMut as _, KeyInit as AesKeyInit, KeyIvInit as _,
+    block_padding::Pkcs7,
 };
 use base64::prelude::*;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use md5::Md5;
 use mlua::prelude::*;
 use sha1::Sha1;
