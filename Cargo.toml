@@ -18,7 +18,7 @@ base64 = "0.22.1"
 bon = "3.9.0"
 byte-unit = "5.1.6"
 bytes = "1.10.1"
-cbc = { version = "0.1.2", features = ["alloc"] }
+cbc = { version = "0.2.0", features = ["alloc"] }
 clap = { version = "4.5.58", features = ["derive", "env"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
 crc32fast = "1.5.0"
