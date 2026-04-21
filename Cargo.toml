@@ -24,7 +24,7 @@ clio = { version = "0.3.5", features = ["clap-parse"] }
 crc32fast = "1.5.0"
 deadpool = "0.13.0"
 des = "0.8.1"
-ecb = "0.1.2"
+ecb = "0.2.0"
 futures = "0.3.31"
 hex = "0.4.3"
 hmac = "0.13.0"
