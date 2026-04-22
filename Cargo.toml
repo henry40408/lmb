@@ -10,7 +10,7 @@ default = []
 postgres = ["dep:postgres"]
 
 [dependencies]
-aes = "0.8.4"
+aes = "0.9.0"
 anyhow = "1.0.101"
 axum = "0.8.9"
 base16ct = { version = "1.0.0", features = ["alloc"] }
