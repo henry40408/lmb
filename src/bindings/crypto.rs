@@ -61,8 +61,8 @@
 use std::{fmt, sync::Arc};
 
 use aes::cipher::{
-    BlockDecryptMut as _, BlockEncryptMut as _, KeyInit as AesKeyInit, KeyIvInit as _,
-    block_padding::Pkcs7,
+    BlockModeDecrypt as _, BlockModeEncrypt as _, KeyInit as AesKeyInit, KeyIvInit as _,
+    block_padding::{Error as UnpadError, Pkcs7},
 };
 use base64::prelude::*;
 use hmac::{Hmac, KeyInit, Mac};
@@ -135,19 +135,34 @@ impl LuaUserData for CryptoBinding {
             {
                 "aes-cbc" => {
                     let iv = iv.ok_or_else(|| bad_argument("encrypt", 4, "expect IV"))?;
-                    let encrypted = Aes128CbcEnc::new(key.as_bytes().into(), iv.as_bytes().into())
-                        .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
+                    let Ok(key) = <&[u8; 16]>::try_from(key.as_bytes()) else {
+                        return Err(bad_argument("encrypt", 3, "AES-128 key must be 16 bytes"));
+                    };
+                    let Ok(iv) = <&[u8; 16]>::try_from(iv.as_bytes()) else {
+                        return Err(bad_argument("encrypt", 4, "AES-128 IV must be 16 bytes"));
+                    };
+                    let encrypted = Aes128CbcEnc::new(key.into(), iv.into())
+                        .encrypt_padded_vec::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
                 "des-cbc" => {
                     let iv = iv.ok_or_else(|| bad_argument("encrypt", 4, "expect IV"))?;
-                    let encrypted = DesCbcEnc::new(key.as_bytes().into(), iv.as_bytes().into())
-                        .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
+                    let Ok(key) = <&[u8; 8]>::try_from(key.as_bytes()) else {
+                        return Err(bad_argument("encrypt", 3, "DES key must be 8 bytes"));
+                    };
+                    let Ok(iv) = <&[u8; 8]>::try_from(iv.as_bytes()) else {
+                        return Err(bad_argument("encrypt", 4, "DES IV must be 8 bytes"));
+                    };
+                    let encrypted = DesCbcEnc::new(key.into(), iv.into())
+                        .encrypt_padded_vec::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
                 "des-ecb" => {
-                    let encrypted = DesEcbEnc::new(key.as_bytes().into())
-                        .encrypt_padded_vec_mut::<Pkcs7>(data.as_bytes());
+                    let Ok(key) = <&[u8; 8]>::try_from(key.as_bytes()) else {
+                        return Err(bad_argument("encrypt", 3, "DES key must be 8 bytes"));
+                    };
+                    let encrypted =
+                        DesEcbEnc::new(key.into()).encrypt_padded_vec::<Pkcs7>(data.as_bytes());
                     Ok(base16ct::lower::encode_string(&encrypted))
                 }
                 _ => Err(bad_argument(
@@ -164,25 +179,40 @@ impl LuaUserData for CryptoBinding {
             {
                 "aes-cbc" => {
                     let iv = iv.ok_or_else(|| bad_argument("decrypt", 4, "expect IV"))?;
+                    let Ok(key) = <&[u8; 16]>::try_from(key.as_bytes()) else {
+                        return Err(bad_argument("decrypt", 3, "AES-128 key must be 16 bytes"));
+                    };
+                    let Ok(iv) = <&[u8; 16]>::try_from(iv.as_bytes()) else {
+                        return Err(bad_argument("decrypt", 4, "AES-128 IV must be 16 bytes"));
+                    };
                     let data = hex::decode(&encrypted).into_lua_err()?;
-                    let decrypted = Aes128CbcDec::new(key.as_bytes().into(), iv.as_bytes().into())
-                        .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                        .map_err(|e| LuaError::external(e.to_string()))?;
+                    let decrypted = Aes128CbcDec::new(key.into(), iv.into())
+                        .decrypt_padded_vec::<Pkcs7>(&data)
+                        .map_err(|e: UnpadError| LuaError::external(e.to_string()))?;
                     Ok(String::from_utf8(decrypted).into_lua_err()?)
                 }
                 "des-cbc" => {
                     let iv = iv.ok_or_else(|| bad_argument("decrypt", 4, "expect IV"))?;
+                    let Ok(key) = <&[u8; 8]>::try_from(key.as_bytes()) else {
+                        return Err(bad_argument("decrypt", 3, "DES key must be 8 bytes"));
+                    };
+                    let Ok(iv) = <&[u8; 8]>::try_from(iv.as_bytes()) else {
+                        return Err(bad_argument("decrypt", 4, "DES IV must be 8 bytes"));
+                    };
                     let data = hex::decode(&encrypted).into_lua_err()?;
-                    let decrypted = DesCbcDec::new(key.as_bytes().into(), iv.as_bytes().into())
-                        .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                        .map_err(|e| LuaError::external(e.to_string()))?;
+                    let decrypted = DesCbcDec::new(key.into(), iv.into())
+                        .decrypt_padded_vec::<Pkcs7>(&data)
+                        .map_err(|e: UnpadError| LuaError::external(e.to_string()))?;
                     Ok(String::from_utf8(decrypted).into_lua_err()?)
                 }
                 "des-ecb" => {
+                    let Ok(key) = <&[u8; 8]>::try_from(key.as_bytes()) else {
+                        return Err(bad_argument("decrypt", 3, "DES key must be 8 bytes"));
+                    };
                     let data = hex::decode(&encrypted).into_lua_err()?;
-                    let decrypted = DesEcbDec::new(key.as_bytes().into())
-                        .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                        .map_err(|e| LuaError::external(e.to_string()))?;
+                    let decrypted = DesEcbDec::new(key.into())
+                        .decrypt_padded_vec::<Pkcs7>(&data)
+                        .map_err(|e: UnpadError| LuaError::external(e.to_string()))?;
                     Ok(String::from_utf8(decrypted).into_lua_err()?)
                 }
                 _ => Err(bad_argument(
