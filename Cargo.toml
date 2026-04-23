@@ -77,7 +77,7 @@ url = "2.5.4"
 axum-test = "20.0.0"
 criterion = { version = "0.8.2", features = ["async_tokio"] }
 curl-parser = "0.6.0"
-full_moon = "2.0.0"
+full_moon = "2.2.0"
 mockito = "1.7.2"
 snapbox = { version = "1.2.1", features = ["cmd"] }
 tempfile = "3"
