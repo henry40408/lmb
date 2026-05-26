@@ -45,6 +45,7 @@ no_color = "0.2.0"
 parking_lot = "0.12.4"
 postgres = { version = "0.19", optional = true }
 pulldown-cmark = "0.13.3"
+regex = "1.12.3"
 reqwest = { version = "0.12.22", default-features = false, features = [
   "charset",
   "rustls-tls",

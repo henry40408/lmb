@@ -1931,6 +1931,7 @@ dependencies = [
  "parking_lot",
  "postgres",
  "pulldown-cmark",
+ "regex",
  "reqwest",
  "rmp-serde",
  "rusqlite",

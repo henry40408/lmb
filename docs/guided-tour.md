@@ -809,6 +809,43 @@ end
 return time_example
 ```
 
+### Regex
+
+The `@lmb/regex` module provides full regular expression support backed by the Rust [`regex`](https://docs.rs/regex) crate. Luau's built-in `string.match`/`string.find`/`string.gmatch` only support Lua patterns, which lack features such as alternation, lookahead, and non-greedy quantifiers. The `regex` crate is fast and safe — it guarantees linear-time matching with no catastrophic backtracking. Invalid patterns raise an error.
+
+```lua
+--[[
+--name = "Regex"
+--]]
+function regex_example()
+  local regex = require("@lmb/regex")
+
+  -- Match: returns the first match, or nil when there is none
+  assert(regex.match("hello world", "\\w+") == "hello", "match should return first word")
+
+  -- Captures: capture groups of the first match, excluding the whole match
+  local caps = regex.captures("2026-02-09", "(\\d{4})-(\\d{2})-(\\d{2})")
+  assert(caps[1] == "2026" and caps[2] == "02" and caps[3] == "09", "captures should return groups")
+
+  -- Find every match
+  local all = regex.find_all("a1b2c3", "\\d+")
+  assert(#all == 3, "find_all should return 3 matches")
+
+  -- Replace the first occurrence, or every occurrence
+  assert(regex.replace("foo bar baz", "\\s+", "-") == "foo-bar baz", "replace first only")
+  assert(regex.replace_all("a1b2c3", "\\d", "X") == "aXbXcX", "replace_all")
+
+  -- Split on a pattern, collapsing repeated separators
+  local parts = regex.split("a,b,,c", ",+")
+  assert(#parts == 3, "split should collapse repeated separators")
+
+  -- Boolean test
+  assert(regex.is_match("hello123", "\\d+"), "is_match should be true")
+end
+
+return regex_example
+```
+
 ## Encoding and decoding
 
 ### JSON
