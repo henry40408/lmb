@@ -6,8 +6,8 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+        Arc, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -61,6 +61,49 @@ impl fmt::Display for Timeout {
 }
 
 impl Error for Timeout {}
+
+/// A cooperative cancellation handle shared between a supervisor and the Lua VM.
+///
+/// `is_cancelled` lets a script poll for shutdown and stop on its own. If it does
+/// not, `force_deadline_passed` reports when the grace period after [`cancel`](Self::cancel)
+/// has elapsed, which the VM interrupt hook uses to forcibly stop a runaway script.
+#[derive(Clone, Debug)]
+pub struct Cancellation {
+    cancelled: Arc<AtomicBool>,
+    cancel_at: Arc<OnceLock<Instant>>,
+    grace: Duration,
+}
+
+impl Cancellation {
+    /// Creates a new, un-cancelled handle with the given force grace period.
+    pub fn new(grace: Duration) -> Self {
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+            cancel_at: Arc::new(OnceLock::new()),
+            grace,
+        }
+    }
+
+    /// Signals cancellation and records the instant. Idempotent; the first call wins.
+    pub fn cancel(&self) {
+        let _ = self.cancel_at.set(Instant::now());
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    /// Returns whether cancellation has been signalled (cooperative check).
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    /// Returns whether the grace period has elapsed since cancellation began.
+    ///
+    /// Returns `false` if [`cancel`](Self::cancel) has not yet been called.
+    pub fn force_deadline_passed(&self) -> bool {
+        self.cancel_at
+            .get()
+            .is_some_and(|t| t.elapsed() >= self.grace)
+    }
+}
 
 /// Represents the state of the Lua script execution
 #[derive(Builder, Debug)]
@@ -557,5 +600,21 @@ mod tests {
         let result = super::process_pcall_error(&[number_value], &lua);
         let err = result.unwrap();
         assert!(matches!(err, LmbError::LuaValue(Value::Number(n)) if n.as_f64() == Some(42.0)));
+    }
+
+    #[test]
+    fn cancellation_flag_and_force_deadline() {
+        use std::time::Duration;
+        let c = Cancellation::new(Duration::from_millis(50));
+        // Not cancelled initially.
+        assert!(!c.is_cancelled());
+        assert!(!c.force_deadline_passed());
+        // After cancel(), the flag is set but the grace window has not elapsed.
+        c.cancel();
+        assert!(c.is_cancelled());
+        assert!(!c.force_deadline_passed());
+        // After the grace window, the force deadline has passed.
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(c.force_deadline_passed());
     }
 }
