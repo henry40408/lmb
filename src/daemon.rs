@@ -96,19 +96,15 @@ fn build_runner(config: &DaemonConfig, cancellation: Cancellation) -> anyhow::Re
 ///
 /// Only called from the task-completion (non-shutdown) path: a forced cancellation
 /// during shutdown lands in the inner select and its result is discarded there.
-fn was_failure(joined: Result<lmb::LmbResult<lmb::Invoked>, tokio::task::JoinError>) -> bool {
+fn was_failure(joined: Result<lmb::Invoked, tokio::task::JoinError>) -> bool {
     match joined {
-        Ok(Ok(invoked)) => match invoked.result {
+        Ok(invoked) => match invoked.result {
             Ok(_) => false,
             Err(e) => {
                 warn!("script failed: {e}");
                 true
             }
         },
-        Ok(Err(e)) => {
-            warn!("invoke error: {e}");
-            true
-        }
         Err(e) => {
             warn!("daemon task panicked: {e}");
             true
@@ -299,19 +295,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn was_failure_flags_invoke_error_and_panic() {
-        // Outer invoke error: returning a function cannot be serialized into a
-        // Value, so `invoke` yields `Ok(Err(_))`.
+    async fn was_failure_flags_script_error_and_panic() {
+        // A failing script surfaces as `Invoked { result: Err(_) }`. A script
+        // returning a non-serializable value (a function) lands here too, since
+        // the deserialization error is now folded into the run result.
         let cfg = config("return function(ctx) return function() end end", 0, secs(1));
         let runner = build_runner(&cfg, Cancellation::new(secs(1))).unwrap();
         let state = State::builder().build();
-        let invoke_err: Result<lmb::LmbResult<lmb::Invoked>, tokio::task::JoinError> =
-            Ok(runner.invoke().state(state).call().await);
-        assert!(matches!(invoke_err, Ok(Err(_))));
-        assert!(was_failure(invoke_err));
+        let invoked = runner.invoke().state(state).call().await;
+        assert!(invoked.result.is_err());
+        assert!(was_failure(Ok(invoked)));
 
         // A panic in the spawned task surfaces as a `JoinError`.
-        let panicked: Result<lmb::LmbResult<lmb::Invoked>, tokio::task::JoinError> =
+        let panicked: Result<lmb::Invoked, tokio::task::JoinError> =
             tokio::spawn(async { panic!("boom") })
                 .await
                 .map(|()| unreachable!());

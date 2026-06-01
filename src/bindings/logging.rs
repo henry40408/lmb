@@ -87,7 +87,7 @@ mod tests {
     async fn test_logging() {
         let source = include_str!("../fixtures/bindings/logging.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[test]

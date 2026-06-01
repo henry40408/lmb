@@ -446,12 +446,7 @@ async fn try_main() -> anyhow::Result<()> {
             let result = {
                 let span2 = debug_span!(parent: &span, "invoke");
                 let state = lmb::State::builder().maybe_state(state).build();
-                runner
-                    .invoke()
-                    .state(state)
-                    .call()
-                    .instrument(span2)
-                    .await?
+                runner.invoke().state(state).call().instrument(span2).await
             };
             debug!("Lua evaluated");
 

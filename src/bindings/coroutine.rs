@@ -137,7 +137,7 @@ mod tests {
     async fn test_all_settled() {
         let source = include_str!("../fixtures/bindings/coroutine/all-settled.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
@@ -147,7 +147,7 @@ mod tests {
             .timeout(Duration::from_millis(110))
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
@@ -157,6 +157,6 @@ mod tests {
             .timeout(Duration::from_millis(110))
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 }

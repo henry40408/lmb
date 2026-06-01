@@ -16,7 +16,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("baseline", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -24,7 +24,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("baseline expr", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -33,14 +33,7 @@ fn lmb_call(c: &mut Criterion) {
         c.bench_function("add", |b| {
             b.to_async(&rt).iter(|| async {
                 let state = State::builder().state(json!(1)).build();
-                runner
-                    .invoke()
-                    .state(state)
-                    .call()
-                    .await
-                    .unwrap()
-                    .result
-                    .unwrap()
+                runner.invoke().state(state).call().await.result.unwrap()
             });
         });
     }
@@ -53,7 +46,7 @@ fn lmb_call(c: &mut Criterion) {
                 || async {
                     runner.swap_reader(Cursor::new(text)).await;
                 },
-                |_| async { runner.invoke().call().await.unwrap().result.unwrap() },
+                |_| async { runner.invoke().call().await.result.unwrap() },
                 BatchSize::SmallInput,
             );
         });
@@ -67,7 +60,7 @@ fn lmb_call(c: &mut Criterion) {
                 || async {
                     runner.swap_reader(Cursor::new(text)).await;
                 },
-                |_| async { runner.invoke().call().await.unwrap().result.unwrap() },
+                |_| async { runner.invoke().call().await.result.unwrap() },
                 BatchSize::SmallInput,
             );
         });
@@ -77,7 +70,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("json encode decode", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -89,7 +82,7 @@ fn lmb_call(c: &mut Criterion) {
             .unwrap();
         c.bench_function("store set get", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -101,7 +94,7 @@ fn lmb_call(c: &mut Criterion) {
             .unwrap();
         c.bench_function("store tx", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -109,7 +102,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("crypto", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -117,7 +110,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("yaml encode decode", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -125,7 +118,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("toml encode decode", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
     {
@@ -133,7 +126,7 @@ fn lmb_call(c: &mut Criterion) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         c.bench_function("pool concurrent", |b| {
             b.to_async(&rt)
-                .iter(|| async { runner.invoke().call().await.unwrap().result.unwrap() });
+                .iter(|| async { runner.invoke().call().await.result.unwrap() });
         });
     }
 }

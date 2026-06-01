@@ -131,6 +131,6 @@ mod tests {
     async fn test_time() {
         let source = include_str!("../fixtures/bindings/time.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 }
