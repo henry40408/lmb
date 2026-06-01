@@ -49,6 +49,9 @@ EXAMPLES:
     Start an HTTP server:
         lmb serve --file handler.lua --bind 0.0.0.0:3000
 
+    Run a supervised daemon:
+        lmb daemon --file loop.lua
+
     Allow environment variable access:
         lmb --allow-env API_KEY eval --file script.lua
 

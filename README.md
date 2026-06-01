@@ -25,6 +25,23 @@ $ lmb eval --file hello.lua
 Hello, world!
 ```
 
+You can also run a script as a supervised daemon that loops until it is told to stop:
+
+```bash
+$ cat > loop.lua <<EOF
+> return function(ctx)
+>     while not ctx.cancelled() do
+>         print("tick")
+>         sleep_ms(1000)
+>     end
+> end
+> EOF
+
+$ lmb daemon --file loop.lua   # Ctrl-C to stop
+tick
+tick
+```
+
 For more information, please read [the guided tour](docs/guided-tour.md).
 
 ## Features
@@ -32,6 +49,7 @@ For more information, please read [the guided tour](docs/guided-tour.md).
 - Batteries included: Comes with handy libraries such as `crypto`, `fs`, `http`, `json`, `time`, `toml`, `yaml`, and more.
 - Easy to use: Run Lua scripts and functions from the command line.
 - Fast: Optimized for quick execution, making it suitable for low-end hardware.
+- Long-running: Run a script as a supervised daemon (`lmb daemon`) that restarts on failure and shuts down gracefully on `SIGTERM`/`SIGINT`.
 - Secure: Runs Lua code in a sandboxed environment provided by Luau to prevent unwanted side effects.
 
 ## Installation
