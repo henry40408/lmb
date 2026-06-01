@@ -77,17 +77,16 @@ backoff = initial
 restarts = 0
 loop {
     start = now
-    let fut = runner.invoke(state)              // pinned, not dropped on signal
+    let fut = runner.invoke(state)              // pinned, not dropped during grace
     outcome = select! {
         r = &mut fut => Finished(r)             // script returned or errored
         _ = shutdown_signal() => {              // SIGTERM / SIGINT
-            set_cancel_flag()                   // ctx.cancelled() now true
+            set_cancel_flag(); record cancel_instant   // feeds the interrupt deadline
             select! {
-                r = &mut fut       => Finished(r)   // finished within grace
-                _ = sleep(grace)   => {             // force: set_interrupt fires
-                    (&mut fut).await                // await the now-interrupted run
-                    Shutdown
-                }
+                r = &mut fut     => Shutdown    // cooperative finish, or CPU loop
+                                                //   force-interrupted -> fut ends
+                _ = sleep(grace) => Shutdown    // async-parked & ignoring flag:
+                                                //   ABANDON fut (drop cancels the await)
             }
         }
     }
@@ -137,22 +136,30 @@ re-read.
 
 ## Graceful shutdown
 
-The daemon owns a shared cancellation flag (`tokio_util::sync::CancellationToken`
-or `Arc<AtomicBool>`) that is visible to the Lua side.
+The daemon owns a shared cancellation flag (`Arc<AtomicBool>`) plus the
+`Instant` at which cancellation began, both visible to the Lua side and to the
+`set_interrupt` hook.
 
 On `SIGTERM` / `SIGINT`:
 
-1. Set the cancellation flag (Lua can observe it).
-2. Wait for the in-flight `invoke` future to complete, up to `--shutdown-grace`.
-3. If it has not finished within the grace period, force termination via the
-   existing `set_interrupt` hook (inject an interrupt error at the next VM
-   checkpoint). `sleep_ms` and other `await` points also unblock when the
-   future is cancelled.
+1. Set the cancellation flag and record the cancel `Instant` (Lua can observe
+   the flag via `ctx.cancelled()`; the interrupt hook uses the instant as its
+   force deadline).
+2. Keep awaiting the in-flight `invoke` future, up to `--shutdown-grace`.
+3. Force termination uses two complementary mechanisms, because `set_interrupt`
+   only fires while Lua bytecode is executing:
+   - **CPU-bound Lua loop** (no `await`): the `set_interrupt` hook self-checks
+     "cancelled and past cancel-instant + grace" and returns an interrupt error,
+     so the future ends. (The daemon's own grace timer cannot fire here, since a
+     CPU-bound poll blocks until the interrupt unwinds it.)
+   - **Parked at an `await`** (`sleep_ms`, `http.fetch`, ...): `set_interrupt`
+     never fires, so the daemon's grace timer elapses and the future is
+     **abandoned (dropped)** — tokio sleeps and I/O are cancel-on-drop.
 4. The daemon exits.
 
 This satisfies both cooperative cancellation (the script can finish its current
 iteration and clean up) and hard cancellation (a script that ignores the flag
-is still stopped).
+is still stopped within the grace period regardless of where it is blocked).
 
 Only `SIGTERM` and `SIGINT` are handled, both via `tokio::signal::unix`, which
 is Unix-only. On Windows only `Ctrl-C` (`SIGINT`) is available; full Windows
@@ -162,9 +169,9 @@ support is a non-goal.
 
 Cancellation is a **generic `Runner` capability**, not a daemon-specific hack.
 `lib.rs` (the library) must not learn about "daemon". Instead the `Runner`
-builder gains an optional cancellation handle (e.g. a
-`tokio_util::sync::CancellationToken` plus an optional force deadline). The
-daemon command in `main.rs` owns the handle and wires it in.
+builder gains an optional cancellation handle: an `Arc<AtomicBool>` flag plus a
+shared cancel `Instant` and grace duration that together form the interrupt's
+force deadline. The daemon command in `main.rs` owns the handle and wires it in.
 
 Two consequences for `invoke()`:
 
@@ -223,7 +230,11 @@ Integration tests:
 - Script that returns normally -> daemon exits 0, no restart.
 - Cancellation delivered -> `ctx.cancelled()` becomes true and the script
   finishes within the grace period.
-- Script that ignores the flag -> force-interrupted after the grace period.
+- Script that ignores the flag, CPU-bound loop -> interrupt-forced, daemon
+  exits within ~grace.
+- Script that ignores the flag, parked in a long `sleep_ms` -> future abandoned,
+  daemon exits within ~grace (asserts a bounded shutdown time, not an
+  open-ended wait).
 
 ## Open questions
 
