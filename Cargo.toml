@@ -68,6 +68,8 @@ tokio = { version = "1.52.3", default-features = false, features = [
   "io-util",
   "macros",
   "rt-multi-thread",
+  "signal",
+  "time",
 ] }
 toml = "1.1.2"
 tracing = "0.1.41"

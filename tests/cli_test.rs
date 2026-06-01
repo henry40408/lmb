@@ -236,6 +236,86 @@ lmb [..]
     }
 }
 
+mod daemon {
+    use super::*;
+
+    #[test]
+    fn exits_success_when_script_returns() {
+        Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .args([
+                "--no-store",
+                "daemon",
+                "--file",
+                "src/fixtures/daemon/return-immediately.lua",
+            ])
+            .assert()
+            .success()
+            .stdout_eq(str![]);
+    }
+
+    #[test]
+    fn exits_failure_after_max_restarts() {
+        Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .args([
+                "--no-store",
+                "daemon",
+                "--file",
+                "src/fixtures/daemon/always-error.lua",
+                "--restart-initial-backoff",
+                "0s",
+                "--restart-max-backoff",
+                "0s",
+                "--max-restarts",
+                "1",
+            ])
+            .assert()
+            .failure();
+    }
+
+    #[test]
+    fn log_watch_prints_error_lines() {
+        // Write a small log, then run the log-watch example with a `limit` so it
+        // stops deterministically after reading every line.
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("app.log");
+        std::fs::write(
+            &log,
+            "line 1: INFO ok\n\
+             line 2: ERROR boom\n\
+             line 3: INFO ok\n\
+             line 4: ERROR bad\n\
+             line 5: INFO ok\n",
+        )
+        .unwrap();
+        // Resolve symlinks so the path matches the canonicalized --allow-read root.
+        let log = std::fs::canonicalize(&log).unwrap();
+        let allow = log.parent().unwrap();
+        let state = format!(r#"{{"path":{:?},"limit":5}}"#, log.to_str().unwrap());
+
+        Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .args([
+                "--no-store",
+                "--allow-read",
+                allow.to_str().unwrap(),
+                "daemon",
+                "--file",
+                "src/fixtures/daemon/log-watch.lua",
+                "--state",
+                &state,
+            ])
+            .assert()
+            .success()
+            .stdout_eq(str![[r#"
+[match 1 @ line 2] line 2: ERROR boom
+[match 2 @ line 4] line 4: ERROR bad
+
+"#]]);
+    }
+}
+
 mod errors {
     use super::*;
 

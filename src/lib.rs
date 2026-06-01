@@ -6,8 +6,8 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+        Arc, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -62,6 +62,61 @@ impl fmt::Display for Timeout {
 
 impl Error for Timeout {}
 
+/// A cooperative cancellation handle shared between a supervisor and the Lua VM.
+///
+/// `is_cancelled` lets a script poll for shutdown and stop on its own. If it does
+/// not, `force_deadline_passed` reports when the grace period after [`cancel`](Self::cancel)
+/// has elapsed, which the VM interrupt hook uses to forcibly stop a runaway script.
+#[derive(Clone, Debug)]
+pub struct Cancellation {
+    cancelled: Arc<AtomicBool>,
+    cancel_at: Arc<OnceLock<Instant>>,
+    grace: Duration,
+}
+
+impl Cancellation {
+    /// Creates a new, un-cancelled handle with the given force grace period.
+    pub fn new(grace: Duration) -> Self {
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+            cancel_at: Arc::new(OnceLock::new()),
+            grace,
+        }
+    }
+
+    /// Signals cancellation and records the instant. Idempotent; the first call wins.
+    pub fn cancel(&self) {
+        let _ = self.cancel_at.set(Instant::now());
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    /// Returns whether cancellation has been signalled (cooperative check).
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    /// Returns whether the grace period has elapsed since cancellation began.
+    ///
+    /// Returns `false` if [`cancel`](Self::cancel) has not yet been called.
+    pub fn force_deadline_passed(&self) -> bool {
+        self.cancel_at
+            .get()
+            .is_some_and(|t| t.elapsed() >= self.grace)
+    }
+}
+
+/// Marker error raised by the VM interrupt hook when a script is forcibly cancelled.
+#[derive(Clone, Debug)]
+pub struct Cancelled;
+
+impl fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Lua script execution was cancelled")
+    }
+}
+
+impl Error for Cancelled {}
+
 /// Represents the state of the Lua script execution
 #[derive(Builder, Debug)]
 pub struct State {
@@ -99,6 +154,9 @@ pub enum LmbError {
     /// Error when the Lua script times out
     #[error("Timeout: {0}")]
     Timeout(#[from] Timeout),
+    /// Error when the Lua script is forcibly cancelled during shutdown
+    #[error("Cancelled: {0}")]
+    Cancelled(#[from] Cancelled),
 }
 
 /// Type alias for the shared reader used in the library.
@@ -123,6 +181,7 @@ pub struct Invoked {
 /// A runner for executing Lua scripts with an input stream
 #[derive(Debug)]
 pub struct Runner {
+    cancellation: Option<Cancellation>,
     func: LuaFunction,
     reader: LmbInput,
     store: Option<LmbStore>,
@@ -160,6 +219,7 @@ impl Runner {
     pub fn new<S, R>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
+        cancellation: Option<Cancellation>,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
@@ -172,6 +232,7 @@ impl Runner {
     {
         let reader = Arc::new(SharedReader::new(reader));
         Self::from_shared_reader(source, reader)
+            .maybe_cancellation(cancellation)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
             .maybe_permissions(permissions)
@@ -185,6 +246,7 @@ impl Runner {
     pub fn from_shared_reader<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: LmbInput,
+        cancellation: Option<Cancellation>,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
@@ -260,6 +322,7 @@ impl Runner {
             store.migrate()?;
         }
         let mut runner = Self {
+            cancellation,
             func,
             reader,
             store,
@@ -279,29 +342,28 @@ impl Runner {
     pub async fn invoke(&self, state: Option<State>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
-        if let Some(timeout) = self.timeout {
-            self.vm.set_interrupt({
-                let used_memory = used_memory.clone();
-                move |vm| {
-                    used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
-                    if start.elapsed() > timeout {
-                        return Err(LuaError::external(Timeout {
-                            elapsed: start.elapsed(),
-                            timeout,
-                        }));
-                    }
-                    Ok(LuaVmState::Continue)
+        let timeout = self.timeout;
+        let cancellation = self.cancellation.clone();
+        self.vm.set_interrupt({
+            let used_memory = used_memory.clone();
+            move |vm| {
+                used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+                if let Some(timeout) = timeout
+                    && start.elapsed() > timeout
+                {
+                    return Err(LuaError::external(Timeout {
+                        elapsed: start.elapsed(),
+                        timeout,
+                    }));
                 }
-            });
-        } else {
-            self.vm.set_interrupt({
-                let used_memory = used_memory.clone();
-                move |vm| {
-                    used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
-                    Ok(LuaVmState::Continue)
+                if let Some(cancellation) = &cancellation
+                    && cancellation.force_deadline_passed()
+                {
+                    return Err(LuaError::external(Cancelled));
                 }
-            });
-        }
+                Ok(LuaVmState::Continue)
+            }
+        });
 
         let ctx = self.vm.create_table()?;
         if let Some(state) = &state {
@@ -316,6 +378,14 @@ impl Runner {
             ctx.set(
                 "store",
                 StoreBinding::builder().store(lmb_store.clone()).build(),
+            )?;
+        }
+        if let Some(cancellation) = &self.cancellation {
+            let cancellation = cancellation.clone();
+            ctx.set(
+                "cancelled",
+                self.vm
+                    .create_function(move |_, ()| Ok(cancellation.is_cancelled()))?,
             )?;
         }
 
@@ -348,6 +418,8 @@ impl Runner {
                             return Ok(invoked
                                 .result(Err(LmbError::Timeout(timeout.clone())))
                                 .build());
+                        } else if ee.downcast_ref::<Cancelled>().is_some() {
+                            return Ok(invoked.result(Err(LmbError::Cancelled(Cancelled))).build());
                         } else {
                             return Ok(invoked.result(Err(LmbError::Lua(e))).build());
                         }
@@ -557,5 +629,69 @@ mod tests {
         let result = super::process_pcall_error(&[number_value], &lua);
         let err = result.unwrap();
         assert!(matches!(err, LmbError::LuaValue(Value::Number(n)) if n.as_f64() == Some(42.0)));
+    }
+
+    #[test]
+    fn cancelled_error_displays_message() {
+        assert_eq!(Cancelled.to_string(), "Lua script execution was cancelled");
+    }
+
+    #[test]
+    fn cancellation_flag_and_force_deadline() {
+        use std::time::Duration;
+        let c = Cancellation::new(Duration::from_millis(50));
+        // Not cancelled initially.
+        assert!(!c.is_cancelled());
+        assert!(!c.force_deadline_passed());
+        // After cancel(), the flag is set but the grace window has not elapsed.
+        c.cancel();
+        assert!(c.is_cancelled());
+        assert!(!c.force_deadline_passed());
+        // After the grace window, the force deadline has passed.
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(c.force_deadline_passed());
+    }
+
+    #[tokio::test]
+    async fn ctx_cancelled_is_observable_and_cooperative() {
+        use std::time::Duration;
+        use tokio::io::empty;
+        let cancellation = Cancellation::new(Duration::from_secs(10));
+        // Script loops until ctx.cancelled() becomes true, then returns "stopped".
+        let source = r#"return function(ctx)
+            while not ctx.cancelled() do sleep_ms(5) end
+            return "stopped"
+        end"#;
+        let runner = Runner::builder(source, empty())
+            .cancellation(cancellation.clone())
+            .build()
+            .unwrap();
+        let handle = tokio::spawn(async move { runner.invoke().call().await });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        cancellation.cancel();
+        let invoked = handle.await.unwrap().unwrap();
+        assert_eq!(invoked.result.unwrap(), json!("stopped"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cpu_loop_is_force_interrupted_after_grace() {
+        use std::time::Duration;
+        use tokio::io::empty;
+        let cancellation = Cancellation::new(Duration::from_millis(100));
+        // Tight CPU loop that ignores ctx.cancelled().
+        let source = r#"return function(ctx) while true do end end"#;
+        let runner = Runner::builder(source, empty())
+            .cancellation(cancellation.clone())
+            .build()
+            .unwrap();
+        let handle: tokio::task::JoinHandle<LmbResult<Invoked>> =
+            tokio::spawn(async move { runner.invoke().call().await });
+        cancellation.cancel();
+        let invoked = tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("invoke should be force-interrupted, not hang")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(invoked.result, Err(LmbError::Cancelled(_))));
     }
 }

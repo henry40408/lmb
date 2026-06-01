@@ -25,6 +25,58 @@ $ lmb eval --file hello.lua
 Hello, world!
 ```
 
+You can also run a script as a supervised daemon that loops until it is told to stop:
+
+```bash
+$ cat > loop.lua <<EOF
+> return function(ctx)
+>     while not ctx.cancelled() do
+>         print("tick")
+>         sleep_ms(1000)
+>     end
+> end
+> EOF
+
+$ lmb daemon --file loop.lua   # Ctrl-C to stop
+tick
+tick
+```
+
+A more realistic example tails a log file and prints every line containing
+`ERROR`. See [`src/fixtures/daemon/log-watch.lua`](src/fixtures/daemon/log-watch.lua):
+
+```lua
+return function(ctx)
+    local fs = require("@lmb/fs") -- require INSIDE the returned function
+
+    local path = ctx.state.path -- log path passed via --state
+    for line in fs:tail(path, { from = "start", poll_interval = 100 }) do
+        if string.find(line, "ERROR") then
+            print(line)
+        end
+        if ctx.cancelled() then -- graceful shutdown on SIGTERM/SIGINT
+            break
+        end
+    end
+end
+```
+
+```bash
+$ lmb --allow-read /var/log daemon \
+      --file log-watch.lua \
+      --state '{"path": "/var/log/app.log"}'
+```
+
+Notes:
+
+- `require(...)` must be called **inside** the returned function — at the top
+  level the `@lmb/*` modules are not registered yet.
+- `ctx.cancelled()` becomes `true` after a `SIGTERM`/`SIGINT`; check it to stop
+  cleanly. `fs:tail` only re-checks it when a new line arrives, so on a quiet
+  log use a `sleep_ms`-based poll loop instead if you need immediate shutdown.
+- Pass `{"path": "...", "limit": N}` to stop after `N` lines (handy for tests or
+  one-shot scans); omit `limit` to follow the log until stopped.
+
 For more information, please read [the guided tour](docs/guided-tour.md).
 
 ## Features
@@ -32,6 +84,7 @@ For more information, please read [the guided tour](docs/guided-tour.md).
 - Batteries included: Comes with handy libraries such as `crypto`, `fs`, `http`, `json`, `time`, `toml`, `yaml`, and more.
 - Easy to use: Run Lua scripts and functions from the command line.
 - Fast: Optimized for quick execution, making it suitable for low-end hardware.
+- Long-running: Run a script as a supervised daemon (`lmb daemon`) that restarts on failure and shuts down gracefully on `SIGTERM`/`SIGINT`.
 - Secure: Runs Lua code in a sandboxed environment provided by Luau to prevent unwanted side effects.
 
 ## Installation
