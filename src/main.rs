@@ -185,11 +185,50 @@ EXAMPLES:
         #[clap(long, env = "STATE")]
         state: Option<String>,
     },
+    /// Run a Lua script as a supervised long-running daemon (no HTTP)
+    #[clap(after_help = "\
+EXAMPLES:
+    lmb daemon --file loop.lua
+    lmb daemon --file loop.lua --shutdown-grace 30s
+    lmb daemon --file loop.lua --restart-max-backoff 2m --max-restarts 10")]
+    Daemon {
+        /// Path to the Lua script file, use '-' for stdin
+        #[clap(long, value_parser, env = "FILE_PATH")]
+        file: Input,
+        /// JSON state passed to the Lua script as ctx.state
+        #[clap(long, env = "STATE")]
+        state: Option<String>,
+        /// Initial backoff after a failure (e.g., 1s)
+        #[clap(long, default_value = "1s", env = "RESTART_INITIAL_BACKOFF")]
+        restart_initial_backoff: jiff::Span,
+        /// Maximum backoff between restarts (e.g., 60s)
+        #[clap(long, default_value = "60s", env = "RESTART_MAX_BACKOFF")]
+        restart_max_backoff: jiff::Span,
+        /// Reset backoff and failure count after the script runs stably this long
+        #[clap(long, default_value = "60s", env = "RESTART_RESET_AFTER")]
+        restart_reset_after: jiff::Span,
+        /// Give up after this many consecutive failures (0 = unlimited)
+        #[clap(long, default_value_t = 0, env = "MAX_RESTARTS")]
+        max_restarts: u32,
+        /// Grace period for the script to stop after a signal (e.g., 10s)
+        #[clap(long, default_value = "10s", env = "SHUTDOWN_GRACE")]
+        shutdown_grace: jiff::Span,
+    },
 }
 
 fn parse_timeout(span: Option<jiff::Span>) -> anyhow::Result<Option<Duration>> {
     match span {
         None => Ok(Some(Duration::from_secs(30))),
+        Some(t) if t.is_zero() => Ok(None),
+        Some(t) => Ok(Some(Duration::try_from(t)?)),
+    }
+}
+
+/// Like `parse_timeout`, but defaults to disabled (None) when unspecified, since
+/// a supervised loop is expected to run indefinitely.
+fn parse_daemon_timeout(span: Option<jiff::Span>) -> anyhow::Result<Option<Duration>> {
+    match span {
+        None => Ok(None),
         Some(t) if t.is_zero() => Ok(None),
         Some(t) => Ok(Some(Duration::try_from(t)?)),
     }
@@ -497,6 +536,74 @@ async fn try_main() -> anyhow::Result<()> {
             info!("Listening on {}", listener.local_addr()?);
             axum::serve(listener, app).await?;
         }
+        Command::Daemon {
+            mut file,
+            state,
+            restart_initial_backoff,
+            restart_max_backoff,
+            restart_reset_after,
+            max_restarts,
+            shutdown_grace,
+        } => {
+            let state = state
+                .as_ref()
+                .map(|s| match serde_json::from_str::<Value>(s) {
+                    Ok(value) => value,
+                    Err(_) => json!(s.clone()), // treat invalid value as string
+                });
+            debug!("State: {state:?}");
+
+            let http_timeout = parse_timeout(opts.http_timeout)?;
+            debug!("Using HTTP timeout: {http_timeout:?}");
+            let timeout = parse_daemon_timeout(opts.timeout)?;
+            debug!("Using timeout: {timeout:?}");
+
+            let mut source = String::new();
+            file.read_to_string(&mut source)?;
+
+            let name = if file.is_local() {
+                file.path().to_string_lossy().to_string()
+            } else if file.is_std() {
+                "(stdin)".to_string()
+            } else {
+                bail!("Expected a local file or a stdin input, but got: {file}");
+            };
+
+            if opts.store_path.is_none() && !opts.no_store {
+                #[cfg(feature = "postgres")]
+                if opts.store_url.is_none() {
+                    warn!("No store path specified, using in-memory store");
+                }
+                #[cfg(not(feature = "postgres"))]
+                warn!("No store path specified, using in-memory store");
+            }
+            let store = open_store_connection(
+                opts.store_path,
+                #[cfg(feature = "postgres")]
+                opts.store_url,
+                opts.no_store,
+            )?;
+
+            let config = daemon::DaemonConfig::builder()
+                .source(source)
+                .name(name)
+                .maybe_state(state)
+                .permissions(permissions)
+                .maybe_store(store)
+                .maybe_http_timeout(http_timeout)
+                .maybe_timeout(timeout)
+                .initial_backoff(Duration::try_from(restart_initial_backoff)?)
+                .max_backoff(Duration::try_from(restart_max_backoff)?)
+                .reset_after(Duration::try_from(restart_reset_after)?)
+                .max_restarts(max_restarts)
+                .grace(Duration::try_from(shutdown_grace)?)
+                .build();
+
+            let code = daemon::run(config, daemon::shutdown_signal()).await?;
+            if code != 0 {
+                std::process::exit(i32::from(code));
+            }
+        }
     }
 
     Ok(())
@@ -537,4 +644,25 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daemon_timeout_defaults_to_disabled() {
+        // Unspecified -> disabled (unlike eval/serve which default to 30s).
+        assert_eq!(parse_daemon_timeout(None).unwrap(), None);
+        // Explicit zero -> disabled.
+        assert_eq!(
+            parse_daemon_timeout(Some("0s".parse().unwrap())).unwrap(),
+            None
+        );
+        // Explicit non-zero -> that duration.
+        assert_eq!(
+            parse_daemon_timeout(Some("5s".parse().unwrap())).unwrap(),
+            Some(Duration::from_secs(5))
+        );
+    }
 }
