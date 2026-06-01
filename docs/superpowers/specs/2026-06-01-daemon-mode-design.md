@@ -66,11 +66,12 @@ still set it explicitly to bound a single supervised run.
 
 ## Architecture
 
-The supervisor is a thin Rust loop. The in-flight `invoke` future must **not**
-be dropped on a stop signal — it has to stay alive so the grace period can wait
-on the very same execution. So the future is pinned and the signal branch sets
-the cancellation flag, then keeps awaiting that same future with a grace
-timeout. Pseudocode:
+The supervisor is a thin Rust loop. On a stop signal the in-flight `invoke`
+future is **kept alive throughout the grace period** — not dropped immediately —
+so the same execution can finish cooperatively. Only once the grace period
+elapses is it abandoned (see "Graceful shutdown"). So the future is pinned and
+the signal branch sets the cancellation flag, then keeps awaiting that same
+future with a grace timeout. Pseudocode:
 
 ```
 backoff = initial
