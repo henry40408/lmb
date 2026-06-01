@@ -50,8 +50,8 @@ lmb daemon --file loop.lua [--state '{...}']
 | `--state` | none | JSON state passed to the script as `ctx.state`. |
 | `--restart-initial-backoff` | `1s` | Wait after the first failure. |
 | `--restart-max-backoff` | `60s` | Upper bound for exponential backoff. |
-| `--restart-reset-after` | `60s` | If the script ran longer than this before failing, reset backoff to the initial value. |
-| `--max-restarts` | `0` (unlimited) | Give up after this many consecutive failures; daemon exits non-zero. |
+| `--restart-reset-after` | `60s` | If the script ran longer than this before failing, treat it as having run stably: reset **both** the backoff and the consecutive-failure counter. |
+| `--max-restarts` | `0` (unlimited) | Give up after this many consecutive failures; daemon exits non-zero. A stable run (see `--restart-reset-after`) resets this counter, so it only catches rapid crash-loops, not sporadic crashes spread over a long uptime. |
 | `--shutdown-grace` | `10s` | After a stop signal, time allowed for the script to finish on its own before force interruption. |
 
 Durations use `jiff::Span` parsing, consistent with the existing `--timeout`
@@ -66,28 +66,43 @@ still set it explicitly to bound a single supervised run.
 
 ## Architecture
 
-The supervisor is a thin Rust loop. Pseudocode:
+The supervisor is a thin Rust loop. The in-flight `invoke` future must **not**
+be dropped on a stop signal — it has to stay alive so the grace period can wait
+on the very same execution. So the future is pinned and the signal branch sets
+the cancellation flag, then keeps awaiting that same future with a grace
+timeout. Pseudocode:
 
 ```
 backoff = initial
 restarts = 0
 loop {
     start = now
-    result = select! {
-        r = runner.invoke(state) => r        // run the script
-        _ = shutdown_signal()    => Shutdown  // SIGTERM / SIGINT
+    let fut = runner.invoke(state)              // pinned, not dropped on signal
+    outcome = select! {
+        r = &mut fut => Finished(r)             // script returned or errored
+        _ = shutdown_signal() => {              // SIGTERM / SIGINT
+            set_cancel_flag()                   // ctx.cancelled() now true
+            select! {
+                r = &mut fut       => Finished(r)   // finished within grace
+                _ = sleep(grace)   => {             // force: set_interrupt fires
+                    (&mut fut).await                // await the now-interrupted run
+                    Shutdown
+                }
+            }
+        }
     }
-    match result {
-        Shutdown            => graceful_shutdown(); break
-        Ok(normal return)   => exit(0)         // task complete, no restart
-        Err(script error)   => {
-            if now - start >= reset_after { backoff = initial }
+    match outcome {
+        Shutdown                       => break       // graceful stop
+        Finished(invoke success)       => exit(0)     // task complete, no restart
+        Finished(invoke failure)       => {
+            stable = (now - start) >= reset_after
+            if stable { backoff = initial; restarts = 0 }
             restarts += 1
             if max_restarts != 0 && restarts >= max_restarts { exit(non-zero) }
             log restart with backoff
-            sleep(backoff)
+            sleep(backoff)                            // interruptible by signal
             backoff = min(backoff * 2, max_backoff)
-            runner = rebuild_runner()           // fresh VM
+            runner = rebuild_runner()                 // fresh VM
         }
     }
 }
@@ -97,6 +112,28 @@ loop {
   corrupted state from a crash.
 - A successful (non-error) return is treated as task completion: the daemon
   exits 0 and does not restart.
+- A stable run resets both backoff and the consecutive-failure counter before
+  counting the current failure.
+- The backoff `sleep` is itself interruptible by a stop signal, so shutdown is
+  responsive even while waiting to restart.
+
+### Success vs failure mapping
+
+`Runner::invoke` returns `LmbResult<Invoked>`, and `Invoked.result` is itself a
+`Result<Value, LmbError>`. The supervisor maps:
+
+- inner `result: Ok(value)` -> **success** -> daemon exits 0.
+- inner `result: Err(e)` (including `LmbError::Timeout` when the user set a
+  timeout) -> **failure** -> restart.
+- outer `Err` from `invoke` (e.g. I/O while building state) -> **failure** ->
+  restart.
+
+### Source buffering
+
+Because each restart rebuilds the VM, the script source is read into a `String`
+**once** at startup and reused for every rebuild — mirroring how `serve`
+buffers its source. This is required for `--file -` (stdin), which cannot be
+re-read.
 
 ## Graceful shutdown
 
@@ -117,11 +154,31 @@ This satisfies both cooperative cancellation (the script can finish its current
 iteration and clean up) and hard cancellation (a script that ignores the flag
 is still stopped).
 
+Only `SIGTERM` and `SIGINT` are handled, both via `tokio::signal::unix`, which
+is Unix-only. On Windows only `Ctrl-C` (`SIGINT`) is available; full Windows
+support is a non-goal.
+
+## Runner cancellation capability
+
+Cancellation is a **generic `Runner` capability**, not a daemon-specific hack.
+`lib.rs` (the library) must not learn about "daemon". Instead the `Runner`
+builder gains an optional cancellation handle (e.g. a
+`tokio_util::sync::CancellationToken` plus an optional force deadline). The
+daemon command in `main.rs` owns the handle and wires it in.
+
+Two consequences for `invoke()`:
+
+- `ctx.cancelled()` is injected into `ctx` **only when a cancellation handle is
+  provided**, so it appears in daemon mode but not in `eval` / `serve`.
+- The VM `set_interrupt` hook can only hold **one** closure. The existing
+  timeout check and the new force-cancel check must live in the **same**
+  closure: it returns an interrupt error if the timeout elapsed *or* if
+  cancellation is active and the grace deadline has passed.
+
 ## Lua-facing API
 
-In daemon mode only, `ctx` gains a `ctx.cancelled()` function that returns the
-current cancellation flag as a boolean. It is injected only for this subcommand,
-so it does not appear in `eval` or `serve`.
+In daemon mode, `ctx` gains a `ctx.cancelled()` function that returns the
+current cancellation flag as a boolean (see "Runner cancellation capability").
 
 ```lua
 -- loop.lua
@@ -153,8 +210,12 @@ Unit tests:
 
 - Backoff computation: exponential growth, capped at `--restart-max-backoff`,
   reset after `--restart-reset-after`.
-- `--max-restarts` giving up with a non-zero exit.
+- `--restart-reset-after` resets both backoff and the consecutive-failure
+  counter (a slow flapping script does not hit `--max-restarts`).
+- `--max-restarts` giving up with a non-zero exit (rapid crash-loop).
 - Timeout defaulting to disabled in daemon mode.
+- Success vs failure mapping: inner `Ok` -> exit 0; inner/outer `Err` ->
+  restart.
 
 Integration tests:
 
@@ -166,5 +227,12 @@ Integration tests:
 
 ## Open questions
 
-None outstanding. Subcommand name (`daemon`), Lua API shape (`ctx.cancelled()`),
-and the daemon-mode timeout default (disabled) are all confirmed.
+None outstanding. Confirmed decisions:
+
+- Subcommand name: `daemon`.
+- Lua API shape: `ctx.cancelled()`.
+- Daemon-mode timeout default: disabled.
+- `--restart-reset-after` resets both backoff and the consecutive-failure
+  counter.
+- Restart only on failure; clean return exits 0.
+- Graceful shutdown: cooperative flag plus grace-period force interrupt.
