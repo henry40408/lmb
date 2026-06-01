@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 use tracing::{Instrument, Level, debug, debug_span, info, warn};
 use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
+mod daemon;
 mod serve;
 mod tour;
 
