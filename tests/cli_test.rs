@@ -236,6 +236,45 @@ lmb [..]
     }
 }
 
+mod daemon {
+    use super::*;
+
+    #[test]
+    fn exits_success_when_script_returns() {
+        Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .args([
+                "--no-store",
+                "daemon",
+                "--file",
+                "src/fixtures/daemon/return-immediately.lua",
+            ])
+            .assert()
+            .success()
+            .stdout_eq(str![]);
+    }
+
+    #[test]
+    fn exits_failure_after_max_restarts() {
+        Command::new(cmd::cargo_bin!("lmb"))
+            .env("NO_COLOR", "true")
+            .args([
+                "--no-store",
+                "daemon",
+                "--file",
+                "src/fixtures/daemon/always-error.lua",
+                "--restart-initial-backoff",
+                "0s",
+                "--restart-max-backoff",
+                "0s",
+                "--max-restarts",
+                "1",
+            ])
+            .assert()
+            .failure();
+    }
+}
+
 mod errors {
     use super::*;
 
