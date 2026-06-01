@@ -42,6 +42,41 @@ tick
 tick
 ```
 
+A more realistic example tails a log file and prints every line containing
+`ERROR`. See [`src/fixtures/daemon/log-watch.lua`](src/fixtures/daemon/log-watch.lua):
+
+```lua
+return function(ctx)
+    local fs = require("@lmb/fs") -- require INSIDE the returned function
+
+    local path = ctx.state.path -- log path passed via --state
+    for line in fs:tail(path, { from = "start", poll_interval = 100 }) do
+        if string.find(line, "ERROR") then
+            print(line)
+        end
+        if ctx.cancelled() then -- graceful shutdown on SIGTERM/SIGINT
+            break
+        end
+    end
+end
+```
+
+```bash
+$ lmb --allow-read /var/log daemon \
+      --file log-watch.lua \
+      --state '{"path": "/var/log/app.log"}'
+```
+
+Notes:
+
+- `require(...)` must be called **inside** the returned function — at the top
+  level the `@lmb/*` modules are not registered yet.
+- `ctx.cancelled()` becomes `true` after a `SIGTERM`/`SIGINT`; check it to stop
+  cleanly. `fs:tail` only re-checks it when a new line arrives, so on a quiet
+  log use a `sleep_ms`-based poll loop instead if you need immediate shutdown.
+- Pass `{"path": "...", "limit": N}` to stop after `N` lines (handy for tests or
+  one-shot scans); omit `limit` to follow the log until stopped.
+
 For more information, please read [the guided tour](docs/guided-tour.md).
 
 ## Features
