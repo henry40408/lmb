@@ -140,6 +140,7 @@ pub(crate) async fn run<F>(config: DaemonConfig, shutdown: F) -> anyhow::Result<
 where
     F: Future<Output = ()>,
 {
+    info!("daemon starting");
     let cancellation = Cancellation::new(config.grace);
     let mut policy = RestartPolicy::new(
         config.initial_backoff,
@@ -190,7 +191,14 @@ where
             return Ok(0);
         }
 
-        match policy.record_failure(start.elapsed()) {
+        // A run that lasted at least `reset_after` is considered stable;
+        // `RestartPolicy::record_failure` resets the backoff and failure counter
+        // in that case. Log it here (the policy itself is pure / log-free).
+        let ran = start.elapsed();
+        if ran >= config.reset_after {
+            info!("script ran stably for {ran:?}, resetting backoff and failure count");
+        }
+        match policy.record_failure(ran) {
             RestartDecision::GiveUp => {
                 warn!("max restarts reached, giving up");
                 return Ok(1);

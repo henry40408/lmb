@@ -228,8 +228,13 @@ stop signal forces it down after the grace period.
 - Reuse the existing `tracing` setup. Log (structured) on: start, each restart
   with the chosen backoff, backoff reset, giving up after `--max-restarts`, and
   on receiving a stop signal. Restarts/backoff at `warn`; lifecycle at `info`.
-- Reuse the existing `report_error` rendering for script errors before a
-  restart.
+- Script errors are logged concisely via `tracing` (`warn!("script failed: {e}")`),
+  not rendered through `report_error`. A supervised daemon restarts continuously,
+  so a concise one-line log per crash (the `LmbError` `Display` already includes
+  the Lua error location) suits a daemon log stream (e.g. journald) far better
+  than emitting a multi-line source-annotated error box on every restart. The
+  rendered `report_error` view remains the right choice for the one-shot `eval`
+  command, not for the daemon.
 
 ## Testing (TDD)
 
