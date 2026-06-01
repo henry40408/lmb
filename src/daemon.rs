@@ -1,6 +1,12 @@
 //! Supervised long-running daemon mode.
 
-use std::time::Duration;
+use std::{future::Future, time::Duration, time::Instant};
+
+use bon::Builder;
+use lmb::{Cancellation, LmbStore, Runner, State, permission::Permissions};
+use serde_json::Value;
+use tokio::io::empty;
+use tracing::{info, warn};
 
 /// What the supervisor should do after a failed run.
 #[derive(Debug, PartialEq, Eq)]
@@ -54,12 +60,234 @@ impl RestartPolicy {
     }
 }
 
+/// Configuration for a daemon run.
+#[derive(Builder)]
+pub(crate) struct DaemonConfig {
+    #[builder(into)]
+    pub source: String,
+    #[builder(into)]
+    pub name: Option<String>,
+    pub state: Option<Value>,
+    pub permissions: Option<Permissions>,
+    pub store: Option<LmbStore>,
+    pub http_timeout: Option<Duration>,
+    pub timeout: Option<Duration>,
+    pub initial_backoff: Duration,
+    pub max_backoff: Duration,
+    pub reset_after: Duration,
+    pub max_restarts: u32,
+    pub grace: Duration,
+}
+
+/// Builds a fresh `Runner` for one supervised run.
+fn build_runner(config: &DaemonConfig, cancellation: Cancellation) -> anyhow::Result<Runner> {
+    let runner = Runner::builder(config.source.clone(), empty())
+        .cancellation(cancellation)
+        .maybe_default_name(config.name.clone())
+        .maybe_http_timeout(config.http_timeout)
+        .maybe_permissions(config.permissions.clone())
+        .maybe_store(config.store.clone())
+        .maybe_timeout(config.timeout)
+        .build()?;
+    Ok(runner)
+}
+
+/// Resolves whether a finished run was a clean completion or a failure.
+///
+/// Only called from the task-completion (non-shutdown) path: a forced cancellation
+/// during shutdown lands in the inner select and its result is discarded there.
+fn was_failure(joined: Result<lmb::LmbResult<lmb::Invoked>, tokio::task::JoinError>) -> bool {
+    match joined {
+        Ok(Ok(invoked)) => match invoked.result {
+            Ok(_) => false,
+            Err(e) => {
+                warn!("script failed: {e}");
+                true
+            }
+        },
+        Ok(Err(e)) => {
+            warn!("invoke error: {e}");
+            true
+        }
+        Err(e) => {
+            warn!("daemon task panicked: {e}");
+            true
+        }
+    }
+}
+
+/// Future that resolves when a stop signal (SIGTERM/SIGINT) is received.
+#[cfg(unix)]
+pub(crate) async fn shutdown_signal() {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut term = signal(SignalKind::terminate()).expect("install SIGTERM handler");
+    let mut int = signal(SignalKind::interrupt()).expect("install SIGINT handler");
+    tokio::select! {
+        _ = term.recv() => {},
+        _ = int.recv() => {},
+    }
+}
+
+/// Future that resolves when Ctrl-C is received (non-Unix fallback).
+#[cfg(not(unix))]
+pub(crate) async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+/// Runs the supervised loop until the script completes, the restart policy gives
+/// up, or a shutdown is requested. Returns the process exit code (0 = success).
+pub(crate) async fn run<F>(config: DaemonConfig, shutdown: F) -> anyhow::Result<u8>
+where
+    F: Future<Output = ()>,
+{
+    let cancellation = Cancellation::new(config.grace);
+    let mut policy = RestartPolicy::new(
+        config.initial_backoff,
+        config.max_backoff,
+        config.reset_after,
+        config.max_restarts,
+    );
+    tokio::pin!(shutdown);
+
+    loop {
+        let runner = build_runner(&config, cancellation.clone())?;
+        let state = config.state.clone();
+        let start = Instant::now();
+        let mut handle = tokio::spawn(async move {
+            let state = State::builder().maybe_state(state).build();
+            runner.invoke().state(state).call().await
+        });
+
+        let shutting_down = tokio::select! {
+            // `biased` + shutdown-first: whenever a stop signal is ready it is always
+            // selected, so the (reused) shutdown future is never polled after it
+            // completes — avoids a Poll::Ready-after-completion contract violation.
+            biased;
+            _ = &mut shutdown => {
+                info!("received stop signal, shutting down");
+                cancellation.cancel();
+                tokio::select! {
+                    biased;
+                    _ = &mut handle => {}
+                    _ = tokio::time::sleep(config.grace) => {
+                        warn!("grace period elapsed, aborting script");
+                        handle.abort();
+                        let _ = handle.await;
+                    }
+                }
+                true
+            }
+            joined = &mut handle => {
+                if !was_failure(joined) {
+                    info!("script returned, daemon exiting");
+                    return Ok(0);
+                }
+                false
+            }
+        };
+
+        if shutting_down {
+            return Ok(0);
+        }
+
+        match policy.record_failure(start.elapsed()) {
+            RestartDecision::GiveUp => {
+                warn!("max restarts reached, giving up");
+                return Ok(1);
+            }
+            RestartDecision::Backoff(wait) => {
+                info!("restarting in {wait:?}");
+                tokio::select! {
+                    biased;
+                    _ = &mut shutdown => {
+                        info!("stop signal during backoff, exiting");
+                        return Ok(0);
+                    }
+                    _ = tokio::time::sleep(wait) => {}
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use std::future::pending;
+
     fn secs(n: u64) -> Duration {
         Duration::from_secs(n)
+    }
+
+    fn config(source: &str, max_restarts: u32, grace: Duration) -> DaemonConfig {
+        DaemonConfig::builder()
+            .source(source.to_string())
+            .initial_backoff(Duration::ZERO)
+            .max_backoff(Duration::ZERO)
+            .reset_after(secs(3600))
+            .max_restarts(max_restarts)
+            .grace(grace)
+            .build()
+    }
+
+    #[tokio::test]
+    async fn exits_success_when_script_returns() {
+        let cfg = config("return function(ctx) return 1 end", 0, secs(1));
+        let code = run(cfg, pending::<()>()).await.unwrap();
+        assert_eq!(code, 0);
+    }
+
+    #[tokio::test]
+    async fn exits_failure_after_max_restarts() {
+        let cfg = config("return function(ctx) error('boom') end", 2, secs(1));
+        let code = run(cfg, pending::<()>()).await.unwrap();
+        assert_eq!(code, 1);
+    }
+
+    #[tokio::test]
+    async fn graceful_shutdown_cooperative_returns_success() {
+        let cfg = config(
+            "return function(ctx) while not ctx.cancelled() do sleep_ms(5) end return end",
+            0,
+            secs(1),
+        );
+        let shutdown = async { tokio::time::sleep(Duration::from_millis(40)).await };
+        let code = tokio::time::timeout(secs(5), run(cfg, shutdown))
+            .await
+            .expect("should not hang")
+            .unwrap();
+        assert_eq!(code, 0);
+    }
+
+    #[tokio::test]
+    async fn graceful_shutdown_abandons_async_parked_script() {
+        let cfg = config(
+            "return function(ctx) sleep_ms(600000) end",
+            0,
+            Duration::from_millis(150),
+        );
+        let shutdown = async { tokio::time::sleep(Duration::from_millis(40)).await };
+        let code = tokio::time::timeout(secs(5), run(cfg, shutdown))
+            .await
+            .expect("should not hang")
+            .unwrap();
+        assert_eq!(code, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn graceful_shutdown_force_interrupts_cpu_loop() {
+        let cfg = config(
+            "return function(ctx) while true do end end",
+            0,
+            Duration::from_millis(150),
+        );
+        let shutdown = async { tokio::time::sleep(Duration::from_millis(40)).await };
+        let code = tokio::time::timeout(secs(5), run(cfg, shutdown))
+            .await
+            .expect("should not hang")
+            .unwrap();
+        assert_eq!(code, 0);
     }
 
     #[test]
