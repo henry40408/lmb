@@ -348,18 +348,18 @@ impl Runner {
             let used_memory = used_memory.clone();
             move |vm| {
                 used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
-                if let Some(timeout) = timeout {
-                    if start.elapsed() > timeout {
-                        return Err(LuaError::external(Timeout {
-                            elapsed: start.elapsed(),
-                            timeout,
-                        }));
-                    }
+                if let Some(timeout) = timeout
+                    && start.elapsed() > timeout
+                {
+                    return Err(LuaError::external(Timeout {
+                        elapsed: start.elapsed(),
+                        timeout,
+                    }));
                 }
-                if let Some(cancellation) = &cancellation {
-                    if cancellation.force_deadline_passed() {
-                        return Err(LuaError::external(Cancelled));
-                    }
+                if let Some(cancellation) = &cancellation
+                    && cancellation.force_deadline_passed()
+                {
+                    return Err(LuaError::external(Cancelled));
                 }
                 Ok(LuaVmState::Continue)
             }

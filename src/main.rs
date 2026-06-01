@@ -604,7 +604,7 @@ async fn try_main() -> anyhow::Result<()> {
 
             let code = daemon::run(config, daemon::shutdown_signal()).await?;
             if code != 0 {
-                std::process::exit(i32::from(code));
+                bail!("daemon gave up after reaching the maximum number of restarts");
             }
         }
     }
