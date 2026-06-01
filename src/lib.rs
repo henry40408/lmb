@@ -181,6 +181,7 @@ pub struct Invoked {
 /// A runner for executing Lua scripts with an input stream
 #[derive(Debug)]
 pub struct Runner {
+    cancellation: Option<Cancellation>,
     func: LuaFunction,
     reader: LmbInput,
     store: Option<LmbStore>,
@@ -218,6 +219,7 @@ impl Runner {
     pub fn new<S, R>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: R,
+        cancellation: Option<Cancellation>,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
@@ -230,6 +232,7 @@ impl Runner {
     {
         let reader = Arc::new(SharedReader::new(reader));
         Self::from_shared_reader(source, reader)
+            .maybe_cancellation(cancellation)
             .maybe_default_name(default_name)
             .maybe_http_timeout(http_timeout)
             .maybe_permissions(permissions)
@@ -243,6 +246,7 @@ impl Runner {
     pub fn from_shared_reader<S>(
         #[builder(start_fn)] source: S,
         #[builder(start_fn)] reader: LmbInput,
+        cancellation: Option<Cancellation>,
         #[builder(into)] default_name: Option<String>,
         http_timeout: Option<Duration>,
         permissions: Option<Permissions>,
@@ -318,6 +322,7 @@ impl Runner {
             store.migrate()?;
         }
         let mut runner = Self {
+            cancellation,
             func,
             reader,
             store,
@@ -337,29 +342,28 @@ impl Runner {
     pub async fn invoke(&self, state: Option<State>) -> LmbResult<Invoked> {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
-        if let Some(timeout) = self.timeout {
-            self.vm.set_interrupt({
-                let used_memory = used_memory.clone();
-                move |vm| {
-                    used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+        let timeout = self.timeout;
+        let cancellation = self.cancellation.clone();
+        self.vm.set_interrupt({
+            let used_memory = used_memory.clone();
+            move |vm| {
+                used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
+                if let Some(timeout) = timeout {
                     if start.elapsed() > timeout {
                         return Err(LuaError::external(Timeout {
                             elapsed: start.elapsed(),
                             timeout,
                         }));
                     }
-                    Ok(LuaVmState::Continue)
                 }
-            });
-        } else {
-            self.vm.set_interrupt({
-                let used_memory = used_memory.clone();
-                move |vm| {
-                    used_memory.fetch_max(vm.used_memory(), Ordering::Relaxed);
-                    Ok(LuaVmState::Continue)
+                if let Some(cancellation) = &cancellation {
+                    if cancellation.force_deadline_passed() {
+                        return Err(LuaError::external(Cancelled));
+                    }
                 }
-            });
-        }
+                Ok(LuaVmState::Continue)
+            }
+        });
 
         let ctx = self.vm.create_table()?;
         if let Some(state) = &state {
@@ -374,6 +378,14 @@ impl Runner {
             ctx.set(
                 "store",
                 StoreBinding::builder().store(lmb_store.clone()).build(),
+            )?;
+        }
+        if let Some(cancellation) = &self.cancellation {
+            let cancellation = cancellation.clone();
+            ctx.set(
+                "cancelled",
+                self.vm
+                    .create_function(move |_, ()| Ok(cancellation.is_cancelled()))?,
             )?;
         }
 
@@ -406,6 +418,8 @@ impl Runner {
                             return Ok(invoked
                                 .result(Err(LmbError::Timeout(timeout.clone())))
                                 .build());
+                        } else if ee.downcast_ref::<Cancelled>().is_some() {
+                            return Ok(invoked.result(Err(LmbError::Cancelled(Cancelled))).build());
                         } else {
                             return Ok(invoked.result(Err(LmbError::Lua(e))).build());
                         }
@@ -631,5 +645,48 @@ mod tests {
         // After the grace window, the force deadline has passed.
         std::thread::sleep(Duration::from_millis(100));
         assert!(c.force_deadline_passed());
+    }
+
+    #[tokio::test]
+    async fn ctx_cancelled_is_observable_and_cooperative() {
+        use std::time::Duration;
+        use tokio::io::empty;
+        let cancellation = Cancellation::new(Duration::from_secs(10));
+        // Script loops until ctx.cancelled() becomes true, then returns "stopped".
+        let source = r#"return function(ctx)
+            while not ctx.cancelled() do sleep_ms(5) end
+            return "stopped"
+        end"#;
+        let runner = Runner::builder(source, empty())
+            .cancellation(cancellation.clone())
+            .build()
+            .unwrap();
+        let handle = tokio::spawn(async move { runner.invoke().call().await });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        cancellation.cancel();
+        let invoked = handle.await.unwrap().unwrap();
+        assert_eq!(invoked.result.unwrap(), json!("stopped"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cpu_loop_is_force_interrupted_after_grace() {
+        use std::time::Duration;
+        use tokio::io::empty;
+        let cancellation = Cancellation::new(Duration::from_millis(100));
+        // Tight CPU loop that ignores ctx.cancelled().
+        let source = r#"return function(ctx) while true do end end"#;
+        let runner = Runner::builder(source, empty())
+            .cancellation(cancellation.clone())
+            .build()
+            .unwrap();
+        let handle: tokio::task::JoinHandle<LmbResult<Invoked>> =
+            tokio::spawn(async move { runner.invoke().call().await });
+        cancellation.cancel();
+        let invoked = tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("invoke should be force-interrupted, not hang")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(invoked.result, Err(LmbError::Cancelled(_))));
     }
 }
