@@ -170,12 +170,17 @@ pub type LmbResult<T> = Result<T, LmbError>;
 /// Represents the result of invoking a Lua function
 #[derive(Builder, Debug)]
 pub struct Invoked {
-    /// The elapsed time since the invocation started
-    pub elapsed: Duration,
+    /// Wall-clock time spent running the Lua function.
+    ///
+    /// `None` when the function never ran because building the call context
+    /// failed; in that case [`result`](Self::result) holds the setup error.
+    pub elapsed: Option<Duration>,
     /// The result of the Lua function invocation
     pub result: LmbResult<Value>,
-    /// The amount of memory used in bytes by the Lua VM during the invocation
-    pub used_memory: usize,
+    /// Peak memory in bytes used by the Lua VM while running the function.
+    ///
+    /// `None` when the function never ran (see [`elapsed`](Self::elapsed)).
+    pub used_memory: Option<usize>,
 }
 
 /// A runner for executing Lua scripts with an input stream
@@ -339,8 +344,9 @@ impl Runner {
 
     /// Invokes the Lua function with the given state.
     ///
-    /// The returned [`Invoked`] always carries the run metrics; whether the Lua
-    /// function itself succeeded or failed is captured by its `result` field.
+    /// The returned [`Invoked`] captures the run result and, when the function
+    /// actually ran, its elapsed time and peak memory. A failure while building
+    /// the call context yields an `Invoked` whose metrics are `None`.
     #[builder]
     pub async fn invoke(&self, state: Option<State>) -> Invoked {
         let used_memory = Arc::new(AtomicUsize::new(0));
@@ -368,35 +374,18 @@ impl Runner {
             }
         });
 
-        // The fallible setup-and-call logic lives in an inner async block that
-        // yields `LmbResult<Value>`; the outer body then wraps that single result
-        // together with the run metrics into an `Invoked`. This keeps the `?`
-        // ergonomics while exposing only one layer of `Result` to callers.
-        let result: LmbResult<Value> = async {
-            let ctx = self.vm.create_table()?;
-            if let Some(state) = &state {
-                if let Some(state) = &state.state {
-                    ctx.set("state", self.vm.to_value(state)?)?;
-                }
-                if let Some(request) = &state.request {
-                    ctx.set("request", self.vm.to_value(request)?)?;
-                }
-            }
-            if let Some(lmb_store) = &self.store {
-                ctx.set(
-                    "store",
-                    StoreBinding::builder().store(lmb_store.clone()).build(),
-                )?;
-            }
-            if let Some(cancellation) = &self.cancellation {
-                let cancellation = cancellation.clone();
-                ctx.set(
-                    "cancelled",
-                    self.vm
-                        .create_function(move |_, ()| Ok(cancellation.is_cancelled()))?,
-                )?;
-            }
+        // Build the call context first. A failure here happens *before* the Lua
+        // function runs, so the returned `Invoked` carries no run metrics
+        // (`elapsed`/`used_memory` stay `None`).
+        let ctx = match self.build_context(state.as_ref()) {
+            Ok(ctx) => ctx,
+            Err(e) => return Invoked::builder().result(Err(e)).build(),
+        };
 
+        // From here the function is actually invoked. The fallible call-and-
+        // collect logic runs in an inner async block yielding `LmbResult<Value>`,
+        // keeping `?` ergonomics while exposing only one layer of `Result`.
+        let result: LmbResult<Value> = async {
             let (ok, mut values) = {
                 let span = debug_span!("call");
                 match self
@@ -450,11 +439,46 @@ impl Runner {
         }
         .await;
 
+        // Take a final sample so a run that never tripped the interrupt hook
+        // still reports its footprint instead of a misleading zero. Both metrics
+        // are `Some` here because the function was invoked.
+        used_memory.fetch_max(self.vm.used_memory(), Ordering::Relaxed);
+
         Invoked::builder()
             .elapsed(start.elapsed())
             .used_memory(used_memory.load(Ordering::Relaxed))
             .result(result)
             .build()
+    }
+
+    /// Builds the `ctx` table passed to the Lua function (state, request, store
+    /// binding and the `cancelled()` helper). Kept separate from [`Self::invoke`]
+    /// so a setup failure can be reported before the function runs.
+    fn build_context(&self, state: Option<&State>) -> LmbResult<LuaTable> {
+        let ctx = self.vm.create_table()?;
+        if let Some(state) = state {
+            if let Some(state) = &state.state {
+                ctx.set("state", self.vm.to_value(state)?)?;
+            }
+            if let Some(request) = &state.request {
+                ctx.set("request", self.vm.to_value(request)?)?;
+            }
+        }
+        if let Some(lmb_store) = &self.store {
+            ctx.set(
+                "store",
+                StoreBinding::builder().store(lmb_store.clone()).build(),
+            )?;
+        }
+        if let Some(cancellation) = &self.cancellation {
+            let cancellation = cancellation.clone();
+            ctx.set(
+                "cancelled",
+                self.vm
+                    .create_function(move |_, ()| Ok(cancellation.is_cancelled()))?,
+            )?;
+        }
+        Ok(ctx)
     }
 }
 
@@ -638,6 +662,30 @@ mod tests {
         let result = super::process_pcall_error(&[number_value], &lua);
         let err = result.unwrap();
         assert!(matches!(err, LmbError::LuaValue(Value::Number(n)) if n.as_f64() == Some(42.0)));
+    }
+
+    #[tokio::test]
+    async fn invoke_records_metrics_when_function_runs() {
+        let runner = Runner::builder(r"return function() return 1 end", empty())
+            .build()
+            .unwrap();
+        let invoked = runner.invoke().call().await;
+        assert!(invoked.result.is_ok());
+        // The function ran, so both metrics are populated.
+        assert!(invoked.elapsed.is_some());
+        assert!(invoked.used_memory.is_some_and(|m| m > 0));
+    }
+
+    #[tokio::test]
+    async fn invoke_records_metrics_even_when_script_errors() {
+        let runner = Runner::builder(r#"return function() error("boom") end"#, empty())
+            .build()
+            .unwrap();
+        let invoked = runner.invoke().call().await;
+        assert!(invoked.result.is_err());
+        // A script error still means the function ran, so metrics are recorded.
+        assert!(invoked.elapsed.is_some());
+        assert!(invoked.used_memory.is_some());
     }
 
     #[test]
