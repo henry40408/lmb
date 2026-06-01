@@ -90,7 +90,7 @@ mod tests {
             let pool = pool.clone();
             tasks.push(tokio::spawn(async move {
                 let runner = pool.get().await.unwrap();
-                runner.invoke().call().await.unwrap();
+                let _ = runner.invoke().call().await;
             }));
         }
 
@@ -135,7 +135,7 @@ mod tests {
             let pool = pool.clone();
             handles.push(tokio::spawn(async move {
                 let runner = pool.get().await.unwrap();
-                runner.invoke().call().await.unwrap().result.unwrap()
+                runner.invoke().call().await.result.unwrap()
             }));
         }
 
@@ -160,21 +160,21 @@ mod tests {
         // First call
         {
             let runner = pool.get().await.unwrap();
-            let result = runner.invoke().call().await.unwrap().result.unwrap();
+            let result = runner.invoke().call().await.result.unwrap();
             assert_eq!(json!(1), result);
         }
 
         // Second call - should reuse the same runner and increment count
         {
             let runner = pool.get().await.unwrap();
-            let result = runner.invoke().call().await.unwrap().result.unwrap();
+            let result = runner.invoke().call().await.result.unwrap();
             assert_eq!(json!(2), result);
         }
 
         // Third call - should still be the same runner
         {
             let runner = pool.get().await.unwrap();
-            let result = runner.invoke().call().await.unwrap().result.unwrap();
+            let result = runner.invoke().call().await.result.unwrap();
             assert_eq!(json!(3), result);
         }
     }
@@ -188,7 +188,7 @@ mod tests {
         let pool = Pool::builder(manager).max_size(2).build().unwrap();
 
         let runner = pool.get().await.unwrap();
-        let result = runner.invoke().call().await.unwrap().result.unwrap();
+        let result = runner.invoke().call().await.result.unwrap();
         assert_eq!(json!("no store"), result);
     }
 }

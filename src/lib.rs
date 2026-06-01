@@ -170,12 +170,17 @@ pub type LmbResult<T> = Result<T, LmbError>;
 /// Represents the result of invoking a Lua function
 #[derive(Builder, Debug)]
 pub struct Invoked {
-    /// The elapsed time since the invocation started
-    pub elapsed: Duration,
+    /// Wall-clock time spent running the Lua function.
+    ///
+    /// `None` when the function never ran because building the call context
+    /// failed; in that case [`result`](Self::result) holds the setup error.
+    pub elapsed: Option<Duration>,
     /// The result of the Lua function invocation
     pub result: LmbResult<Value>,
-    /// The amount of memory used in bytes by the Lua VM during the invocation
-    pub used_memory: usize,
+    /// Peak memory in bytes used by the Lua VM while running the function.
+    ///
+    /// `None` when the function never ran (see [`elapsed`](Self::elapsed)).
+    pub used_memory: Option<usize>,
 }
 
 /// A runner for executing Lua scripts with an input stream
@@ -338,8 +343,12 @@ impl Runner {
     }
 
     /// Invokes the Lua function with the given state.
+    ///
+    /// The returned [`Invoked`] captures the run result and, when the function
+    /// actually ran, its elapsed time and peak memory. A failure while building
+    /// the call context yields an `Invoked` whose metrics are `None`.
     #[builder]
-    pub async fn invoke(&self, state: Option<State>) -> LmbResult<Invoked> {
+    pub async fn invoke(&self, state: Option<State>) -> Invoked {
         let used_memory = Arc::new(AtomicUsize::new(0));
         let start = Instant::now();
         let timeout = self.timeout;
@@ -365,8 +374,89 @@ impl Runner {
             }
         });
 
+        // Build the call context first. A failure here happens *before* the Lua
+        // function runs, so the returned `Invoked` carries no run metrics
+        // (`elapsed`/`used_memory` stay `None`).
+        let ctx = match self.build_context(state.as_ref()) {
+            Ok(ctx) => ctx,
+            Err(e) => return Invoked::builder().result(Err(e)).build(),
+        };
+
+        // From here the function is actually invoked. The fallible call-and-
+        // collect logic runs in an inner async block yielding `LmbResult<Value>`,
+        // keeping `?` ergonomics while exposing only one layer of `Result`.
+        let result: LmbResult<Value> = async {
+            let (ok, mut values) = {
+                let span = debug_span!("call");
+                match self
+                    .func
+                    .call_async::<LuaMultiValue>(ctx)
+                    .instrument(span)
+                    .await
+                {
+                    Ok(values) => {
+                        let mut values = values.into_vec();
+                        let ok = values
+                            .first()
+                            .and_then(|b| b.as_boolean())
+                            .unwrap_or_default();
+                        if !values.is_empty() {
+                            values.remove(0);
+                        }
+                        (ok, values)
+                    }
+                    Err(e) => match &e {
+                        LuaError::ExternalError(ee) => {
+                            if let Some(timeout) = ee.downcast_ref::<Timeout>() {
+                                return Err(LmbError::Timeout(timeout.clone()));
+                            } else if ee.downcast_ref::<Cancelled>().is_some() {
+                                return Err(LmbError::Cancelled(Cancelled));
+                            } else {
+                                return Err(LmbError::Lua(e));
+                            }
+                        }
+                        _ => return Err(LmbError::Lua(e)),
+                    },
+                }
+            };
+
+            if !ok {
+                return Err(process_pcall_error(&values, &self.vm)?);
+            }
+
+            let value = match values.len() {
+                0 => json!(null),
+                1 => self.vm.from_value::<Value>(values.remove(0))?,
+                _ => {
+                    let mut arr = Vec::with_capacity(values.len());
+                    for value in values {
+                        arr.push(self.vm.from_value::<Value>(value)?);
+                    }
+                    Value::Array(arr)
+                }
+            };
+            Ok(value)
+        }
+        .await;
+
+        // Take a final sample so a run that never tripped the interrupt hook
+        // still reports its footprint instead of a misleading zero. Both metrics
+        // are `Some` here because the function was invoked.
+        used_memory.fetch_max(self.vm.used_memory(), Ordering::Relaxed);
+
+        Invoked::builder()
+            .elapsed(start.elapsed())
+            .used_memory(used_memory.load(Ordering::Relaxed))
+            .result(result)
+            .build()
+    }
+
+    /// Builds the `ctx` table passed to the Lua function (state, request, store
+    /// binding and the `cancelled()` helper). Kept separate from [`Self::invoke`]
+    /// so a setup failure can be reported before the function runs.
+    fn build_context(&self, state: Option<&State>) -> LmbResult<LuaTable> {
         let ctx = self.vm.create_table()?;
-        if let Some(state) = &state {
+        if let Some(state) = state {
             if let Some(state) = &state.state {
                 ctx.set("state", self.vm.to_value(state)?)?;
             }
@@ -388,64 +478,7 @@ impl Runner {
                     .create_function(move |_, ()| Ok(cancellation.is_cancelled()))?,
             )?;
         }
-
-        let invoked = Invoked::builder()
-            .elapsed(start.elapsed())
-            .used_memory(used_memory.load(Ordering::Relaxed));
-
-        let (ok, mut values) = {
-            let span = debug_span!("call");
-            match self
-                .func
-                .call_async::<LuaMultiValue>(ctx)
-                .instrument(span)
-                .await
-            {
-                Ok(values) => {
-                    let mut values = values.into_vec();
-                    let ok = values
-                        .first()
-                        .and_then(|b| b.as_boolean())
-                        .unwrap_or_default();
-                    if !values.is_empty() {
-                        values.remove(0);
-                    }
-                    (ok, values)
-                }
-                Err(e) => match &e {
-                    LuaError::ExternalError(ee) => {
-                        if let Some(timeout) = ee.downcast_ref::<Timeout>() {
-                            return Ok(invoked
-                                .result(Err(LmbError::Timeout(timeout.clone())))
-                                .build());
-                        } else if ee.downcast_ref::<Cancelled>().is_some() {
-                            return Ok(invoked.result(Err(LmbError::Cancelled(Cancelled))).build());
-                        } else {
-                            return Ok(invoked.result(Err(LmbError::Lua(e))).build());
-                        }
-                    }
-                    _ => return Ok(invoked.result(Err(LmbError::Lua(e))).build()),
-                },
-            }
-        };
-
-        if !ok {
-            let err = process_pcall_error(&values, &self.vm)?;
-            return Ok(invoked.result(Err(err)).build());
-        }
-
-        let value = match values.len() {
-            0 => json!(null),
-            1 => self.vm.from_value::<Value>(values.remove(0))?,
-            _ => {
-                let mut arr = Vec::with_capacity(values.len());
-                for value in values {
-                    arr.push(self.vm.from_value::<Value>(value)?);
-                }
-                Value::Array(arr)
-            }
-        };
-        Ok(invoked.result(Ok(value)).build())
+        Ok(ctx)
     }
 }
 
@@ -483,10 +516,10 @@ mod tests {
             .default_name("test")
             .build()
             .unwrap();
-        let Some(Invoked {
+        let Invoked {
             result: Err(LmbError::Lua(LuaError::RuntimeError(message))),
             ..
-        }) = runner.invoke().call().await.ok()
+        } = runner.invoke().call().await
         else {
             panic!("Expected a Lua runtime error");
         };
@@ -499,7 +532,7 @@ mod tests {
     async fn test_invoke(source: &'static str, state: Option<Value>, expected: Value) {
         let runner = Runner::builder(source, empty()).build().unwrap();
         let state = State::builder().maybe_state(state).build();
-        let result = runner.invoke().state(state).call().await.unwrap();
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(expected, result.result.unwrap());
     }
 
@@ -508,7 +541,7 @@ mod tests {
         let source = include_str!("./fixtures/core/closure.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         for i in 1..=10 {
-            let result = runner.invoke().call().await.unwrap();
+            let result = runner.invoke().call().await;
             assert_eq!(json!(i), result.result.unwrap());
         }
     }
@@ -520,7 +553,7 @@ mod tests {
             .timeout(Duration::from_millis(10))
             .build()
             .unwrap();
-        let res = runner.invoke().call().await.unwrap();
+        let res = runner.invoke().call().await;
         let err = res.result.unwrap_err();
         assert!(matches!(err, LmbError::Timeout { .. }));
     }
@@ -529,7 +562,7 @@ mod tests {
     async fn test_multi() {
         let source = include_str!("./fixtures/core/multi.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         assert_eq!(json!([true, 1]), result.result.unwrap());
     }
 
@@ -578,10 +611,10 @@ mod tests {
             .default_name("test")
             .build()
             .unwrap();
-        let Some(Invoked {
+        let Invoked {
             result: Err(LmbError::LuaValue(value)),
             ..
-        }) = runner.invoke().call().await.ok()
+        } = runner.invoke().call().await
         else {
             panic!("Expected a Lua value error");
         };
@@ -631,6 +664,30 @@ mod tests {
         assert!(matches!(err, LmbError::LuaValue(Value::Number(n)) if n.as_f64() == Some(42.0)));
     }
 
+    #[tokio::test]
+    async fn invoke_records_metrics_when_function_runs() {
+        let runner = Runner::builder(r"return function() return 1 end", empty())
+            .build()
+            .unwrap();
+        let invoked = runner.invoke().call().await;
+        assert!(invoked.result.is_ok());
+        // The function ran, so both metrics are populated.
+        assert!(invoked.elapsed.is_some());
+        assert!(invoked.used_memory.is_some_and(|m| m > 0));
+    }
+
+    #[tokio::test]
+    async fn invoke_records_metrics_even_when_script_errors() {
+        let runner = Runner::builder(r#"return function() error("boom") end"#, empty())
+            .build()
+            .unwrap();
+        let invoked = runner.invoke().call().await;
+        assert!(invoked.result.is_err());
+        // A script error still means the function ran, so metrics are recorded.
+        assert!(invoked.elapsed.is_some());
+        assert!(invoked.used_memory.is_some());
+    }
+
     #[test]
     fn cancelled_error_displays_message() {
         assert_eq!(Cancelled.to_string(), "Lua script execution was cancelled");
@@ -669,7 +726,7 @@ mod tests {
         let handle = tokio::spawn(async move { runner.invoke().call().await });
         tokio::time::sleep(Duration::from_millis(30)).await;
         cancellation.cancel();
-        let invoked = handle.await.unwrap().unwrap();
+        let invoked = handle.await.unwrap();
         assert_eq!(invoked.result.unwrap(), json!("stopped"));
     }
 
@@ -684,13 +741,12 @@ mod tests {
             .cancellation(cancellation.clone())
             .build()
             .unwrap();
-        let handle: tokio::task::JoinHandle<LmbResult<Invoked>> =
+        let handle: tokio::task::JoinHandle<Invoked> =
             tokio::spawn(async move { runner.invoke().call().await });
         cancellation.cancel();
         let invoked = tokio::time::timeout(Duration::from_secs(5), handle)
             .await
             .expect("invoke should be force-interrupted, not hang")
-            .unwrap()
             .unwrap();
         assert!(matches!(invoked.result, Err(LmbError::Cancelled(_))));
     }

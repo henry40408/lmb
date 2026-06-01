@@ -42,7 +42,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/globals/sleep.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let start = Instant::now();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         let elapsed = start.elapsed();
         assert!(result.result.is_ok());
         // Verify that sleep actually waited (at least 40ms to allow for timing variance)
@@ -53,7 +53,7 @@ mod tests {
     async fn test_sleep_ms_zero() {
         let source = include_str!("../fixtures/bindings/globals/sleep-zero.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         assert!(result.result.is_ok());
     }
 }

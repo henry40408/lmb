@@ -235,41 +235,41 @@ mod tests {
     async fn test_crypto() {
         let source = include_str!("../fixtures/bindings/crypto.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
     async fn test_crypto_errors() {
         let source = include_str!("../fixtures/bindings/crypto-errors.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
     async fn test_base64_roundtrip() {
         let source = include_str!("../fixtures/bindings/crypto/base64-roundtrip.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
     async fn test_hash_functions() {
         let source = include_str!("../fixtures/bindings/crypto/hash-functions.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
     async fn test_des_ecb_encryption() {
         let source = include_str!("../fixtures/bindings/crypto/des-ecb.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
     async fn test_des_cbc_encryption() {
         let source = include_str!("../fixtures/bindings/crypto/des-cbc.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 }

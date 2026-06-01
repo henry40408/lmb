@@ -676,7 +676,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("hello world"), result.result.expect("result"));
     }
 
@@ -702,7 +702,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("hello from lua"), result.result.expect("result"));
     }
 
@@ -729,7 +729,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("firstsecond"), result.result.expect("result"));
     }
 
@@ -756,7 +756,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(
             json!(["line1", "line2", "line3"]),
             result.result.expect("result")
@@ -786,7 +786,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("abcde"), result.result.expect("result"));
     }
 
@@ -813,7 +813,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(["a", "b", "c"]), result.result.expect("result"));
     }
 
@@ -840,7 +840,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(["x", "y", "z"]), result.result.expect("result"));
     }
 
@@ -867,7 +867,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("fghij"), result.result.expect("result"));
     }
 
@@ -899,7 +899,6 @@ mod tests {
             .state(state)
             .call()
             .await
-            .expect("invoke")
             .result
             .expect("result");
     }
@@ -936,7 +935,6 @@ mod tests {
             .state(state)
             .call()
             .await
-            .expect("invoke")
             .result
             .expect("result");
         assert!(!path_buf.exists(), "file should be deleted");
@@ -976,7 +974,6 @@ mod tests {
             .state(state)
             .call()
             .await
-            .expect("invoke")
             .result
             .expect("result");
         assert!(!old_path.exists(), "old file should not exist");
@@ -1011,7 +1008,6 @@ mod tests {
             .state(state)
             .call()
             .await
-            .expect("invoke")
             .result
             .expect("result");
     }
@@ -1045,7 +1041,6 @@ mod tests {
             .state(state)
             .call()
             .await
-            .expect("invoke")
             .result
             .expect("result");
     }
@@ -1057,13 +1052,7 @@ mod tests {
         let runner = Runner::builder(source, empty())
             .build()
             .expect("build runner");
-        runner
-            .invoke()
-            .call()
-            .await
-            .expect("invoke")
-            .result
-            .expect("result");
+        runner.invoke().call().await.result.expect("result");
     }
 
     #[tokio::test]
@@ -1094,7 +1083,6 @@ mod tests {
             .state(state)
             .call()
             .await
-            .expect("invoke")
             .result
             .expect("result");
     }
@@ -1122,7 +1110,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(42.5), result.result.expect("result"));
     }
 
@@ -1149,7 +1137,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(msg.as_str().expect("string").contains("invalid format"));
     }
@@ -1176,7 +1164,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("423.14"), result.result.expect("result"));
     }
 
@@ -1202,7 +1190,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(msg.as_str().expect("string").contains("invalid value"));
     }
@@ -1229,7 +1217,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("flushed"), result.result.expect("result"));
     }
 
@@ -1256,7 +1244,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(
             json!({"size": 10, "rest": "cdefghij"}),
             result.result.expect("result")
@@ -1286,7 +1274,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(
             json!({"original": "abcde", "modified": "XXcde"}),
             result.result.expect("result")
@@ -1315,7 +1303,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("hello w+"), result.result.expect("result"));
     }
 
@@ -1342,7 +1330,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("initial appended"), result.result.expect("result"));
     }
 
@@ -1368,7 +1356,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(msg.as_str().expect("string").contains("invalid mode"));
     }
@@ -1395,7 +1383,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(true), result.result.expect("result"));
     }
 
@@ -1422,7 +1410,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(msg.as_str().expect("string").contains("permission denied"));
     }
@@ -1438,7 +1426,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(
             msg.as_str()
@@ -1470,7 +1458,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(true), result.result.expect("result"));
     }
 
@@ -1497,7 +1485,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(true), result.result.expect("result"));
     }
 
@@ -1524,7 +1512,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(true), result.result.expect("result"));
     }
 
@@ -1551,7 +1539,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(msg.as_str().expect("string").contains("invalid whence"));
     }
@@ -1579,7 +1567,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!("abc"), result.result.expect("result"));
     }
 
@@ -1605,7 +1593,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         let msg = result.result.expect("result");
         assert!(
             msg.as_str()
@@ -1637,7 +1625,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(
             json!(["line1", "line2", "line3"]),
             result.result.expect("result")
@@ -1667,7 +1655,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(["a", "b"]), result.result.expect("result"));
     }
 
@@ -1682,7 +1670,7 @@ mod tests {
             .build()
             .expect("build runner");
         let state = State::builder().state(json!(path)).build();
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
         assert_eq!(json!(true), result.result.expect("result"));
     }
 
@@ -1726,7 +1714,7 @@ mod tests {
             .state(json!({"path": path, "expected": 3}))
             .build();
 
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
 
         writer.join().expect("writer thread");
         assert_eq!(
@@ -1778,7 +1766,7 @@ mod tests {
             .state(json!({"path": path_str, "expected": 4}))
             .build();
 
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
 
         rotator.join().expect("rotator thread");
         assert_eq!(
@@ -1822,7 +1810,7 @@ mod tests {
             .state(json!({"path": path_str, "expected": 2}))
             .build();
 
-        let result = runner.invoke().state(state).call().await.expect("invoke");
+        let result = runner.invoke().state(state).call().await;
 
         creator.join().expect("creator thread");
         assert_eq!(

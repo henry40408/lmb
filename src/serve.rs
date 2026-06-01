@@ -99,7 +99,7 @@ async fn try_request_handler(
         // Pool mode: get runner from pool and swap reader with request body
         let runner = pool.get().await?;
         runner.swap_reader(Cursor::new(bytes)).await;
-        runner.invoke().state(state).call().await?
+        runner.invoke().state(state).call().await
     } else {
         // Non-pool mode: create new runner per request
         let reader = Cursor::new(bytes);
@@ -117,7 +117,7 @@ async fn try_request_handler(
             .maybe_store(conn)
             .maybe_timeout(app_state.timeout)
             .build()?;
-        runner.invoke().state(state).call().await?
+        runner.invoke().state(state).call().await
     };
 
     match res.result {
@@ -305,7 +305,7 @@ mod tests {
         );
         let pool = create_pool(&app_state).unwrap();
         let runner = pool.get().await.unwrap();
-        let res = runner.invoke().call().await.unwrap();
+        let res = runner.invoke().call().await;
         assert_eq!(json!("ok"), res.result.unwrap());
     }
 
@@ -321,7 +321,7 @@ mod tests {
         );
         let pool = create_pool(&app_state).unwrap();
         let runner = pool.get().await.unwrap();
-        let res = runner.invoke().call().await.unwrap();
+        let res = runner.invoke().call().await;
         assert_eq!(json!("ok"), res.result.unwrap());
     }
 }

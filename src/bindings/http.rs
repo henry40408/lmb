@@ -275,7 +275,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/http-get.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let state = State::builder().state(json!(url)).build();
-        let result = runner.invoke().state(state).call().await.unwrap();
+        let result = runner.invoke().state(state).call().await;
 
         assert_eq!(json!("Hello, world!"), result.result.unwrap());
 
@@ -300,7 +300,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/http-post.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let state = State::builder().state(json!(url)).build();
-        let result = runner.invoke().state(state).call().await.unwrap();
+        let result = runner.invoke().state(state).call().await;
 
         assert_eq!(json!({"a":1}), result.result.unwrap());
 
@@ -311,7 +311,7 @@ mod tests {
     async fn test_parse_path() {
         let source = include_str!("../fixtures/bindings/http-parse-path.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     /// Regression test: concurrent fetch calls via coroutine.race/join_all
@@ -337,7 +337,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/http-concurrent-fetch.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
         let state = State::builder().state(json!(url)).build();
-        let result = runner.invoke().state(state).call().await.unwrap();
+        let result = runner.invoke().state(state).call().await;
 
         assert_eq!(json!(["response_a", "response_b"]), result.result.unwrap());
 

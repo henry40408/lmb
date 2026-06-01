@@ -159,7 +159,7 @@ mod tests {
             .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
@@ -170,7 +170,7 @@ mod tests {
             .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
@@ -181,14 +181,14 @@ mod tests {
             .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
     async fn test_store_without_connection() {
         let source = include_str!("../fixtures/bindings/store/store-without-connection.lua");
         let runner = Runner::builder(source, empty()).build().unwrap();
-        let result = runner.invoke().call().await.unwrap().result.unwrap();
+        let result = runner.invoke().call().await.result.unwrap();
         assert_eq!(json!(true), result);
     }
 
@@ -200,7 +200,7 @@ mod tests {
             .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
@@ -211,7 +211,7 @@ mod tests {
             .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]
@@ -222,7 +222,7 @@ mod tests {
             .store(Arc::new(backend) as Arc<dyn crate::store::StoreBackend>)
             .build()
             .unwrap();
-        runner.invoke().call().await.unwrap().result.unwrap();
+        runner.invoke().call().await.result.unwrap();
     }
 
     #[tokio::test]

@@ -215,14 +215,7 @@ async fn test_guided_tour() {
             .maybe_request(request)
             .maybe_state(visitor.state)
             .build();
-        let value = runner
-            .invoke()
-            .state(state)
-            .call()
-            .await
-            .unwrap()
-            .result
-            .unwrap();
+        let value = runner.invoke().state(state).call().await.result.unwrap();
 
         let name = visitor.name.trim();
         if let Some(assert_return) = visitor.assert_return {

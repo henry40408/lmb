@@ -181,7 +181,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/io/read-unicode-all.lua");
         let input = Cursor::new(text.join("\n"));
         let runner = Runner::builder(source, input).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         assert_eq!(result.result.unwrap().as_str().unwrap(), text.join("\n"));
     }
 
@@ -201,36 +201,33 @@ mod tests {
         let runner = Runner::builder(source, input).build().unwrap();
         assert_eq!(
             json!("Hello, world!"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
         assert_eq!(
             json!("你好，世界"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
         assert_eq!(
             json!("こんにちは世界!"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
         assert_eq!(
             json!("안녕하세요 세계!"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
         assert_eq!(
             json!("Привет, мир!"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
         assert_eq!(
             json!("مرحبا بالعالم"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
         assert_eq!(
             json!("😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚"),
-            runner.invoke().call().await.unwrap().result.unwrap()
+            runner.invoke().call().await.result.unwrap()
         );
-        assert_eq!(
-            json!(null),
-            runner.invoke().call().await.unwrap().result.unwrap()
-        );
+        assert_eq!(json!(null), runner.invoke().call().await.result.unwrap());
     }
 
     #[test_case("Hello, world!"; "English")]
@@ -252,7 +249,6 @@ mod tests {
             .invoke()
             .call()
             .await
-            .unwrap()
             .result
             .unwrap()
             .as_str()

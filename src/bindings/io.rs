@@ -100,7 +100,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/io/read-all.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         assert_eq!(json!(text), result.result.unwrap());
     }
 
@@ -114,10 +114,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/io/read-count.lua");
         let input = Cursor::new(bytes);
         let runner = Runner::builder(source, input).build().unwrap();
-        assert_eq!(
-            expected,
-            runner.invoke().call().await.unwrap().result.unwrap()
-        );
+        assert_eq!(expected, runner.invoke().call().await.result.unwrap());
     }
 
     #[tokio::test]
@@ -126,7 +123,7 @@ mod tests {
         let text = "";
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         let err = result.result.err().unwrap();
         assert_eq!(
             Some("Lua error: bad argument #1 to `read`: invalid format ?"),
@@ -145,7 +142,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/io/read-line.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         assert_eq!(json!(expected), result.result.unwrap());
     }
 
@@ -160,7 +157,7 @@ mod tests {
         let source = include_str!("../fixtures/bindings/io/read-number.lua");
         let input = Cursor::new(text);
         let runner = Runner::builder(source, input).build().unwrap();
-        let result = runner.invoke().call().await.unwrap();
+        let result = runner.invoke().call().await;
         assert_eq!(json!(expected), result.result.unwrap());
     }
 }
