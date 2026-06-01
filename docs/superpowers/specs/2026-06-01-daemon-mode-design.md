@@ -66,28 +66,35 @@ still set it explicitly to bound a single supervised run.
 
 ## Architecture
 
-The supervisor is a thin Rust loop. On a stop signal the in-flight `invoke`
-future is **kept alive throughout the grace period** — not dropped immediately —
-so the same execution can finish cooperatively. Only once the grace period
-elapses is it abandoned (see "Graceful shutdown"). So the future is pinned and
-the signal branch sets the cancellation flag, then keeps awaiting that same
-future with a grace timeout. Pseudocode:
+The supervisor is a thin Rust loop. Each run's `invoke` is executed in its own
+`tokio::spawn`ed task, **not** awaited inline in the supervisor's `select!`.
+This is required: a CPU-bound Lua loop that never yields would block the poll of
+an inlined future and starve the signal branch, so the supervisor could never
+react to a stop signal. Running `invoke` as a separate task (on the
+multi-threaded runtime) keeps the supervisor responsive. The supervisor holds an
+`Arc<Runner>` and clones it into the task. Pseudocode:
 
 ```
 backoff = initial
 restarts = 0
 loop {
     start = now
-    let fut = runner.invoke(state)              // pinned, not dropped during grace
+    runner = Arc::new(rebuild_runner())         // fresh VM; reused store Arc
+    handle = tokio::spawn({ let r = runner.clone(); async move {
+        r.invoke(state.clone()).await           // -> LmbResult<Invoked>
+    }})
     outcome = select! {
-        r = &mut fut => Finished(r)             // script returned or errored
+        r = &mut handle => Finished(r)          // script returned or errored
         _ = shutdown_signal() => {              // SIGTERM / SIGINT
-            set_cancel_flag(); record cancel_instant   // feeds the interrupt deadline
+            cancellation.cancel()               // sets flag + cancel instant
             select! {
-                r = &mut fut     => Shutdown    // cooperative finish, or CPU loop
-                                                //   force-interrupted -> fut ends
-                _ = sleep(grace) => Shutdown    // async-parked & ignoring flag:
-                                                //   ABANDON fut (drop cancels the await)
+                r = &mut handle  => Shutdown    // cooperative finish, or CPU loop
+                                                //   force-interrupted -> task ends
+                _ = sleep(grace) => {           // async-parked & ignoring flag:
+                    handle.abort()              //   abort the task (cancels await)
+                    let _ = handle.await        //   reap; interrupt already forced
+                    Shutdown
+                }
             }
         }
     }
@@ -102,14 +109,15 @@ loop {
             log restart with backoff
             sleep(backoff)                            // interruptible by signal
             backoff = min(backoff * 2, max_backoff)
-            runner = rebuild_runner()                 // fresh VM
+            // loop: a fresh Runner / VM is built at the top of the next iteration
         }
     }
 }
 ```
 
-- Every restart **rebuilds the `Runner` / Lua VM** to avoid carrying over
-  corrupted state from a crash.
+- Every restart **rebuilds the `Runner` / Lua VM** (top of the loop) to avoid
+  carrying over corrupted state from a crash. The store `Arc` is reused across
+  rebuilds, so daemon state persists between restarts.
 - A successful (non-error) return is treated as task completion: the daemon
   exits 0 and does not restart.
 - A stable run resets both backoff and the consecutive-failure counter before
@@ -146,16 +154,17 @@ On `SIGTERM` / `SIGINT`:
 1. Set the cancellation flag and record the cancel `Instant` (Lua can observe
    the flag via `ctx.cancelled()`; the interrupt hook uses the instant as its
    force deadline).
-2. Keep awaiting the in-flight `invoke` future, up to `--shutdown-grace`.
+2. Keep awaiting the spawned `invoke` task (`JoinHandle`), up to
+   `--shutdown-grace`.
 3. Force termination uses two complementary mechanisms, because `set_interrupt`
    only fires while Lua bytecode is executing:
    - **CPU-bound Lua loop** (no `await`): the `set_interrupt` hook self-checks
      "cancelled and past cancel-instant + grace" and returns an interrupt error,
-     so the future ends. (The daemon's own grace timer cannot fire here, since a
-     CPU-bound poll blocks until the interrupt unwinds it.)
+     so the task ends. The supervisor stays responsive because `invoke` runs in a
+     separate task (see Architecture), not inline in the `select!`.
    - **Parked at an `await`** (`sleep_ms`, `http.fetch`, ...): `set_interrupt`
-     never fires, so the daemon's grace timer elapses and the future is
-     **abandoned (dropped)** — tokio sleeps and I/O are cancel-on-drop.
+     never fires, so the daemon's grace timer elapses and the supervisor calls
+     `handle.abort()` — tokio sleeps and I/O are cancel-on-drop.
 4. The daemon exits.
 
 This satisfies both cooperative cancellation (the script can finish its current
@@ -165,6 +174,15 @@ is still stopped within the grace period regardless of where it is blocked).
 Only `SIGTERM` and `SIGINT` are handled, both via `tokio::signal::unix`, which
 is Unix-only. On Windows only `Ctrl-C` (`SIGINT`) is available; full Windows
 support is a non-goal.
+
+### Known limitation
+
+Force-interrupting a CPU-bound, never-yielding Lua loop relies on the
+multi-threaded runtime having a free worker to run the supervisor while the loop
+occupies another (the binary's `#[tokio::main]` defaults to one worker per core).
+On a strictly single-core host, such a script that also ignores
+`ctx.cancelled()` cannot be force-stopped on shutdown. Cooperative cancellation
+via `ctx.cancelled()` always works and is the recommended pattern.
 
 ## Runner cancellation capability
 
