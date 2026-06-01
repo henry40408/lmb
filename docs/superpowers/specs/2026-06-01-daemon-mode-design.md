@@ -71,18 +71,19 @@ The supervisor is a thin Rust loop. Each run's `invoke` is executed in its own
 This is required: a CPU-bound Lua loop that never yields would block the poll of
 an inlined future and starve the signal branch, so the supervisor could never
 react to a stop signal. Running `invoke` as a separate task (on the
-multi-threaded runtime) keeps the supervisor responsive. The supervisor holds an
-`Arc<Runner>` and clones it into the task. Pseudocode:
+multi-threaded runtime) keeps the supervisor responsive. Each freshly built `Runner` is moved
+into its task (the next iteration builds a new VM anyway, so the supervisor does
+not need it back). Pseudocode:
 
 ```
 backoff = initial
 restarts = 0
 loop {
     start = now
-    runner = Arc::new(rebuild_runner())         // fresh VM; reused store Arc
-    handle = tokio::spawn({ let r = runner.clone(); async move {
-        r.invoke(state.clone()).await           // -> LmbResult<Invoked>
-    }})
+    runner = rebuild_runner()                   // fresh VM; reused store Arc
+    handle = tokio::spawn(async move {          // move owned Runner into the task
+        runner.invoke(state.clone()).await      // -> LmbResult<Invoked>
+    })
     outcome = select! {
         r = &mut handle => Finished(r)          // script returned or errored
         _ = shutdown_signal() => {              // SIGTERM / SIGINT
