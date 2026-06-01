@@ -632,6 +632,11 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_error_displays_message() {
+        assert_eq!(Cancelled.to_string(), "Lua script execution was cancelled");
+    }
+
+    #[test]
     fn cancellation_flag_and_force_deadline() {
         use std::time::Duration;
         let c = Cancellation::new(Duration::from_millis(50));

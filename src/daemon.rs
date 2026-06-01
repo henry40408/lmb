@@ -298,6 +298,46 @@ mod tests {
         assert_eq!(code, 0);
     }
 
+    #[tokio::test]
+    async fn was_failure_flags_invoke_error_and_panic() {
+        // Outer invoke error: returning a function cannot be serialized into a
+        // Value, so `invoke` yields `Ok(Err(_))`.
+        let cfg = config("return function(ctx) return function() end end", 0, secs(1));
+        let runner = build_runner(&cfg, Cancellation::new(secs(1))).unwrap();
+        let state = State::builder().build();
+        let invoke_err: Result<lmb::LmbResult<lmb::Invoked>, tokio::task::JoinError> =
+            Ok(runner.invoke().state(state).call().await);
+        assert!(matches!(invoke_err, Ok(Err(_))));
+        assert!(was_failure(invoke_err));
+
+        // A panic in the spawned task surfaces as a `JoinError`.
+        let panicked: Result<lmb::LmbResult<lmb::Invoked>, tokio::task::JoinError> =
+            tokio::spawn(async { panic!("boom") })
+                .await
+                .map(|()| unreachable!());
+        assert!(was_failure(panicked));
+    }
+
+    #[tokio::test]
+    async fn shutdown_during_backoff_exits_success() {
+        // First run fails fast, entering a long backoff; the stop signal lands
+        // during that wait and must exit cleanly (code 0).
+        let cfg = DaemonConfig::builder()
+            .source("return function(ctx) error('boom') end")
+            .initial_backoff(Duration::from_millis(500))
+            .max_backoff(Duration::from_millis(500))
+            .reset_after(secs(3600))
+            .max_restarts(0)
+            .grace(secs(1))
+            .build();
+        let shutdown = async { tokio::time::sleep(Duration::from_millis(60)).await };
+        let code = tokio::time::timeout(secs(5), run(cfg, shutdown))
+            .await
+            .expect("should not hang")
+            .unwrap();
+        assert_eq!(code, 0);
+    }
+
     #[test]
     fn backoff_grows_exponentially_and_caps() {
         // reset_after huge so no run counts as stable; max_restarts unlimited.
