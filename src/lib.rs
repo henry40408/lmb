@@ -105,6 +105,18 @@ impl Cancellation {
     }
 }
 
+/// Marker error raised by the VM interrupt hook when a script is forcibly cancelled.
+#[derive(Clone, Debug)]
+pub struct Cancelled;
+
+impl fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Lua script execution was cancelled")
+    }
+}
+
+impl Error for Cancelled {}
+
 /// Represents the state of the Lua script execution
 #[derive(Builder, Debug)]
 pub struct State {
@@ -142,6 +154,9 @@ pub enum LmbError {
     /// Error when the Lua script times out
     #[error("Timeout: {0}")]
     Timeout(#[from] Timeout),
+    /// Error when the Lua script is forcibly cancelled during shutdown
+    #[error("Cancelled: {0}")]
+    Cancelled(#[from] Cancelled),
 }
 
 /// Type alias for the shared reader used in the library.
